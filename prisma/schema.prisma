@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  HEAD_OF_GLOBAL_PROCUREMENT
+  GLOBAL_CATEGORY_LEADER
+  TACTICAL_BUYER
+  PROCUREMENT_ANALYST
+  FINANCIAL_CONTROLLER
+}
+
+enum Phase {
+  IDEA
+  VALIDATED
+  REALISED
+  ACHIEVED
+  CANCELLED
+}
+
+enum Frequency {
+  ONE_TIME
+  RECURRING
+  MULTI_YEAR
+}
+
+enum Currency {
+  EUR
+  USD
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                  String                   @id @default(cuid())
+  name                String
+  email               String                   @unique
+  role                Role
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  ownedCards          SavingCard[]             @relation("BuyerCards")
+  stakeholderCards    SavingCardStakeholder[]
+  approvals           Approval[]
+  comments            SavingCardComment[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  requestedPhaseChanges PhaseChangeRequest[]   @relation("RequestedPhaseChanges")
+  approvalRequests    PhaseChangeRequestApproval[]
+}
+
+model Supplier {
+  id                            String                           @id @default(cuid())
+  name                          String                           @unique
+  createdAt                     DateTime                         @default(now())
+  updatedAt                     DateTime                         @updatedAt
+  savingCards                   SavingCard[]                     @relation("BaselineSupplier")
+  alternativeScenarioCards      SavingCard[]                     @relation("AlternativeScenarioSupplier")
+  alternativeSuppliers          SavingCardAlternativeSupplier[]
+  alternativeMaterials          SavingCardAlternativeMaterial[]
+}
+
+model Material {
+  id                            String                           @id @default(cuid())
+  name                          String                           @unique
+  createdAt                     DateTime                         @default(now())
+  updatedAt                     DateTime                         @updatedAt
+  savingCards                   SavingCard[]                     @relation("BaselineMaterial")
+  alternativeScenarioCards      SavingCard[]                     @relation("AlternativeScenarioMaterial")
+  alternativeMaterials          SavingCardAlternativeMaterial[]
+}
+
+model Category {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  annualTarget  Float          @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  savingCards   SavingCard[]
+  annualTargets AnnualTarget[]
+}
+
+model Plant {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  region      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  savingCards SavingCard[]
+}
+
+model BusinessUnit {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  savingCards SavingCard[]
+}
+
+model SavingCard {
+  id                            String                   @id @default(cuid())
+  title                         String
+  description                   String
+  savingType                    String
+  phase                         Phase                    @default(IDEA)
+  supplierId                    String
+  materialId                    String
+  alternativeSupplierId         String?
+  alternativeSupplierManualName String?
+  alternativeMaterialId         String?
+  alternativeMaterialManualName String?
+  categoryId                    String
+  plantId                       String
+  businessUnitId                String
+  buyerId                       String
+  baselinePrice                 Float
+  newPrice                      Float
+  annualVolume                  Float
+  currency                      Currency
+  fxRate                        Float
+  calculatedSavings             Float
+  calculatedSavingsUSD Float
+  frequency                   Frequency
+  savingDriver                String?
+  implementationComplexity    String?
+  qualificationStatus         String?
+  startDate                   DateTime
+  endDate                     DateTime
+  impactStartDate             DateTime
+  impactEndDate               DateTime
+  financeLocked               Boolean                  @default(false)
+  cancellationReason          String?
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  supplier                    Supplier                 @relation("BaselineSupplier", fields: [supplierId], references: [id])
+  material                    Material                 @relation("BaselineMaterial", fields: [materialId], references: [id])
+  alternativeSupplier         Supplier?                @relation("AlternativeScenarioSupplier", fields: [alternativeSupplierId], references: [id])
+  alternativeMaterial         Material?                @relation("AlternativeScenarioMaterial", fields: [alternativeMaterialId], references: [id])
+  category                    Category                 @relation(fields: [categoryId], references: [id])
+  plant                       Plant                    @relation(fields: [plantId], references: [id])
+  businessUnit                BusinessUnit             @relation(fields: [businessUnitId], references: [id])
+  buyer                       User                     @relation("BuyerCards", fields: [buyerId], references: [id])
+  stakeholders                SavingCardStakeholder[]
+  evidence                    SavingCardEvidence[]
+  alternativeSuppliers SavingCardAlternativeSupplier[]
+  alternativeMaterials SavingCardAlternativeMaterial[]
+  comments                    SavingCardComment[]
+  approvals                   Approval[]
+  phaseChangeRequests         PhaseChangeRequest[]
+  phaseHistory                PhaseHistory[]
+  auditLogs                   AuditLog[]
+}
+
+model SavingCardStakeholder {
+  id           String     @id @default(cuid())
+  savingCardId String
+  userId       String
+  createdAt    DateTime   @default(now())
+  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@unique([savingCardId, userId])
+}
+
+model SavingCardEvidence {
+  id           String     @id @default(cuid())
+  savingCardId String
+  fileName     String
+  fileUrl      String
+  fileSize     Int
+  fileType     String
+  uploadedById String?
+  uploadedAt   DateTime   @default(now())
+  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+}
+
+model SavingCardAlternativeSupplier {
+  id                 String     @id @default(cuid())
+  savingCardId       String
+  supplierId         String?
+  supplierNameManual String?
+  country            String
+  quotedPrice        Float
+  currency           Currency
+  leadTimeDays       Int
+  moq                Int
+  paymentTerms       String
+  qualityRating      String
+  riskLevel          String
+  notes              String?
+  isSelected         Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  savingCard         SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  supplier           Supplier?  @relation(fields: [supplierId], references: [id])
+}
+
+model SavingCardAlternativeMaterial {
+  id                  String     @id @default(cuid())
+  savingCardId        String
+  materialId          String?
+  materialNameManual  String?
+  supplierId          String?
+  supplierNameManual  String?
+  specification       String
+  quotedPrice         Float
+  currency            Currency
+  performanceImpact   String
+  qualificationStatus String
+  riskLevel           String
+  notes               String?
+  isSelected          Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  savingCard          SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material            Material?  @relation(fields: [materialId], references: [id])
+  supplier            Supplier?  @relation(fields: [supplierId], references: [id])
+}
+
+model SavingCardComment {
+  id           String     @id @default(cuid())
+  savingCardId String
+  authorId     String
+  body         String
+  createdAt    DateTime   @default(now())
+  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  author       User       @relation(fields: [authorId], references: [id])
+}
+
+model Approval {
+  id           String     @id @default(cuid())
+  savingCardId String
+  approverId   String
+  phase        Phase
+  approved     Boolean
+  status       ApprovalStatus @default(APPROVED)
+  comment      String?
+  createdAt    DateTime   @default(now())
+  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  approver     User       @relation(fields: [approverId], references: [id])
+}
+
+model PhaseChangeRequest {
+  id                 String                     @id @default(cuid())
+  savingCardId       String
+  currentPhase       Phase
+  requestedPhase     Phase
+  requestedById      String
+  approvalStatus     ApprovalStatus            @default(PENDING)
+  comment            String?
+  cancellationReason String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  savingCard         SavingCard                @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  requestedBy        User                      @relation("RequestedPhaseChanges", fields: [requestedById], references: [id])
+  approvals          PhaseChangeRequestApproval[]
+}
+
+model PhaseChangeRequestApproval {
+  id                   String            @id @default(cuid())
+  phaseChangeRequestId String
+  approverId           String
+  role                 Role
+  status               ApprovalStatus    @default(PENDING)
+  comment              String?
+  decidedAt            DateTime?
+  createdAt            DateTime          @default(now())
+  phaseChangeRequest   PhaseChangeRequest @relation(fields: [phaseChangeRequestId], references: [id], onDelete: Cascade)
+  approver             User              @relation(fields: [approverId], references: [id])
+
+  @@unique([phaseChangeRequestId, approverId])
+}
+
+model PhaseHistory {
+  id           String     @id @default(cuid())
+  savingCardId String
+  fromPhase    Phase?
+  toPhase      Phase
+  changedById  String?
+  createdAt    DateTime   @default(now())
+  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  title      String
+  message    String
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String     @id @default(cuid())
+  userId       String?
+  savingCardId String?
+  action       String
+  detail       String
+  createdAt    DateTime   @default(now())
+  user         User?      @relation(fields: [userId], references: [id])
+  savingCard   SavingCard? @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+}
+
+model FxRate {
+  id         String    @id @default(cuid())
+  currency   Currency
+  rateToEUR  Float
+  validFrom  DateTime
+  createdAt  DateTime  @default(now())
+}
+
+model AnnualTarget {
+  id          String    @id @default(cuid())
+  year        Int
+  targetValue Float
+  categoryId  String?
+  createdAt   DateTime  @default(now())
+  category    Category? @relation(fields: [categoryId], references: [id])
+}
