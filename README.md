@@ -107,3 +107,4 @@ Traxium is a procurement savings tracker MVP built with Next.js, TypeScript, Tai
 - The MVP runs locally with SQLite for frictionless startup in this workspace. The Prisma schema can be switched to PostgreSQL by changing the datasource provider and `DATABASE_URL`.
 - Excel import expects column headers such as `Title`, `Supplier`, `Material`, `Category`, `Plant`, `BusinessUnit`, `Buyer`, `BaselinePrice`, `NewPrice`, `AnnualVolume`, `Currency`, `FxRate`, `Frequency`, `StartDate`, and `EndDate`.
 # Traxium
+# Traxium
