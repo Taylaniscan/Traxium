@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-export async function getCurrentUser() {
+export type SessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+export async function getCurrentUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const email = cookieStore.get("traxium-user")?.value;
 
@@ -14,4 +22,14 @@ export async function getCurrentUser() {
     email,
     role: "HEAD_OF_GLOBAL_PROCUREMENT",
   };
+}
+
+export async function requireUser(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  return user;
 }
