@@ -6,7 +6,7 @@ import { getDashboardData } from "@/lib/data";
 
 export default async function DashboardPage() {
 
-  let data: any;
+  let data;
 
   try {
     data = await getDashboardData();
@@ -15,11 +15,11 @@ export default async function DashboardPage() {
 
     data = {
       cards: [],
+      monthlyTrend: [],
       savingsByCategory: [],
       savingsByBuyer: [],
-      savingsVsTarget: [],
-      monthlyTrend: []
-    };
+      savingsVsTarget: []
+    } as any;
   }
 
   return (
