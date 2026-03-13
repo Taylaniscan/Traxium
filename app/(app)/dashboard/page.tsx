@@ -1,9 +1,18 @@
+export const dynamic = "force-dynamic";
+
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { getDashboardData } from "@/lib/data";
 
 export default async function DashboardPage() {
-  const data = await getDashboardData();
+
+  let data = null;
+
+  try {
+    data = await getDashboardData();
+  } catch (error) {
+    console.log("Dashboard data could not be loaded:", error);
+  }
 
   return (
     <div className="space-y-6">
