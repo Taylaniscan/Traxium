@@ -6,12 +6,23 @@ import { getDashboardData } from "@/lib/data";
 
 export default async function DashboardPage() {
 
-  let data = null;
+  let data;
 
   try {
     data = await getDashboardData();
   } catch (error) {
     console.log("Dashboard data could not be loaded:", error);
+
+    data = {
+      cards: [],
+      totalSavings: 0,
+      realisedSavings: 0,
+      pipelineSavings: 0,
+      monthlyTrend: [],
+      savingsByCategory: [],
+      savingsByBuyer: [],
+      savingsVsTarget: []
+    };
   }
 
   return (
