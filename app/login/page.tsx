@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { prisma } from "@/lib/prisma";
+
+const DEMO_USERS = [
+  { id: "1", name: "Taylan Iscan", email: "taylan@traxium.ai", role: "Head of Procurement" },
+  { id: "2", name: "Alice Buyer", email: "alice@traxium.ai", role: "Buyer" },
+  { id: "3", name: "Frank Finance", email: "frank@traxium.ai", role: "Finance Controller" },
+];
 
 async function login(formData: FormData) {
   "use server";
@@ -18,14 +23,14 @@ async function login(formData: FormData) {
 }
 
 export default async function LoginPage() {
-  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
+  const users = DEMO_USERS;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Login</CardTitle>
-          <CardDescription>Select a seeded demo user to access the savings tracker.</CardDescription>
+          <CardDescription>Select a demo user to access the savings tracker.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={login} className="space-y-4">
