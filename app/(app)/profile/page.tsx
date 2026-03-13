@@ -16,7 +16,7 @@ export default async function ProfilePage() {
         </CardHeader>
         <CardContent className="grid gap-4 text-sm md:grid-cols-2">
           <ProfileField label="Name" value={user.name} />
-          <ProfileField label="Role" value={roleLabels[user.role]} />
+          <ProfileField label="Role" value={roleLabels[user.role as keyof typeof roleLabels]} />
           <ProfileField label="Email" value={user.email} />
           <ProfileField label="User ID" value={user.id} />
         </CardContent>
