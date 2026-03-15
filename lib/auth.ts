@@ -1,36 +1,63 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 
+import { prisma } from "@/lib/prisma";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
 export type SessionUser = {
-id: string;
-name: string;
-email: string;
-role: Role;
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
 };
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
-const cookieStore = await cookies();
-const email = cookieStore.get("traxium-user")?.value;
+  const supabase = await createSupabaseServerClient();
 
-if (!email) {
-return null;
-}
+  const {
+    data: { user: authUser },
+    error,
+  } = await supabase.auth.getUser();
 
-return {
-id: "demo-user",
-name: "Taylan Iscan",
-email,
-role: "HEAD_OF_GLOBAL_PROCUREMENT" as Role,
-};
+  if (error || !authUser?.email) {
+    return null;
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: {
+      email: authUser.email,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+    },
+  });
+
+  if (!dbUser) {
+    return null;
+  }
+
+  return dbUser;
 }
 
 export async function requireUser(): Promise<SessionUser> {
-const user = await getCurrentUser();
+  const user = await getCurrentUser();
 
-if (!user) {
-redirect("/login");
+  if (!user) {
+    redirect("/login");
+  }
+
+  return user;
 }
 
-return user;
+export async function requireRole(roles: Role[]): Promise<SessionUser> {
+  const user = await requireUser();
+
+  if (!roles.includes(user.role)) {
+    throw new Error("Forbidden");
+  }
+
+  return user;
 }
