@@ -4,18 +4,48 @@ import { NextResponse, type NextRequest } from "next/server";
 type CookieToSet = {
   name: string;
   value: string;
-  options?: Parameters<NextResponse["cookies"]["set"]>[2];
+  options?: {
+    domain?: string;
+    expires?: Date;
+    httpOnly?: boolean;
+    maxAge?: number;
+    path?: string;
+    sameSite?: "lax" | "strict" | "none" | boolean;
+    secure?: boolean;
+  };
 };
+
+function getSupabaseEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+
+  if (!url || !anonKey) {
+    return null;
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    return null;
+  }
+
+  return { url, anonKey };
+}
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request,
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  const env = getSupabaseEnv();
+
+  // Dev’de env bozuksa tüm app’i düşürmek yerine middleware’i pas geç
+  if (!env) {
+    return response;
+  }
+
+  try {
+    const supabase = createServerClient(env.url, env.anonKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -34,12 +64,14 @@ export async function middleware(request: NextRequest) {
           });
         },
       },
-    }
-  );
+    });
 
-  await supabase.auth.getUser();
-
-  return response;
+    await supabase.auth.getUser();
+    return response;
+  } catch (error) {
+    console.error("Supabase middleware init failed:", error);
+    return response;
+  }
 }
 
 export const config = {
