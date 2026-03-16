@@ -3,8 +3,18 @@ import { requireUser } from "@/lib/auth";
 import { createSavingCard, getSavingCards } from "@/lib/data";
 
 export async function GET() {
-  const cards = await getSavingCards();
-  return NextResponse.json(cards);
+  try {
+    await requireUser();
+    const cards = await getSavingCards();
+    return NextResponse.json(cards);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Unauthorized.",
+      },
+      { status: 401 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -14,6 +24,11 @@ export async function POST(request: Request) {
     const card = await createSavingCard(payload, user.id);
     return NextResponse.json(card, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Creation failed." }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Creation failed.",
+      },
+      { status: 400 }
+    );
   }
 }
