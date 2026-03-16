@@ -1,21 +1,19 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-async function clearSession() {
-  const cookieStore = await cookies();
-  cookieStore.delete("traxium-user");
-}
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
-  await clearSession();
+async function logoutAndRedirect(request: Request) {
+  const supabase = await createSupabaseServerClient();
+  await supabase.auth.signOut();
 
   const url = new URL("/login", request.url);
   return NextResponse.redirect(url);
 }
 
 export async function GET(request: Request) {
-  await clearSession();
+  return logoutAndRedirect(request);
+}
 
-  const url = new URL("/login", request.url);
-  return NextResponse.redirect(url);
+export async function POST(request: Request) {
+  return logoutAndRedirect(request);
 }
