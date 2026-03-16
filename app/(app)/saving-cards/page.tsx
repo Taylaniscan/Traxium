@@ -1,11 +1,21 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { SavingCardTable } from "@/components/saving-cards/saving-card-table";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { getSavingCards } from "@/lib/data";
 
+type SavingCards = Awaited<ReturnType<typeof getSavingCards>>;
+
 export default async function SavingCardsPage() {
-  const cards = await getSavingCards();
+  let cards: SavingCards = [];
+
+  try {
+    cards = await getSavingCards();
+  } catch (error) {
+    console.log("Saving cards could not be loaded:", error);
+  }
 
   return (
     <div className="space-y-6">

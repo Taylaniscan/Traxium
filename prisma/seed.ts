@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { ApprovalStatus, Currency, Frequency, Phase, PrismaClient, Role } from "@prisma/client";
 import { calculateSavings } from "../lib/calculations";
 
@@ -7,19 +8,19 @@ const usersSeed = [
   {
     key: "sophie",
     name: "Sophie Laurent",
-    email: "sophie@traxium.local",
+    email: process.env.SEED_HEAD_OF_PROCUREMENT_EMAIL || "sophie@traxium.local",
     role: Role.HEAD_OF_GLOBAL_PROCUREMENT
   },
   {
     key: "marco",
     name: "Marco Stein",
-    email: "marco@traxium.local",
+    email: process.env.SEED_FINANCIAL_CONTROLLER_EMAIL || "marco@traxium.local",
     role: Role.FINANCIAL_CONTROLLER
   },
   {
     key: "luca",
     name: "Luca Voss",
-    email: "luca@traxium.local",
+    email: process.env.SEED_TACTICAL_BUYER_EMAIL || "luca@traxium.local",
     role: Role.TACTICAL_BUYER
   }
 ] as const;
