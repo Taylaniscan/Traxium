@@ -9,23 +9,24 @@
 - [x] npm run build
 
 ## Local smoke test
-- [ ] Login page opens
-- [ ] Login succeeds
-- [ ] Dashboard opens
-- [ ] Saving cards list loads
-- [ ] Saving card detail opens
+- [x] Login page opens
+- [x] Login succeeds
+- [x] Dashboard opens
+- [x] Saving cards list loads
+- [x] Saving card detail opens
 - [ ] Saving card create works
 - [ ] Evidence upload works
 - [ ] Export works
 - [ ] Admin/reference data opens
 
 ## Known issues
-- 
-- 
+- Supabase env mismatch caused login/runtime failures; fixed locally
+- Prisma DB connection required direct connection correction
 
 ## Env source of truth
 - .env.local = local real values
 - Vercel = preview/prod values
 
 ## Notes
-- Login prerender issue fixed by moving Supabase browser client creation into submit handler.
+- Login prerender issue fixed by deferring Supabase browser client creation
+- Local auth, logout, dashboard, kanban, and saving cards are working

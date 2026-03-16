@@ -329,24 +329,46 @@ export function SavingCardDetailWorkspace({
       ) : null}
 
       {activeTab === "evidence" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Evidence</CardTitle>
-            <CardDescription>Files supporting sourcing negotiations and finance validation.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {card.evidence.map((item) => (
-              <div key={item.id} className="rounded-2xl bg-[var(--muted)] p-4">
-                <p className="font-semibold">{item.fileName}</p>
-                <p className="text-xs text-[var(--muted-foreground)]">{item.fileType}</p>
-                <a href={item.fileUrl} className="text-sm text-[var(--primary)] underline">
-                  Open file
-                </a>
+  <Card className="rounded-3xl border border-[var(--border)] shadow-sm">
+    <CardHeader>
+      <CardTitle>Evidence</CardTitle>
+      <CardDescription>
+        Files supporting sourcing negotiations and finance validation.
+      </CardDescription>
+    </CardHeader>
+
+    <CardContent className="space-y-3">
+      {card.evidence.length ? (
+        card.evidence.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3"
+          >
+            <div>
+              <div className="text-sm font-medium">{item.fileName}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">
+                {item.fileType}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
+            </div>
+
+            <a
+              href={`/api/evidence/${item.id}/download`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+            >
+              Open file
+            </a>
+          </div>
+        ))
+      ) : (
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/60 px-4 py-6 text-sm text-[var(--muted-foreground)]">
+          No evidence uploaded yet.
+        </div>
+      )}
+    </CardContent>
+  </Card>
+) : null}
 
       {activeTab === "alternative-suppliers" ? (
         <div className="space-y-6">

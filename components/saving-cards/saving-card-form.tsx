@@ -71,16 +71,16 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
     card?.stakeholders.map((item) => item.userId) ?? []
   );
   const [evidence, setEvidence] = useState<UploadedEvidenceFile[]>(
-    card?.evidence.map((item) => ({
-      id: item.id,
-      fileName: item.fileName,
-      fileUrl: item.fileUrl,
-      fileSize: item.fileSize,
-      fileType: item.fileType,
-      status: "uploaded",
-      progress: 100
-    })) ?? []
-  );
+  card?.evidence.map((item) => ({
+    id: item.id,
+    fileName: item.fileName,
+    downloadUrl: `/api/evidence/${item.id}/download`,
+    fileSize: item.fileSize,
+    fileType: item.fileType,
+    status: "uploaded",
+    progress: 100,
+  })) ?? []
+);
   const [alternativeSourcingEnabled, setAlternativeSourcingEnabled] = useState(
     Boolean(card?.alternativeSupplierId || card?.alternativeSupplierManualName || card?.alternativeMaterialId || card?.alternativeMaterialManualName)
   );
@@ -162,14 +162,13 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
       cancellationReason: form.cancellationReason,
       stakeholderIds: selectedStakeholders,
       evidence: evidence
-        .filter((item) => item.status !== "error" && item.fileUrl)
-        .map((item) => ({
-          id: item.id,
-          fileName: item.fileName,
-          fileUrl: item.fileUrl,
-          fileSize: item.fileSize,
-          fileType: item.fileType
-        }))
+  .filter((item) => item.status !== "error" && item.id)
+  .map((item) => ({
+    id: item.id,
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+    fileType: item.fileType,
+  }))
     };
 
     const endpoint = mode === "create" ? "/api/saving-cards" : `/api/saving-cards/${card?.id}`;
@@ -520,19 +519,30 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
               </CardContent>
             </Card>
 
-            <EvidenceUploader files={evidence} onChange={setEvidence} onError={setUploadError} />
+            {card?.id ? (
+  <EvidenceUploader
+    savingCardId={card.id}
+    files={evidence}
+    onChange={setEvidence}
+    onError={setUploadError}
+  />
+) : (
+  <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 px-4 py-4 text-sm text-[var(--muted-foreground)]">
+    Save the card first, then upload supporting evidence.
+  </div>
+)}
 
-            {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+{uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
+{error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="ghost" onClick={() => router.back()}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Saving..." : mode === "create" ? "Create Card" : "Update Card"}
-              </Button>
-            </div>
+<div className="flex justify-end gap-3">
+  <Button type="button" variant="ghost" onClick={() => router.back()}>
+    Cancel
+  </Button>
+  <Button type="submit" disabled={loading}>
+    {loading ? "Saving..." : mode === "create" ? "Create Card" : "Update Card"}
+  </Button>
+</div>
           </CardContent>
         </Card>
       </div>
@@ -551,7 +561,10 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
             <InfoRow label="Implementation Complexity" value={form.implementationComplexity || "Not set"} />
             <InfoRow label="Qualification Status" value={form.qualificationStatus || "Not set"} />
             <InfoRow label="Stakeholders" value={selectedStakeholders.length ? String(selectedStakeholders.length) : "None"} />
-            <InfoRow label="Evidence Files" value={String(evidence.filter((item) => item.fileUrl).length)} />
+            <InfoRow
+  label="Evidence Files"
+  value={String(evidence.filter((item) => item.status !== "error" && item.id).length)}
+/>
             {alternativeSourcingEnabled ? (
               <>
                 <InfoRow label="Alternative Supplier" value={form.alternativeSupplier.name || "Not specified"} />

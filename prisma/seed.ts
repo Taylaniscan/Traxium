@@ -470,12 +470,13 @@ async function main() {
         },
         evidence: {
           create: {
-            fileName: card.evidenceFileName,
-            fileUrl: `/demo/${card.evidenceFileName}`,
-            fileSize: 245760,
-            fileType: card.evidenceType,
-            uploadedById: users.luca.id
-          }
+  fileName: card.evidenceFileName,
+  storageBucket: "evidence-private",
+  storagePath: `demo/${card.evidenceFileName}`,
+  fileSize: 245760,
+  fileType: card.evidenceType,
+  uploadedById: users.luca.id
+}
         },
         comments: {
           create: {

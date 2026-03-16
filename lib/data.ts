@@ -180,15 +180,6 @@ export async function createSavingCard(
         stakeholders: {
           create: payload.stakeholderIds.map((userId) => ({ userId }))
         },
-        evidence: {
-          create: payload.evidence.map((item) => ({
-            fileName: item.fileName,
-            fileUrl: item.fileUrl,
-            fileSize: item.fileSize,
-            fileType: item.fileType,
-            uploadedById: actorId
-          }))
-        },
         phaseHistory: {
           create: {
             fromPhase: null,
@@ -262,18 +253,6 @@ export async function updateSavingCard(
     await tx.savingCardStakeholder.deleteMany({ where: { savingCardId: id } });
     await tx.savingCardStakeholder.createMany({
       data: payload.stakeholderIds.map((userId) => ({ savingCardId: id, userId }))
-    });
-
-    await tx.savingCardEvidence.deleteMany({ where: { savingCardId: id } });
-    await tx.savingCardEvidence.createMany({
-      data: payload.evidence.map((item) => ({
-        savingCardId: id,
-        fileName: item.fileName,
-        fileUrl: item.fileUrl,
-        fileSize: item.fileSize,
-        fileType: item.fileType,
-        uploadedById: actorId
-      }))
     });
 
     if (existing.phase !== payload.phase) {
