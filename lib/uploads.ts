@@ -59,15 +59,16 @@ export async function storeEvidenceFile(
   const bytes = Buffer.from(await file.arrayBuffer());
   const supabase = getSupabaseAdminClient();
 
+  // TEMP DEBUG
   const { error } = await supabase.storage.from(bucketName).upload(storagePath, bytes, {
-    contentType: file.type || undefined,
-    upsert: false,
-    cacheControl: "3600",
-  });
+  contentType: file.type || undefined,
+  upsert: false,
+  cacheControl: "3600",
+});
 
-  if (error) {
-    throw new Error(`Upload failed: ${error.message}`);
-  }
+if (error) {
+  throw new Error(`Upload failed: ${error.message}`);
+}
 
   return {
     fileName: file.name,
