@@ -72,23 +72,32 @@ export async function POST(request: Request) {
       const stored = await storeEvidenceFile(file, savingCard.id, user.id);
 
       const evidence = await prisma.savingCardEvidence.create({
-        data: {
-          savingCardId: savingCard.id,
-          fileName: stored.fileName,
-          storageBucket: stored.storageBucket,
-          storagePath: stored.storagePath,
-          fileSize: stored.fileSize,
-          fileType: stored.fileType,
-          uploadedById: user.id,
-        },
-        select: {
-          id: true,
-          fileName: true,
-          fileSize: true,
-          fileType: true,
-          uploadedAt: true,
-        },
-      });
+  data: {
+    savingCardId: savingCard.id,
+    fileName: stored.fileName,
+    storageBucket: stored.storageBucket,
+    storagePath: stored.storagePath,
+    fileSize: stored.fileSize,
+    fileType: stored.fileType,
+    uploadedById: user.id,
+  },
+  select: {
+    id: true,
+    fileName: true,
+    fileSize: true,
+    fileType: true,
+    uploadedAt: true,
+  },
+});
+
+await prisma.auditLog.create({
+  data: {
+    userId: user.id,
+    savingCardId: savingCard.id,
+    action: "evidence.uploaded",
+    detail: `Evidence uploaded: ${stored.fileName}`,
+  },
+});
 
       uploaded.push({
         ...evidence,
