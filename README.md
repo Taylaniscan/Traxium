@@ -1,66 +1,121 @@
 # Traxium
 
-**Traxium** is a procurement savings governance platform that helps procurement and finance teams manage savings initiatives from idea to realized value.
+Traxium is a procurement savings governance platform for procurement and finance teams. It centralizes initiatives, approvals, supporting evidence, and portfolio reporting in one auditable workflow.
 
-It replaces spreadsheet-based tracking with a structured system for initiative capture, workflow governance, approvals, reporting, and portfolio visibility.
+## Why Traxium exists
 
-## Why Traxium
-
-Procurement teams often track savings in spreadsheets, emails, and presentations. That creates problems:
+Most companies still track procurement savings in spreadsheets, email threads, and presentation decks. That creates the same problems again and again:
 
 - no single source of truth
-- weak approval governance
-- limited finance visibility
-- inconsistent reporting
-- poor auditability
-- slow portfolio decision-making
+- weak approval discipline
+- finance does not fully trust the numbers
+- supporting evidence is scattered
+- reporting takes too much manual work
+- portfolio visibility is poor
 
 Traxium is built to solve that.
 
-## Core capabilities
+## What Traxium does
 
-- Savings initiative tracking
-- Approval workflow management
-- Finance lock and validation process
-- Command center and reporting views
-- Kanban and timeline visibility
-- Alternative supplier and material tracking
-- Evidence upload support
-- Import and export workflows
-- Role-based access foundations
-- Dashboard and portfolio analytics
+Traxium helps teams:
 
-## Product positioning
+- create and manage savings cards
+- assign buyers and stakeholders
+- track sourcing initiatives through lifecycle phases
+- compare alternative suppliers and materials
+- upload and access supporting evidence
+- manage approvals and phase changes
+- monitor open actions
+- review portfolio performance in dashboards, kanban, and reports
+- keep a more structured record of savings decisions
+
+## Ideal users
 
 Traxium is designed for:
 
-- Procurement leaders
-- Category managers
-- Buyers
-- Finance stakeholders
-- Business operations teams
-- Mid-market and enterprise organizations that want better savings governance
+- procurement leaders
+- category managers
+- tactical buyers
+- financial controllers
+- business operations teams
+- industrial and manufacturing organizations with recurring savings targets
+
+## Current product scope
+
+Current modules in the application include:
+
+- Dashboard
+- Saving Cards
+- Kanban
+- Timeline
+- Command Center
+- Open Actions
+- Reports
+- Admin / reference data
+- Evidence upload and secure download
+- Approval and phase workflow support
+
+## Product status
+
+Traxium is currently in the stage of evolving from a strong internal MVP into a hardened multi-tenant B2B SaaS product.
+
+Current engineering priorities:
+
+- authentication consistency
+- private file storage
+- API hardening
+- tenant isolation
+- role-based access control
+- SaaS-ready onboarding and admin controls
 
 ## Tech stack
 
-- **Frontend:** Next.js 15, React 19, TypeScript
-- **Styling:** Tailwind CSS
-- **Backend:** Next.js App Router + Route Handlers
-- **Database:** PostgreSQL
-- **ORM:** Prisma
-- **Auth / Platform services:** Supabase
-- **Charts / Visualization:** Recharts
-- **Drag and drop:** dnd-kit
-- **Validation:** Zod
-- **Deployment:** Vercel
+- Next.js 15
+- React 19
+- TypeScript
+- Prisma
+- PostgreSQL
+- Supabase
+- Tailwind CSS
+- Zod
+- Vercel
 
-## Project structure
+## Architecture overview
 
-```text
-app/                  # App Router pages and API routes
-components/           # UI and feature components
-lib/                  # shared server/client logic
-lib/supabase/         # Supabase helpers
-prisma/               # Prisma schema and seed logic
-public/               # static assets
-middleware.ts         # session middleware
+Traxium currently uses:
+
+- **Next.js App Router** for the product UI and server routes
+- **Prisma** for application data modeling and database access
+- **Supabase Auth** for authentication
+- **Supabase Storage** for evidence files
+- **Vercel** for deployment
+
+### Current architecture direction
+
+The product is being hardened toward:
+
+- secure file handling with private buckets and signed download flows
+- cleaner API authorization
+- stronger operational reliability
+- workspace-based multi-tenancy
+- role-based access control for real customer environments
+
+## Evidence storage model
+
+Traxium uses a private evidence storage flow.
+
+Current approach:
+
+- evidence files are uploaded through application routes
+- files are stored in a private Supabase Storage bucket
+- the database stores storage metadata, not public file URLs
+- downloads are served through secure signed-link routes
+
+This improves privacy and makes the product more suitable for real customer use.
+
+## Local development
+
+### 1. Install dependencies
+
+```bash
+npm install

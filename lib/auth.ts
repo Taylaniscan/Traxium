@@ -23,20 +23,30 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: {
-      email: authUser.email,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-    },
+  // Try to find an existing Prisma user by email
+  let dbUser = await prisma.user.findUnique({
+    where: { email: authUser.email },
+    select: { id: true, name: true, email: true, role: true },
   });
 
+  // If no Prisma user exists yet, auto-provision one.
+  // This handles real signups via Supabase Auth.
   if (!dbUser) {
-    return null;
+    // Derive a display name from user metadata or fall back to the email prefix
+    const fullName =
+      (authUser.user_metadata?.full_name as string | undefined) ||
+      (authUser.user_metadata?.name as string | undefined) ||
+      authUser.email.split("@")[0];
+
+    dbUser = await prisma.user.create({
+      data: {
+        email: authUser.email,
+        name: fullName,
+        // New users start as PROCUREMENT_ANALYST — adjust default role as needed
+        role: Role.PROCUREMENT_ANALYST,
+      },
+      select: { id: true, name: true, email: true, role: true },
+    });
   }
 
   return dbUser;
