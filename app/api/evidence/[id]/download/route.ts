@@ -1,5 +1,6 @@
 import { Role } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { ZodError, z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -16,6 +17,26 @@ const GLOBAL_ACCESS_ROLES = new Set<Role>([
 
 function hasGlobalAccess(role: Role) {
   return GLOBAL_ACCESS_ROLES.has(role);
+}
+
+const evidenceParamsSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1, "Evidence id is required.")
+    .refine((value) => !value.includes("/"), "Evidence id is invalid."),
+});
+
+const NOT_FOUND_ERROR = "Evidence not found or access denied.";
+
+function errorResponse(error: string, status: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      error,
+    },
+    { status }
+  );
 }
 
 function buildEvidenceAccessWhere(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, evidenceId: string) {
@@ -39,17 +60,14 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return errorResponse("Unauthorized.", 401);
+  }
+
   try {
-    const user = await getCurrentUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized." },
-        { status: 401 },
-      );
-    }
-
-    const { id } = await params;
+    const { id } = evidenceParamsSchema.parse(await params);
 
     const evidence = await prisma.savingCardEvidence.findFirst({
       where: buildEvidenceAccessWhere(user, id),
@@ -64,10 +82,7 @@ export async function GET(
     });
 
     if (!evidence) {
-      return NextResponse.json(
-        { success: false, error: "Evidence not found or access denied." },
-        { status: 404 },
-      );
+      return errorResponse(NOT_FOUND_ERROR, 404);
     }
 
     if (!isManagedEvidenceStorageLocation({
@@ -78,10 +93,7 @@ export async function GET(
       uploadedById: evidence.uploadedById,
       fileName: evidence.fileName,
     })) {
-      return NextResponse.json(
-        { success: false, error: "Evidence not found or access denied." },
-        { status: 404 },
-      );
+      return errorResponse(NOT_FOUND_ERROR, 404);
     }
 
     const signedUrl = await createEvidenceSignedUrl(
@@ -101,22 +113,19 @@ export async function GET(
 
     return NextResponse.redirect(signedUrl);
   } catch (error) {
-    if (error instanceof EvidenceStorageNotFoundError) {
-      return NextResponse.json(
-        { success: false, error: "Evidence not found or access denied." },
-        { status: 404 },
-      );
+    if (error instanceof ZodError) {
+      return errorResponse(error.issues[0]?.message ?? "Evidence id is invalid.", 422);
     }
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Could not create download link.",
-      },
-      { status: 500 },
+    if (error instanceof EvidenceStorageNotFoundError) {
+      return errorResponse(NOT_FOUND_ERROR, 404);
+    }
+
+    return errorResponse(
+      error instanceof Error
+        ? error.message
+        : "Could not create download link.",
+      500
     );
   }
 }

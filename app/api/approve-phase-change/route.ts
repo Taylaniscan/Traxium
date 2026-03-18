@@ -1,51 +1,78 @@
 import { NextResponse } from "next/server";
+import { ZodError, z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { approvePhaseChangeRequest, WorkflowError } from "@/lib/data";
 
-export async function POST(request: Request) {
-  try {
-    const user = await getCurrentUser();
+const approvePhaseChangeSchema = z.object({
+  requestId: z.string().trim().min(1, "Request id is required."),
+  approved: z.boolean(),
+  comment: z.string().optional(),
+});
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized." },
-        { status: 401 }
-      );
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+async function readJsonBody(request: Request) {
+  try {
+    return { ok: true as const, data: await request.json() };
+  } catch {
+    return {
+      ok: false as const,
+      response: jsonError("Request body must be valid JSON.", 400),
+    };
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return jsonError("Unauthorized.", 401);
+  }
+
+  try {
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return body.response;
     }
 
-    const payload = (await request.json()) as {
-      requestId?: string;
-      approved?: boolean;
-      comment?: string;
-    };
+    if (!isPlainObject(body.data)) {
+      return jsonError("Request body must be a JSON object.", 400);
+    }
 
-    if (!payload.requestId || typeof payload.approved !== "boolean") {
-      return NextResponse.json(
-        { error: "Request id and decision are required." },
-        { status: 400 }
-      );
+    const payload = approvePhaseChangeSchema.safeParse(body.data);
+
+    if (!payload.success) {
+      return jsonError(payload.error.issues[0]?.message ?? "Phase approval payload is invalid.", 422);
     }
 
     const result = await approvePhaseChangeRequest(
-      payload.requestId,
+      payload.data.requestId,
       user.id,
       user.organizationId,
-      payload.approved,
-      payload.comment
+      payload.data.approved,
+      payload.data.comment
     );
 
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof WorkflowError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status }
-      );
+      return jsonError(error.message, error.status);
     }
 
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Phase approval failed." },
-      { status: 400 }
+    if (error instanceof ZodError) {
+      return jsonError(error.issues[0]?.message ?? "Phase approval payload is invalid.", 422);
+    }
+
+    return jsonError(
+      error instanceof Error ? error.message : "Phase approval failed.",
+      500
     );
   }
 }

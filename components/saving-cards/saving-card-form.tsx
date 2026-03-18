@@ -26,10 +26,12 @@ import { formatCurrency } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
 type ReferenceData = Awaited<ReturnType<typeof import("@/lib/data").getReferenceData>>;
+type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 type Props = {
   mode: "create" | "edit";
   referenceData: ReferenceData;
+  workspaceReadiness?: WorkspaceReadiness | null;
   card?: SavingCardWithRelations | null;
 };
 
@@ -62,7 +64,7 @@ type FormState = {
   cancellationReason: string;
 };
 
-export function SavingCardForm({ mode, referenceData, card }: Props) {
+export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,11 +129,83 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
       currency: form.currency
     });
   }, [form.annualVolume, form.baselinePrice, form.currency, form.fxRate, form.newPrice]);
+  const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
+  const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
+
+  const supplierHelper = buildMasterDataHelper({
+    count: referenceData.suppliers.length,
+    singular: "supplier",
+    plural: "suppliers",
+    emptyMessage: "Create the first supplier inline to keep the card moving.",
+  });
+  const materialHelper = buildMasterDataHelper({
+    count: referenceData.materials.length,
+    singular: "material",
+    plural: "materials",
+    emptyMessage: "Create the first material inline so the sourcing baseline is defined.",
+  });
+  const alternativeSupplierHelper = buildMasterDataHelper({
+    count: referenceData.suppliers.length,
+    singular: "supplier",
+    plural: "suppliers",
+    emptyMessage: "Optional. Create an alternative supplier inline if this initiative depends on one.",
+    availableMessage: "Optional. Recommended for supplier change initiatives.",
+  });
+  const alternativeMaterialHelper = buildMasterDataHelper({
+    count: referenceData.materials.length,
+    singular: "material",
+    plural: "materials",
+    emptyMessage: "Optional. Create an alternative material inline if this initiative depends on one.",
+    availableMessage: "Optional. Recommended for material substitution initiatives.",
+  });
+  const categoryHelper = buildMasterDataHelper({
+    count: referenceData.categories.length,
+    singular: "category",
+    plural: "categories",
+    emptyMessage: "Create the first category inline or finish shared setup in Settings.",
+  });
+  const plantHelper = buildMasterDataHelper({
+    count: referenceData.plants.length,
+    singular: "plant",
+    plural: "plants",
+    emptyMessage: "Create the first plant inline. New plants default to region Global.",
+    availableMessage: "New plants default to region Global.",
+  });
+  const businessUnitHelper = buildMasterDataHelper({
+    count: referenceData.businessUnits.length,
+    singular: "business unit",
+    plural: "business units",
+    emptyMessage: "Create the first business unit inline to complete ownership reporting.",
+  });
+  const buyerHelper = buildMasterDataHelper({
+    count: referenceData.buyers.length,
+    singular: "buyer",
+    plural: "buyers",
+    emptyMessage: "Create the first buyer inline so the card has accountable ownership.",
+    availableMessage: "Select the accountable buyer from buyer master data or create one inline.",
+  });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+
+    const missingRequiredMasterData = [
+      { label: "Current Supplier", value: form.supplier.name },
+      { label: "Current Material", value: form.material.name },
+      { label: "Category", value: form.category.name },
+      { label: "Plant", value: form.plant.name },
+      { label: "Business Unit", value: form.businessUnit.name },
+      { label: "Buyer", value: form.buyer.name },
+    ].find((field) => !field.value.trim());
+
+    if (missingRequiredMasterData) {
+      setError(
+        `${missingRequiredMasterData.label} is required. Select an existing record or create one inline before saving the card.`
+      );
+      setLoading(false);
+      return;
+    }
 
     const payload = {
       title: form.title,
@@ -239,6 +313,15 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
 
             <SectionBlock title="Ownership & Scope" description="Pick an existing master-data record or create one inline without leaving the form.">
               <div className="space-y-5">
+                {showSetupCallout ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                    <p className="font-semibold">Shared setup is still in progress</p>
+                    <p className="mt-1">
+                      Missing today: {missingCoreSetup.join(", ")}. This form stays usable, so choose existing records where available and create the missing ones inline from this section.
+                    </p>
+                  </div>
+                ) : null}
+
                 <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 px-4 py-4">
                   <div>
                     <p className="text-sm font-semibold">Alternative sourcing involved</p>
@@ -279,12 +362,14 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
                   items={referenceData.suppliers}
                   value={form.supplier}
                   onChange={(supplier) => setForm({ ...form, supplier })}
+                  helper={supplierHelper}
                 />
                 <CreatableMasterDataField
                   label="Current Material"
                   items={referenceData.materials}
                   value={form.material}
                   onChange={(material) => setForm({ ...form, material })}
+                  helper={materialHelper}
                 />
                 {alternativeSourcingEnabled ? (
                   <CreatableMasterDataField
@@ -292,7 +377,7 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
                     items={referenceData.suppliers}
                     value={form.alternativeSupplier}
                     onChange={(alternativeSupplier) => setForm({ ...form, alternativeSupplier })}
-                    helper="Optional. Recommended for supplier change initiatives."
+                    helper={alternativeSupplierHelper}
                   />
                 ) : null}
                 {alternativeSourcingEnabled ? (
@@ -301,7 +386,7 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
                     items={referenceData.materials}
                     value={form.alternativeMaterial}
                     onChange={(alternativeMaterial) => setForm({ ...form, alternativeMaterial })}
-                    helper="Optional. Recommended for material substitution initiatives."
+                    helper={alternativeMaterialHelper}
                   />
                 ) : null}
                 <CreatableMasterDataField
@@ -309,26 +394,28 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
                   items={referenceData.categories}
                   value={form.category}
                   onChange={(category) => setForm({ ...form, category })}
+                  helper={categoryHelper}
                 />
                 <CreatableMasterDataField
                   label="Plant"
                   items={referenceData.plants}
                   value={form.plant}
                   onChange={(plant) => setForm({ ...form, plant })}
-                  helper="New plants default to region Global"
+                  helper={plantHelper}
                 />
                 <CreatableMasterDataField
                   label="Business Unit"
                   items={referenceData.businessUnits}
                   value={form.businessUnit}
                   onChange={(businessUnit) => setForm({ ...form, businessUnit })}
+                  helper={businessUnitHelper}
                 />
                 <CreatableMasterDataField
                   label="Buyer"
                   items={referenceData.buyers}
                   value={form.buyer}
                   onChange={(buyer) => setForm({ ...form, buyer })}
-                  helper="Select the accountable buyer from buyer master data or create one inline."
+                  helper={buyerHelper}
                 />
                 </div>
                 {(form.savingType.toLowerCase().includes("supplier") || form.savingType.toLowerCase().includes("material")) && (
@@ -599,6 +686,32 @@ function toLookupPayload(value: CreatableValue) {
     id: value.mode === "existing" ? value.id : undefined,
     name: value.name
   };
+}
+
+function buildMasterDataHelper({
+  count,
+  singular,
+  plural,
+  emptyMessage,
+  availableMessage,
+}: {
+  count: number;
+  singular: string;
+  plural: string;
+  emptyMessage: string;
+  availableMessage?: string;
+}) {
+  if (count === 0) {
+    return `No ${plural} are configured yet. ${emptyMessage}`;
+  }
+
+  const availability = count === 1
+    ? `1 ${singular} is already available in this workspace.`
+    : `${count} ${plural} are already available in this workspace.`;
+
+  return availableMessage
+    ? `${availability} ${availableMessage}`
+    : `${availability} Select an existing record or create a new one inline.`;
 }
 
 function Field({

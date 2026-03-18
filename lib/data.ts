@@ -89,6 +89,120 @@ const savingCardDetailInclude = {
   },
 } satisfies Prisma.SavingCardInclude;
 
+const savingCardListSelect = {
+  id: true,
+  title: true,
+  savingType: true,
+  phase: true,
+  supplierId: true,
+  materialId: true,
+  categoryId: true,
+  businessUnitId: true,
+  buyerId: true,
+  alternativeSupplierManualName: true,
+  alternativeMaterialManualName: true,
+  baselinePrice: true,
+  newPrice: true,
+  annualVolume: true,
+  currency: true,
+  calculatedSavings: true,
+  calculatedSavingsUSD: true,
+  savingDriver: true,
+  implementationComplexity: true,
+  qualificationStatus: true,
+  startDate: true,
+  endDate: true,
+  impactStartDate: true,
+  impactEndDate: true,
+  financeLocked: true,
+  supplier: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  material: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  alternativeSupplier: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  alternativeMaterial: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  category: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  buyer: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  businessUnit: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  phaseChangeRequests: {
+    select: {
+      id: true,
+      approvalStatus: true,
+      requestedPhase: true,
+      requestedBy: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+} satisfies Prisma.SavingCardSelect;
+
+const dashboardCardSelect = {
+  title: true,
+  phase: true,
+  categoryId: true,
+  baselinePrice: true,
+  newPrice: true,
+  annualVolume: true,
+  calculatedSavings: true,
+  frequency: true,
+  savingDriver: true,
+  implementationComplexity: true,
+  qualificationStatus: true,
+  impactStartDate: true,
+  category: {
+    select: {
+      name: true,
+    },
+  },
+  buyer: {
+    select: {
+      name: true,
+    },
+  },
+  businessUnit: {
+    select: {
+      name: true,
+    },
+  },
+} satisfies Prisma.SavingCardSelect;
+
 function normalizeName(value?: string) {
   return value?.trim() || "";
 }
@@ -188,6 +302,138 @@ export async function getReferenceData(organizationId: string) {
   };
 }
 
+export async function getWorkspaceReadiness(organizationId: string) {
+  const [
+    userCount,
+    buyerCount,
+    supplierCount,
+    materialCount,
+    categoryCount,
+    plantCount,
+    businessUnitCount,
+    savingCardCount,
+    headOfGlobalProcurementCount,
+    globalCategoryLeaderCount,
+    financialControllerCount,
+  ] = await prisma.$transaction([
+    prisma.user.count({ where: { organizationId } }),
+    prisma.buyer.count({ where: { organizationId } }),
+    prisma.supplier.count({ where: { organizationId } }),
+    prisma.material.count({ where: { organizationId } }),
+    prisma.category.count({ where: { organizationId } }),
+    prisma.plant.count({ where: { organizationId } }),
+    prisma.businessUnit.count({ where: { organizationId } }),
+    prisma.savingCard.count({ where: { organizationId } }),
+    prisma.user.count({
+      where: {
+        organizationId,
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+      },
+    }),
+    prisma.user.count({
+      where: {
+        organizationId,
+        role: Role.GLOBAL_CATEGORY_LEADER,
+      },
+    }),
+    prisma.user.count({
+      where: {
+        organizationId,
+        role: Role.FINANCIAL_CONTROLLER,
+      },
+    }),
+  ]);
+
+  const masterData = [
+    {
+      key: "buyers",
+      label: "Buyers",
+      count: buyerCount,
+      ready: buyerCount > 0,
+      description: "Commercial ownership for saving cards.",
+    },
+    {
+      key: "suppliers",
+      label: "Suppliers",
+      count: supplierCount,
+      ready: supplierCount > 0,
+      description: "Baseline and alternative sourcing counterparties.",
+    },
+    {
+      key: "materials",
+      label: "Materials",
+      count: materialCount,
+      ready: materialCount > 0,
+      description: "Material or part master records for sourcing cases.",
+    },
+    {
+      key: "categories",
+      label: "Categories",
+      count: categoryCount,
+      ready: categoryCount > 0,
+      description: "Category ownership and savings target structure.",
+    },
+    {
+      key: "plants",
+      label: "Plants",
+      count: plantCount,
+      ready: plantCount > 0,
+      description: "Operational scope for plant-level initiatives.",
+    },
+    {
+      key: "businessUnits",
+      label: "Business Units",
+      count: businessUnitCount,
+      ready: businessUnitCount > 0,
+      description: "Reporting and accountability structure.",
+    },
+  ] as const;
+
+  const workflowCoverage = [
+    {
+      key: "HEAD_OF_GLOBAL_PROCUREMENT",
+      label: "Head of Global Procurement",
+      count: headOfGlobalProcurementCount,
+      ready: headOfGlobalProcurementCount > 0,
+    },
+    {
+      key: "GLOBAL_CATEGORY_LEADER",
+      label: "Global Category Leader",
+      count: globalCategoryLeaderCount,
+      ready: globalCategoryLeaderCount > 0,
+    },
+    {
+      key: "FINANCIAL_CONTROLLER",
+      label: "Financial Controller",
+      count: financialControllerCount,
+      ready: financialControllerCount > 0,
+    },
+  ] as const;
+
+  const isMasterDataReady = masterData.every((item) => item.ready);
+  const isWorkflowReady = workflowCoverage.every((item) => item.ready);
+
+  return {
+    counts: {
+      users: userCount,
+      buyers: buyerCount,
+      suppliers: supplierCount,
+      materials: materialCount,
+      categories: categoryCount,
+      plants: plantCount,
+      businessUnits: businessUnitCount,
+      savingCards: savingCardCount,
+    },
+    masterData,
+    workflowCoverage,
+    isMasterDataReady,
+    isWorkflowReady,
+    isWorkspaceReady: isMasterDataReady && isWorkflowReady,
+    missingCoreSetup: masterData.filter((item) => !item.ready).map((item) => item.label),
+    missingWorkflowCoverage: workflowCoverage.filter((item) => !item.ready).map((item) => item.label),
+  };
+}
+
 export async function getSavingCards(
   organizationId: string,
   filters?: {
@@ -207,7 +453,7 @@ export async function getSavingCards(
       ...(filters?.plantId ? { plantId: filters.plantId } : {}),
       ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
     },
-    include: savingCardDetailInclude,
+    select: savingCardListSelect,
     orderBy: { updatedAt: "desc" },
   });
 }
@@ -1428,11 +1674,7 @@ export async function getDashboardData(organizationId: string) {
   const [cards, targets] = await Promise.all([
     prisma.savingCard.findMany({
       where: { organizationId },
-      include: {
-        category: true,
-        buyer: true,
-        businessUnit: true,
-      },
+      select: dashboardCardSelect,
     }),
     prisma.annualTarget.findMany({
       where: { organizationId },

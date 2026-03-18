@@ -3,10 +3,11 @@ export const dynamic = "force-dynamic";
 import { TimelineBoard } from "@/components/timeline/timeline-board";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
-import { getReferenceData, getSavingCards } from "@/lib/data";
+import { getReferenceData, getSavingCards, getWorkspaceReadiness } from "@/lib/data";
 
-type TimelineCards = Awaited<ReturnType<typeof getSavingCards>>;
+type TimelineBoardCards = Parameters<typeof TimelineBoard>[0]["cards"];
 type TimelineReferenceData = Awaited<ReturnType<typeof getReferenceData>>;
+type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 const EMPTY_REFERENCE_DATA: TimelineReferenceData = {
   users: [],
@@ -22,16 +23,32 @@ const EMPTY_REFERENCE_DATA: TimelineReferenceData = {
 export default async function TimelinePage() {
   const user = await requireUser();
 
-  let cards: TimelineCards = [];
+  let cards: TimelineBoardCards = [];
   let referenceData: TimelineReferenceData = EMPTY_REFERENCE_DATA;
+  let workspaceReadiness: WorkspaceReadiness | null = null;
 
-  try {
-    [cards, referenceData] = await Promise.all([
-      getSavingCards(user.organizationId),
-      getReferenceData(user.organizationId),
-    ]);
-  } catch (error) {
-    console.log("Timeline data could not be loaded:", error);
+  const [cardsResult, referenceDataResult, readinessResult] = await Promise.allSettled([
+    getSavingCards(user.organizationId),
+    getReferenceData(user.organizationId),
+    getWorkspaceReadiness(user.organizationId),
+  ]);
+
+  if (cardsResult.status === "fulfilled") {
+    cards = cardsResult.value as unknown as TimelineBoardCards;
+  } else {
+    console.log("Timeline cards could not be loaded:", cardsResult.reason);
+  }
+
+  if (referenceDataResult.status === "fulfilled") {
+    referenceData = referenceDataResult.value;
+  } else {
+    console.log("Timeline reference data could not be loaded:", referenceDataResult.reason);
+  }
+
+  if (readinessResult.status === "fulfilled") {
+    workspaceReadiness = readinessResult.value;
+  } else {
+    console.log("Workspace readiness could not be loaded:", readinessResult.reason);
   }
 
   const filters = {
@@ -60,6 +77,7 @@ export default async function TimelinePage() {
         cards={cards}
         nowIso={new Date().toISOString()}
         filters={filters}
+        readiness={workspaceReadiness}
       />
     </div>
   );

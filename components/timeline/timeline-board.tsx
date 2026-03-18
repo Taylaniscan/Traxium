@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { phases, phaseLabels } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
@@ -81,10 +83,13 @@ type TimelineSegment = {
   secondaryLabel: string;
 };
 
+type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
+
 export function TimelineBoard({
   cards,
   nowIso,
-  filters
+  filters,
+  readiness
 }: {
   cards: SavingCardWithRelations[];
   nowIso: string;
@@ -94,6 +99,7 @@ export function TimelineBoard({
     suppliers: Array<{ id: string; name: string }>;
     businessUnits: Array<{ id: string; name: string }>;
   };
+  readiness?: WorkspaceReadiness | null;
 }) {
   const [state, setState] = useState<FilterState>({
     categoryId: "",
@@ -137,6 +143,14 @@ export function TimelineBoard({
   }, [cards, state]);
 
   const visibleCards = filtered;
+  const activeFilters = Boolean(
+    state.categoryId || state.buyerId || state.supplierId || state.businessUnitId || state.phase || state.query.trim()
+  );
+  const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
+  const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
+  const nextActions = buildTimelineNextActions(readiness, cards.length);
+  const showRampUpState =
+    cards.length > 0 && (cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
 
   const segments = useMemo(() => buildTimelineSegments(visibleCards, scale), [visibleCards, scale]);
   const segmentWidth = SEGMENT_WIDTH[scale];
@@ -168,9 +182,102 @@ export function TimelineBoard({
     };
   }, [visibleCards]);
 
+  if (!cards.length) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
+          <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-4">
+              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
+                Timeline Launch
+              </div>
+              <div>
+                <h2 className="text-3xl font-semibold tracking-tight">No saving cards are on the timeline yet.</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
+                  This timeline becomes the shared view for project timing, impact windows, and savings delivery once the first initiatives are active.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+                  Create first saving card
+                </Link>
+                <Link
+                  href="/admin"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "border-white/20 bg-white/10 text-white hover:bg-white/20"
+                  )}
+                >
+                  Review setup
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+              <TimelineMetric
+                label="Workspace Status"
+                value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+                detail={
+                  readiness?.isWorkspaceReady
+                    ? "Master data and workflow coverage are in place."
+                    : "Complete shared setup before wider rollout."
+                }
+              />
+              <TimelineMetric
+                label="Master Data"
+                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
+                detail="Configured collections ready for timeline planning."
+              />
+              <TimelineMetric
+                label="Workflow Coverage"
+                value={`${workflowCoverageReady}/${readiness?.workflowCoverage.length ?? 3}`}
+                detail="Approval roles currently assigned."
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Next Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {nextActions.map((item) => (
+                <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
+                  {item}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>What This Timeline Shows</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <TimelinePromise
+                title="Project timing"
+                description="Cards appear against project and impact dates so teams can plan delivery windows realistically."
+              />
+              <TimelinePromise
+                title="Pipeline progression"
+                description="The timeline highlights which savings are still in pipeline, realised, or already achieved."
+              />
+              <TimelinePromise
+                title="Portfolio filtering"
+                description="Teams can narrow the view by buyer, category, supplier, business unit, phase, or search once the portfolio grows."
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))_auto]">
         <Input
           placeholder="Search project, supplier, category"
           value={state.query}
@@ -203,8 +310,98 @@ export function TimelineBoard({
             </option>
           ))}
         </Select>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() =>
+            setState({
+              categoryId: "",
+              buyerId: "",
+              supplierId: "",
+              businessUnitId: "",
+              phase: "",
+              query: ""
+            })
+          }
+          disabled={!activeFilters}
+        >
+          Clear filters
+        </Button>
       </div>
 
+      {showRampUpState ? (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle>{readiness?.isWorkspaceReady ? "Timeline is live and still ramping up" : "Timeline is live, but setup is still in progress"}</CardTitle>
+            <CardDescription>
+              {readiness?.isWorkspaceReady
+                ? `You currently have ${cards.length} saving card${cards.length === 1 ? "" : "s"} on the timeline. It becomes more useful as more initiatives add timing and impact data.`
+                : `You already have ${cards.length} saving card${cards.length === 1 ? "" : "s"} on the timeline, but shared setup still needs attention to keep planning and approvals consistent.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="grid gap-3 md:grid-cols-3">
+              <TimelineMetric label="Live Cards" value={String(cards.length)} detail="Cards currently scheduled" />
+              <TimelineMetric
+                label="Master Data"
+                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
+                detail="Configured collections"
+              />
+              <TimelineMetric
+                label="Workflow Coverage"
+                value={readiness?.isWorkflowReady ? "Ready" : "Needs setup"}
+                detail="Approval-role coverage"
+              />
+            </div>
+            <div className="space-y-2">
+              {nextActions.slice(0, 3).map((item) => (
+                <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {!visibleCards.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No saving cards match the current timeline view</CardTitle>
+            <CardDescription>
+              Your workspace still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active timeline filters.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <div className="text-sm text-[var(--muted-foreground)]">
+              Clear the filters to return to the full timeline, or create a new card if you are planning the next initiative.
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setState({
+                    categoryId: "",
+                    buyerId: "",
+                    supplierId: "",
+                    businessUnitId: "",
+                    phase: "",
+                    query: ""
+                  })
+                }
+              >
+                Clear filters
+              </Button>
+              <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+                Create Saving Card
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {!visibleCards.length ? null : (
       <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_48%,#dbeafe_130%)] text-white shadow-[0_28px_80px_rgba(15,23,42,0.18)]">
         <CardHeader className="border-b border-white/15">
           <CardTitle>Portfolio savings pipeline</CardTitle>
@@ -240,7 +437,9 @@ export function TimelineBoard({
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {!visibleCards.length ? null : (
       <Card className="overflow-hidden">
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -293,11 +492,6 @@ export function TimelineBoard({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {visibleCards.length === 0 ? (
-            <div className="rounded-[20px] border border-dashed border-[var(--border)] bg-[var(--muted)]/60 px-6 py-10 text-center text-[13px] text-[var(--muted-foreground)]">
-              No saving cards match the current filters.
-            </div>
-          ) : (
             <div className="rounded-[24px] border border-[var(--border)] bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
               <div className="max-h-[70vh] overflow-auto scroll-smooth">
                 <div className="min-w-fit">
@@ -441,9 +635,42 @@ export function TimelineBoard({
                 </div>
               </div>
             </div>
-          )}
         </CardContent>
       </Card>
+      )}
+    </div>
+  );
+}
+
+function TimelineMetric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
+      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
+    </div>
+  );
+}
+
+function TimelinePromise({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4">
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
   );
 }
@@ -653,4 +880,28 @@ function toTitleCase(value: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function buildTimelineNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {
+  const actions: string[] = [];
+
+  if (!cardCount) {
+    actions.push("Create the first saving card so the timeline can become the live planning view.");
+  } else if (cardCount < 3) {
+    actions.push("Add more saving cards so the timeline reflects the broader delivery pipeline instead of only a few initiatives.");
+  }
+
+  readiness?.missingCoreSetup.forEach((item) => {
+    actions.push(`Add ${item} in Settings so future cards use shared master data across planning views.`);
+  });
+
+  readiness?.missingWorkflowCoverage.forEach((item) => {
+    actions.push(`Assign at least one ${item} user so timeline-driven planning aligns with approval routing.`);
+  });
+
+  if (!actions.length) {
+    actions.push("Progress saving cards with realistic dates so the timeline becomes a reliable portfolio-planning surface.");
+  }
+
+  return actions.slice(0, 4);
 }

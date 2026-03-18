@@ -1,6 +1,11 @@
 import { Role } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import {
+  MAX_EVIDENCE_FILE_SIZE,
+  isAllowedEvidenceFileName,
+} from "@/lib/evidence-config";
 import { prisma } from "@/lib/prisma";
 import { storeEvidenceFile } from "@/lib/uploads";
 
@@ -9,9 +14,103 @@ const GLOBAL_ACCESS_ROLES = new Set<Role>([
   Role.GLOBAL_CATEGORY_LEADER,
   Role.FINANCIAL_CONTROLLER,
 ]);
+const ALLOWED_FORM_FIELDS = new Set(["savingCardId", "files"]);
+const MAX_FILES_PER_UPLOAD = 10;
+const ALLOWED_CONTENT_TYPES_BY_EXTENSION: Record<string, readonly string[]> = {
+  ".pdf": ["application/pdf"],
+  ".jpg": ["image/jpeg"],
+  ".jpeg": ["image/jpeg"],
+  ".png": ["image/png"],
+  ".xls": [
+    "application/vnd.ms-excel",
+    "application/excel",
+    "application/x-excel",
+    "application/x-msexcel",
+  ],
+  ".xlsx": [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/zip",
+  ],
+  ".doc": ["application/msword", "application/doc", "application/vnd.ms-word"],
+  ".docx": [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/zip",
+  ],
+  ".ppt": [
+    "application/vnd.ms-powerpoint",
+    "application/mspowerpoint",
+    "application/powerpoint",
+  ],
+  ".pptx": [
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/zip",
+  ],
+};
+
+const savingCardIdSchema = z.object({
+  savingCardId: z
+    .string()
+    .trim()
+    .min(1, "Saving card id is required.")
+    .refine((value) => !value.includes("/"), "Saving card id is invalid."),
+});
 
 function hasGlobalAccess(role: Role) {
   return GLOBAL_ACCESS_ROLES.has(role);
+}
+
+function errorResponse(error: string, status: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      error,
+    },
+    { status }
+  );
+}
+
+function formatMaxEvidenceFileSize() {
+  return `${Math.round(MAX_EVIDENCE_FILE_SIZE / (1024 * 1024))} MB`;
+}
+
+function getFileExtension(fileName: string) {
+  const index = fileName.lastIndexOf(".");
+  return index >= 0 ? fileName.slice(index).toLowerCase() : "";
+}
+
+function getFileValidationError(file: File) {
+  const fileName = file.name.trim();
+
+  if (!fileName) {
+    return "Uploaded files must include a file name.";
+  }
+
+  if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("\0")) {
+    return "Uploaded file names are invalid.";
+  }
+
+  if (!isAllowedEvidenceFileName(fileName)) {
+    return "Unsupported file type. Upload PDF, Office, or image files only.";
+  }
+
+  if (file.size <= 0) {
+    return "Uploaded files must be non-empty.";
+  }
+
+  if (file.size > MAX_EVIDENCE_FILE_SIZE) {
+    return `Each file must be ${formatMaxEvidenceFileSize()} or smaller.`;
+  }
+
+  const normalizedType = file.type.trim().toLowerCase();
+  if (normalizedType && normalizedType !== "application/octet-stream") {
+    const allowedTypes = ALLOWED_CONTENT_TYPES_BY_EXTENSION[getFileExtension(fileName)];
+
+    if (allowedTypes && !allowedTypes.includes(normalizedType)) {
+      return "Uploaded file content type does not match the file extension.";
+    }
+  }
+
+  return null;
 }
 
 function buildSavingCardAccessWhere(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, savingCardId: string) {
@@ -30,37 +129,73 @@ function buildSavingCardAccessWhere(user: NonNullable<Awaited<ReturnType<typeof 
 }
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return errorResponse("Unauthorized.", 401);
+  }
+
   try {
-    const user = await getCurrentUser();
+    let formData: FormData;
 
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized." },
-        { status: 401 },
+    try {
+      formData = await request.formData();
+    } catch {
+      return errorResponse("Request body must be valid form data.", 400);
+    }
+
+    const unexpectedField = Array.from(formData.keys()).find(
+      (key) => !ALLOWED_FORM_FIELDS.has(key)
+    );
+
+    if (unexpectedField) {
+      return errorResponse(`Unexpected form field "${unexpectedField}".`, 400);
+    }
+
+    const savingCardIdValues = formData.getAll("savingCardId");
+
+    if (savingCardIdValues.length !== 1 || typeof savingCardIdValues[0] !== "string") {
+      return errorResponse("Exactly one savingCardId field is required.", 400);
+    }
+
+    const savingCardIdResult = savingCardIdSchema.safeParse({
+      savingCardId: savingCardIdValues[0],
+    });
+
+    if (!savingCardIdResult.success) {
+      return errorResponse(
+        savingCardIdResult.error.issues[0]?.message ?? "Saving card id is invalid.",
+        422
       );
     }
 
-    const formData = await request.formData();
-    const savingCardIdValue = formData.get("savingCardId");
+    const savingCardId = savingCardIdResult.data.savingCardId;
 
-    if (typeof savingCardIdValue !== "string" || !savingCardIdValue.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Missing savingCardId." },
-        { status: 400 },
+    const rawFiles = formData.getAll("files");
+
+    if (!rawFiles.length) {
+      return errorResponse("At least one file is required.", 422);
+    }
+
+    const nonFileEntry = rawFiles.find((value) => !(value instanceof File));
+
+    if (nonFileEntry) {
+      return errorResponse("All files entries must be uploaded files.", 422);
+    }
+
+    const files = rawFiles as File[];
+
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      return errorResponse(
+        `You can upload up to ${MAX_FILES_PER_UPLOAD} files per request.`,
+        422
       );
     }
 
-    const savingCardId = savingCardIdValue.trim();
+    const invalidFile = files.find((file) => getFileValidationError(file));
 
-    const files = formData
-      .getAll("files")
-      .filter((value): value is File => value instanceof File);
-
-    if (!files.length) {
-      return NextResponse.json(
-        { success: false, error: "No files were uploaded." },
-        { status: 400 },
-      );
+    if (invalidFile) {
+      return errorResponse(getFileValidationError(invalidFile) ?? "Uploaded file is invalid.", 422);
     }
 
     const savingCard = await prisma.savingCard.findFirst({
@@ -72,13 +207,7 @@ export async function POST(request: Request) {
     });
 
     if (!savingCard) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Saving card not found.",
-        },
-        { status: 404 },
-      );
+      return errorResponse("Saving card not found.", 404);
     }
 
     const uploaded = [];
@@ -128,12 +257,9 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Upload failed.",
-      },
-      { status: 500 },
+    return errorResponse(
+      error instanceof Error ? error.message : "Upload failed.",
+      500
     );
   }
 }

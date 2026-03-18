@@ -1,17 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, CircleDollarSign, Filter, Target, TrendingUp } from "lucide-react";
+import { ArrowUpRight, CircleDollarSign, Filter, Settings, Target, TrendingUp } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { implementationComplexities, phaseLabels, qualificationStatuses, savingDrivers } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 
 type DashboardData = Awaited<ReturnType<typeof import("@/lib/data").getDashboardData>>;
+type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
-export function DashboardClient({ data }: { data: DashboardData }) {
+export function DashboardClient({
+  data,
+  readiness,
+}: {
+  data: DashboardData;
+  readiness?: WorkspaceReadiness | null;
+}) {
   const [filters, setFilters] = useState({
     savingDriver: "",
     implementationComplexity: "",
@@ -30,6 +40,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   );
 
   const metrics = useMemo(() => deriveDashboardMetrics(filteredCards), [filteredCards]);
+  const hasCards = data.cards.length > 0;
+  const hasActiveFilters = Boolean(
+    filters.savingDriver || filters.implementationComplexity || filters.qualificationStatus
+  );
+  const showRampUpState =
+    hasCards && (data.cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
+  const missingCoreSetup = readiness?.missingCoreSetup ?? [];
+  const missingWorkflowCoverage = readiness?.missingWorkflowCoverage ?? [];
+  const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
+  const nextActions = buildDashboardNextActions(readiness, data.cards.length);
 
   const kpis = [
     { label: "Pipeline Savings", value: metrics.pipelineSavings, icon: CircleDollarSign },
@@ -38,8 +58,27 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     { label: "Savings Forecast", value: metrics.forecastSavings, icon: ArrowUpRight }
   ];
 
+  if (!hasCards) {
+    return (
+      <DashboardZeroState
+        readiness={readiness}
+        configuredCollections={configuredCollections}
+        nextActions={nextActions}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {showRampUpState ? (
+        <DashboardRampUpCard
+          readiness={readiness}
+          cardCount={data.cards.length}
+          configuredCollections={configuredCollections}
+          nextActions={nextActions}
+        />
+      ) : null}
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
@@ -84,6 +123,37 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </CardContent>
       </Card>
 
+      {!filteredCards.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No cards match the active filters</CardTitle>
+            <CardDescription>
+              Clear the filters to return to the live portfolio view and restore KPI, forecast, and benchmark analysis.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <div className="text-sm text-[var(--muted-foreground)]">
+              The dashboard still has {data.cards.length} saving card{data.cards.length === 1 ? "" : "s"} in this workspace, but none match the current filter combination.
+            </div>
+            {hasActiveFilters ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setFilters({
+                    savingDriver: "",
+                    implementationComplexity: "",
+                    qualificationStatus: ""
+                  })
+                }
+              >
+                Clear filters
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
@@ -124,6 +194,200 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           rows={metrics.benchmarkOpportunities}
         />
       </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DashboardZeroState({
+  readiness,
+  configuredCollections,
+  nextActions,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  configuredCollections: number;
+  nextActions: string[];
+}) {
+  const totalCollections = readiness?.masterData.length ?? 0;
+  const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
+
+  return (
+    <div className="space-y-6">
+      <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
+        <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="space-y-4">
+            <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
+              Workspace Launch
+            </div>
+            <div>
+              <h2 className="text-3xl font-semibold tracking-tight">No saving cards are live yet.</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
+                This dashboard will become the live portfolio view once your first initiatives are created. Start by confirming core setup, then create the first saving card so pipeline, forecast, and benchmark analytics have real workspace data to build on.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+                Create first saving card
+              </Link>
+              <Link href="/admin" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-white/20 bg-white/10 text-white hover:bg-white/20")}>
+                Review setup
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <LaunchMetric
+              label="Workspace Status"
+              value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+              detail={
+                readiness?.isWorkspaceReady
+                  ? "Master data and workflow coverage are in place."
+                  : "Complete shared setup before wider rollout."
+              }
+            />
+            <LaunchMetric
+              label="Master Data"
+              value={`${configuredCollections}/${totalCollections || 6}`}
+              detail="Configured master-data collections ready for card creation."
+            />
+            <LaunchMetric
+              label="Workflow Coverage"
+              value={`${workflowCoverageReady}/${readiness?.workflowCoverage.length ?? 3}`}
+              detail="Approval roles currently assigned in this workspace."
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Next Actions</CardTitle>
+            <CardDescription>Focus on the few steps that move the workspace from setup into live portfolio management.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {nextActions.map((item) => (
+              <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
+                {item}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>What Appears Here Next</CardTitle>
+            <CardDescription>The dashboard becomes operational as soon as the first cards are live.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <PromiseCard
+              title="Portfolio KPIs"
+              description="Pipeline, realised, achieved, and forecast savings will use live card values instead of placeholders."
+            />
+            <PromiseCard
+              title="Trend and Benchmark Views"
+              description="Category, driver, and forecast charts will populate as impact dates and savings data accumulate."
+            />
+            <PromiseCard
+              title="Operational Priorities"
+              description="Top-project and benchmark tables will highlight where commercial value is concentrated."
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function DashboardRampUpCard({
+  readiness,
+  cardCount,
+  configuredCollections,
+  nextActions,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  cardCount: number;
+  configuredCollections: number;
+  nextActions: string[];
+}) {
+  const totalCollections = readiness?.masterData.length ?? 6;
+  const workflowReady = readiness?.isWorkflowReady ?? false;
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>{readiness?.isWorkspaceReady ? "Portfolio still ramping up" : "Portfolio is live, but setup is still in progress"}</CardTitle>
+          <CardDescription>
+            {readiness?.isWorkspaceReady
+              ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Trends and benchmarks will become more reliable as more initiatives move through the workflow.`
+              : `You already have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live, but some shared setup still needs attention to keep the workspace standardized.`}
+          </CardDescription>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
+          <Settings className="h-4 w-4 text-[var(--muted-foreground)]" />
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="grid gap-3 md:grid-cols-3">
+          <LaunchMetric
+            label="Live Saving Cards"
+            value={String(cardCount)}
+            detail="Current portfolio size"
+          />
+          <LaunchMetric
+            label="Master Data"
+            value={`${configuredCollections}/${totalCollections}`}
+            detail="Configured collections"
+          />
+          <LaunchMetric
+            label="Workflow Coverage"
+            value={workflowReady ? "Ready" : "Needs setup"}
+            detail="Approval-role coverage"
+          />
+        </div>
+        <div className="space-y-2">
+          {nextActions.slice(0, 3).map((item) => (
+            <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
+              {item}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LaunchMetric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
+      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
+    </div>
+  );
+}
+
+function PromiseCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4">
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
   );
 }
@@ -305,4 +569,28 @@ function getForecastFactor(frequency: DashboardData["cards"][number]["frequency"
     default:
       return 1.2;
   }
+}
+
+function buildDashboardNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {
+  const actions: string[] = [];
+
+  if (!cardCount) {
+    actions.push("Create the first saving card to activate live KPI, forecast, and benchmark reporting.");
+  } else if (cardCount < 3) {
+    actions.push("Add more saving cards so trends and benchmark views become more representative.");
+  }
+
+  readiness?.missingCoreSetup.forEach((item) => {
+    actions.push(`Add ${item} in Settings to standardize card creation and portfolio reporting.`);
+  });
+
+  readiness?.missingWorkflowCoverage.forEach((item) => {
+    actions.push(`Assign at least one ${item} user so phase approvals route cleanly.`);
+  });
+
+  if (!actions.length) {
+    actions.push("Create and progress saving cards through the workflow to deepen trend accuracy and portfolio coverage.");
+  }
+
+  return actions.slice(0, 4);
 }

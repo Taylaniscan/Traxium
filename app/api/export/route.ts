@@ -1,11 +1,20 @@
 import * as XLSX from "xlsx";
-import { requireUser } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { getSavingCards, mapSavingCardsForExport } from "@/lib/data";
 
-export async function GET() {
-  try {
-    const user = await requireUser();
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
 
+export async function GET() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return jsonError("Unauthorized.", 401);
+  }
+
+  try {
     const cards = await getSavingCards(user.organizationId);
     const rows = mapSavingCardsForExport(cards);
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -21,11 +30,9 @@ export async function GET() {
       },
     });
   } catch (error) {
-    return Response.json(
-      {
-        error: error instanceof Error ? error.message : "Export failed.",
-      },
-      { status: 401 }
+    return jsonError(
+      error instanceof Error ? error.message : "Export failed.",
+      500
     );
   }
 }

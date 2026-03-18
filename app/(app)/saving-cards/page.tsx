@@ -5,19 +5,32 @@ import { SavingCardTable } from "@/components/saving-cards/saving-card-table";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
-import { getSavingCards } from "@/lib/data";
+import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
 
-type SavingCards = Awaited<ReturnType<typeof getSavingCards>>;
+type SavingCardTableCards = Parameters<typeof SavingCardTable>[0]["cards"];
+type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 export default async function SavingCardsPage() {
   const user = await requireUser();
 
-  let cards: SavingCards = [];
+  let cards: SavingCardTableCards = [];
+  let workspaceReadiness: WorkspaceReadiness | null = null;
 
-  try {
-    cards = await getSavingCards(user.organizationId);
-  } catch (error) {
-    console.log("Saving cards could not be loaded:", error);
+  const [cardsResult, readinessResult] = await Promise.allSettled([
+    getSavingCards(user.organizationId),
+    getWorkspaceReadiness(user.organizationId),
+  ]);
+
+  if (cardsResult.status === "fulfilled") {
+    cards = cardsResult.value as unknown as SavingCardTableCards;
+  } else {
+    console.log("Saving cards could not be loaded:", cardsResult.reason);
+  }
+
+  if (readinessResult.status === "fulfilled") {
+    workspaceReadiness = readinessResult.value;
+  } else {
+    console.log("Workspace readiness could not be loaded:", readinessResult.reason);
   }
 
   return (
@@ -28,7 +41,7 @@ export default async function SavingCardsPage() {
           <Button>Create Saving Card</Button>
         </Link>
       </div>
-      <SavingCardTable cards={cards} />
+      <SavingCardTable cards={cards} readiness={workspaceReadiness} />
     </div>
   );
 }

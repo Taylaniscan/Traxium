@@ -3,10 +3,15 @@ export const dynamic = "force-dynamic";
 import { CommandCenterClient } from "@/components/command-center/command-center-client";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
-import { getCommandCenterData, getCommandCenterFilterOptions } from "@/lib/data";
+import {
+  getCommandCenterData,
+  getCommandCenterFilterOptions,
+  getWorkspaceReadiness,
+} from "@/lib/data";
 
 type CommandCenterData = Awaited<ReturnType<typeof getCommandCenterData>>;
 type CommandCenterFilterOptions = Awaited<ReturnType<typeof getCommandCenterFilterOptions>>;
+type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 const EMPTY_COMMAND_CENTER_DATA: CommandCenterData = {
   filters: {},
@@ -39,14 +44,30 @@ export default async function CommandCenterPage() {
 
   let initialData: CommandCenterData = EMPTY_COMMAND_CENTER_DATA;
   let filterOptions: CommandCenterFilterOptions = EMPTY_COMMAND_CENTER_FILTER_OPTIONS;
+  let workspaceReadiness: WorkspaceReadiness | null = null;
 
-  try {
-    [initialData, filterOptions] = await Promise.all([
-      getCommandCenterData(user.organizationId),
-      getCommandCenterFilterOptions(user.organizationId),
-    ]);
-  } catch (error) {
-    console.log("Command Center data could not be loaded:", error);
+  const [dataResult, filterOptionsResult, readinessResult] = await Promise.allSettled([
+    getCommandCenterData(user.organizationId),
+    getCommandCenterFilterOptions(user.organizationId),
+    getWorkspaceReadiness(user.organizationId),
+  ]);
+
+  if (dataResult.status === "fulfilled") {
+    initialData = dataResult.value;
+  } else {
+    console.log("Command Center data could not be loaded:", dataResult.reason);
+  }
+
+  if (filterOptionsResult.status === "fulfilled") {
+    filterOptions = filterOptionsResult.value;
+  } else {
+    console.log("Command Center filter options could not be loaded:", filterOptionsResult.reason);
+  }
+
+  if (readinessResult.status === "fulfilled") {
+    workspaceReadiness = readinessResult.value;
+  } else {
+    console.log("Workspace readiness could not be loaded:", readinessResult.reason);
   }
 
   return (
@@ -55,6 +76,7 @@ export default async function CommandCenterPage() {
       <CommandCenterClient
         initialData={initialData}
         filterOptions={filterOptions}
+        readiness={workspaceReadiness}
       />
     </div>
   );

@@ -1,7 +1,9 @@
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
+import { savingCardSchema } from "@/lib/validation";
 
 function normalizeRow(
   row: Record<string, unknown>,
@@ -40,34 +42,101 @@ function normalizeRow(
 }
 
 export async function POST(request: Request) {
-  try {
-    const user = await getCurrentUser();
+  const user = await getCurrentUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  try {
+    let formData: FormData;
+
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json({ error: "Request body must be valid form data." }, { status: 400 });
     }
 
-    const formData = await request.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file received." }, { status: 400 });
+      return NextResponse.json({ error: "An import file is required." }, { status: 422 });
+    }
+
+    if (!file.size) {
+      return NextResponse.json({ error: "The uploaded file is empty." }, { status: 422 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    let workbook: XLSX.WorkBook;
+
+    try {
+      workbook = XLSX.read(arrayBuffer, { type: "array" });
+    } catch {
+      return NextResponse.json(
+        { error: "Uploaded file must be a valid Excel workbook." },
+        { status: 400 }
+      );
+    }
+
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+      return NextResponse.json(
+        { error: "The workbook does not contain any sheets." },
+        { status: 422 }
+      );
+    }
+
+    const worksheet = workbook.Sheets[firstSheetName];
+
+    if (!worksheet) {
+      return NextResponse.json(
+        { error: "The workbook could not be read." },
+        { status: 400 }
+      );
+    }
+
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
+
+    if (!rows.length) {
+      return NextResponse.json(
+        { error: "The workbook does not contain any import rows." },
+        { status: 422 }
+      );
+    }
+
     const referenceData = await getReferenceData(user.organizationId);
     const normalized = rows.map((row) => normalizeRow(row, referenceData));
+
+    for (const [index, row] of normalized.entries()) {
+      const validation = savingCardSchema.safeParse(row);
+
+      if (!validation.success) {
+        const issue = validation.error.issues[0];
+        return NextResponse.json(
+          {
+            error: `Row ${index + 2}: ${issue?.message ?? "Import row is invalid."}`,
+          },
+          { status: 422 }
+        );
+      }
+    }
 
     await importSavingCards(normalized, user.id, user.organizationId);
 
     return NextResponse.json({ count: normalized.length });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0]?.message ?? "Import payload is invalid." },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Import failed." },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }
