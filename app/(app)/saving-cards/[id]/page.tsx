@@ -8,18 +8,32 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { getValueBadgeTone } from "@/lib/calculations";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCard } from "@/lib/data";
-import { phaseLabels, roleLabels } from "@/lib/constants";
+import { phaseLabels } from "@/lib/constants";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
-import { canApprovePhase, canLockFinance } from "@/lib/permissions";
+import { canLockFinance } from "@/lib/permissions";
 
 export default async function SavingCardDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
   const { id } = await params;
-  const [card, user, referenceData] = await Promise.all([getSavingCard(id), requireUser(), getReferenceData()]);
+
+  const [card, referenceData] = await Promise.all([
+    getSavingCard(id, user.organizationId),
+    getReferenceData(user.organizationId),
+  ]);
 
   if (!card) notFound();
 
-  const alternativeSupplierLabel = card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified";
-  const alternativeMaterialLabel = card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "Not specified";
+  const alternativeSupplierLabel =
+    card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified";
+  const alternativeMaterialLabel =
+    card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "Not specified";
+  const canApprove = card.phaseChangeRequests.some(
+    (request) =>
+      request.approvalStatus === "PENDING" &&
+      request.approvals.some(
+        (approval) => approval.approverId === user.id && approval.status === "PENDING"
+      )
+  );
 
   return (
     <div className="space-y-6">
@@ -48,7 +62,8 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
                   {formatCurrency(Math.round(card.calculatedSavings), "EUR")} validated savings potential
                 </h3>
                 <p className="mt-2 max-w-xl text-sm text-cyan-50/80">
-                  Baseline {formatCurrency(card.baselinePrice, card.currency)} to new price {formatCurrency(card.newPrice, card.currency)} across annual volume of{" "}
+                  Baseline {formatCurrency(card.baselinePrice, card.currency)} to new price{" "}
+                  {formatCurrency(card.newPrice, card.currency)} across annual volume of{" "}
                   {formatPlainNumber(card.annualVolume)}.
                 </p>
               </div>
@@ -60,7 +75,10 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
             </div>
             <div className="space-y-3 rounded-[28px] border border-white/10 bg-white/10 p-5">
               <InfoStrip label="Finance Lock" value={card.financeLocked ? "Locked" : "Open"} />
-              <InfoStrip label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
+              <InfoStrip
+                label="Impact Window"
+                value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`}
+              />
               <InfoStrip label="Baseline Supplier" value={card.supplier.name} />
               <InfoStrip label="Alternative Supplier" value={alternativeSupplierLabel} />
               <InfoStrip label="Plant" value={card.plant.name} />
@@ -75,7 +93,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
             <CardDescription>Current card owner, finance-lock status, and active sourcing basis.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Metric label="Buyer" value={`${card.buyer.name} (${roleLabels[card.buyer.role]})`} />
+            <Metric label="Buyer" value={card.buyer.name} />
             <Metric label="Finance Lock" value={card.financeLocked ? "Locked" : "Open"} />
             <Metric label="Baseline Supplier" value={card.supplier.name} />
             <Metric label="Baseline Material" value={card.material.name} />
@@ -91,7 +109,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
       <SavingCardDetailWorkspace
         card={card}
         referenceData={referenceData}
-        canApprove={canApprovePhase(user.role, card.phase)}
+        canApprove={canApprove}
         canLock={canLockFinance(user.role)}
         currentUserId={user.id}
       />

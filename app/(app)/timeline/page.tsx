@@ -2,27 +2,33 @@ export const dynamic = "force-dynamic";
 
 import { TimelineBoard } from "@/components/timeline/timeline-board";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCards } from "@/lib/data";
 
 type TimelineCards = Awaited<ReturnType<typeof getSavingCards>>;
 type TimelineReferenceData = Awaited<ReturnType<typeof getReferenceData>>;
 
+const EMPTY_REFERENCE_DATA: TimelineReferenceData = {
+  users: [],
+  buyers: [],
+  suppliers: [],
+  materials: [],
+  categories: [],
+  plants: [],
+  businessUnits: [],
+  fxRates: [],
+};
+
 export default async function TimelinePage() {
+  const user = await requireUser();
+
   let cards: TimelineCards = [];
-  let referenceData: TimelineReferenceData = {
-    users: [],
-    suppliers: [],
-    materials: [],
-    categories: [],
-    plants: [],
-    businessUnits: [],
-    fxRates: [],
-  };
+  let referenceData: TimelineReferenceData = EMPTY_REFERENCE_DATA;
 
   try {
     [cards, referenceData] = await Promise.all([
-      getSavingCards(),
-      getReferenceData(),
+      getSavingCards(user.organizationId),
+      getReferenceData(user.organizationId),
     ]);
   } catch (error) {
     console.log("Timeline data could not be loaded:", error);
@@ -33,7 +39,7 @@ export default async function TimelinePage() {
       id: item.id,
       name: item.name,
     })),
-    buyers: referenceData.users.map((item) => ({
+    buyers: referenceData.buyers.map((item) => ({
       id: item.id,
       name: item.name,
     })),

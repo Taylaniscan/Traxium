@@ -14,12 +14,30 @@ function hasGlobalAccess(role: Role) {
   return GLOBAL_ACCESS_ROLES.has(role);
 }
 
+function buildSavingCardAccessWhere(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, savingCardId: string) {
+  return {
+    id: savingCardId,
+    organizationId: user.organizationId,
+    ...(hasGlobalAccess(user.role)
+      ? {}
+      : {
+          OR: [
+            { stakeholders: { some: { userId: user.id } } },
+            { approvals: { some: { approverId: user.id } } },
+          ],
+        }),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized." },
+        { status: 401 },
+      );
     }
 
     const formData = await request.formData();
@@ -27,7 +45,7 @@ export async function POST(request: Request) {
 
     if (typeof savingCardIdValue !== "string" || !savingCardIdValue.trim()) {
       return NextResponse.json(
-        { error: "Missing savingCardId." },
+        { success: false, error: "Missing savingCardId." },
         { status: 400 },
       );
     }
@@ -40,64 +58,64 @@ export async function POST(request: Request) {
 
     if (!files.length) {
       return NextResponse.json(
-        { error: "No files were uploaded." },
+        { success: false, error: "No files were uploaded." },
         { status: 400 },
       );
     }
 
     const savingCard = await prisma.savingCard.findFirst({
-      where: hasGlobalAccess(user.role)
-        ? { id: savingCardId }
-        : {
-            id: savingCardId,
-            OR: [
-              { buyerId: user.id },
-              { stakeholders: { some: { userId: user.id } } },
-              { approvals: { some: { approverId: user.id } } },
-            ],
-          },
-      select: { id: true },
+      where: buildSavingCardAccessWhere(user, savingCardId),
+      select: {
+        id: true,
+        organizationId: true,
+      },
     });
 
     if (!savingCard) {
       return NextResponse.json(
-        { error: "Saving card not found or access denied." },
-        { status: 403 },
+        {
+          success: false,
+          error: "Saving card not found.",
+        },
+        { status: 404 },
       );
     }
 
     const uploaded = [];
 
     for (const file of files) {
-      const stored = await storeEvidenceFile(file, savingCard.id, user.id);
+      const stored = await storeEvidenceFile(file, {
+        organizationId: savingCard.organizationId,
+        savingCardId: savingCard.id,
+      });
 
       const evidence = await prisma.savingCardEvidence.create({
-  data: {
-    savingCardId: savingCard.id,
-    fileName: stored.fileName,
-    storageBucket: stored.storageBucket,
-    storagePath: stored.storagePath,
-    fileSize: stored.fileSize,
-    fileType: stored.fileType,
-    uploadedById: user.id,
-  },
-  select: {
-    id: true,
-    fileName: true,
-    fileSize: true,
-    fileType: true,
-    uploadedAt: true,
-  },
-});
+        data: {
+          savingCardId: savingCard.id,
+          fileName: stored.fileName,
+          storageBucket: stored.storageBucket,
+          storagePath: stored.storagePath,
+          fileSize: stored.fileSize,
+          fileType: stored.fileType,
+          uploadedById: user.id,
+        },
+        select: {
+          id: true,
+          fileName: true,
+          fileSize: true,
+          fileType: true,
+          uploadedAt: true,
+        },
+      });
 
-await prisma.auditLog.create({
-  data: {
-    userId: user.id,
-    savingCardId: savingCard.id,
-    action: "evidence.uploaded",
-    detail: `Evidence uploaded: ${stored.fileName}`,
-  },
-});
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          savingCardId: savingCard.id,
+          action: "evidence.uploaded",
+          detail: `Evidence uploaded: ${stored.fileName}`,
+        },
+      });
 
       uploaded.push({
         ...evidence,
@@ -105,10 +123,14 @@ await prisma.auditLog.create({
       });
     }
 
-    return NextResponse.json({ files: uploaded }, { status: 201 });
+    return NextResponse.json(
+      { success: true, files: uploaded },
+      { status: 201 },
+    );
   } catch (error) {
     return NextResponse.json(
       {
+        success: false,
         error: error instanceof Error ? error.message : "Upload failed.",
       },
       { status: 500 },

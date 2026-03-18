@@ -2,18 +2,83 @@ import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { hasAnyRole } from "@/lib/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+const sessionUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  organizationId: true,
+} as const;
 
 export type SessionUser = {
   id: string;
   name: string;
   email: string;
   role: Role;
+  organizationId: string;
 };
+
+function readOrganizationId(source: unknown): string | null {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const record = source as Record<string, unknown>;
+
+  for (const key of ["organizationId", "organization_id"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function getAuthOrganizationId(authUser: {
+  app_metadata?: unknown;
+  user_metadata?: unknown;
+}): string | null {
+  return readOrganizationId(authUser.app_metadata) ?? readOrganizationId(authUser.user_metadata);
+}
+
+async function findSessionUser(email: string, organizationId: string | null): Promise<SessionUser | null> {
+  if (organizationId) {
+    return prisma.user.findUnique({
+      where: {
+        organizationId_email: {
+          organizationId,
+          email,
+        },
+      },
+      select: sessionUserSelect,
+    });
+  }
+
+  const matches = await prisma.user.findMany({
+    where: {
+      email,
+    },
+    select: sessionUserSelect,
+    take: 2,
+  });
+
+  if (matches.length !== 1) {
+    if (matches.length > 1) {
+      console.error("Ambiguous auth user lookup for email:", email);
+    }
+
+    return null;
+  }
+
+  return matches[0];
+}
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServerClient();
-
   const {
     data: { user: authUser },
     error,
@@ -23,33 +88,12 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
 
-  // Try to find an existing Prisma user by email
-  let dbUser = await prisma.user.findUnique({
-    where: { email: authUser.email },
-    select: { id: true, name: true, email: true, role: true },
-  });
-
-  // If no Prisma user exists yet, auto-provision one.
-  // This handles real signups via Supabase Auth.
-  if (!dbUser) {
-    // Derive a display name from user metadata or fall back to the email prefix
-    const fullName =
-      (authUser.user_metadata?.full_name as string | undefined) ||
-      (authUser.user_metadata?.name as string | undefined) ||
-      authUser.email.split("@")[0];
-
-    dbUser = await prisma.user.create({
-      data: {
-        email: authUser.email,
-        name: fullName,
-        // New users start as PROCUREMENT_ANALYST — adjust default role as needed
-        role: Role.PROCUREMENT_ANALYST,
-      },
-      select: { id: true, name: true, email: true, role: true },
-    });
+  const email = authUser.email.trim();
+  if (!email) {
+    return null;
   }
 
-  return dbUser;
+  return findSessionUser(email, getAuthOrganizationId(authUser));
 }
 
 export async function requireUser(): Promise<SessionUser> {
@@ -62,10 +106,10 @@ export async function requireUser(): Promise<SessionUser> {
   return user;
 }
 
-export async function requireRole(roles: Role[]): Promise<SessionUser> {
+export async function requireRole(roles: readonly Role[]): Promise<SessionUser> {
   const user = await requireUser();
 
-  if (!roles.includes(user.role)) {
+  if (!roles.length || !hasAnyRole(user.role, roles)) {
     throw new Error("Forbidden");
   }
 

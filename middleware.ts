@@ -1,6 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const LOGIN_PATH = "/login";
+const AUTHENTICATED_HOME_PATH = "/dashboard";
+const PROTECTED_ROUTE_PREFIXES = [
+  "/admin",
+  "/command-center",
+  "/dashboard",
+  "/kanban",
+  "/open-actions",
+  "/profile",
+  "/reports",
+  "/saving-cards",
+  "/timeline",
+] as const;
+
 type CookieToSet = {
   name: string;
   value: string;
@@ -32,6 +46,21 @@ function getSupabaseEnv() {
   return { url, anonKey };
 }
 
+function isProtectedRoute(pathname: string) {
+  return PROTECTED_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function redirectWithCookies(request: NextRequest, response: NextResponse, pathname: string) {
+  const redirectUrl = new URL(pathname, request.url);
+  const redirectResponse = NextResponse.redirect(redirectUrl);
+
+  response.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie);
+  });
+
+  return redirectResponse;
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request,
@@ -39,7 +68,6 @@ export async function middleware(request: NextRequest) {
 
   const env = getSupabaseEnv();
 
-  // Dev’de env bozuksa tüm app’i düşürmek yerine middleware’i pas geç
   if (!env) {
     return response;
   }
@@ -66,7 +94,19 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    await supabase.auth.getUser();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (!error && user && request.nextUrl.pathname === LOGIN_PATH) {
+      return redirectWithCookies(request, response, AUTHENTICATED_HOME_PATH);
+    }
+
+    if ((error || !user) && isProtectedRoute(request.nextUrl.pathname)) {
+      return redirectWithCookies(request, response, LOGIN_PATH);
+    }
+
     return response;
   } catch (error) {
     console.error("Supabase middleware init failed:", error);
@@ -76,6 +116,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
   ],
 };

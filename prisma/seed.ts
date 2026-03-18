@@ -1,87 +1,128 @@
-import "dotenv/config";
-import { ApprovalStatus, Currency, Frequency, Phase, PrismaClient, Role } from "@prisma/client";
+import path from "node:path";
+import {
+  ApprovalStatus,
+  Currency,
+  Frequency,
+  Phase,
+  PrismaClient,
+  Role,
+} from "@prisma/client";
 import { calculateSavings } from "../lib/calculations";
 
 const prisma = new PrismaClient();
 
-const usersSeed = [
+const fxRatesSeed = [
   {
-    key: "sophie",
-    name: "Sophie Laurent",
-    email: process.env.SEED_HEAD_OF_PROCUREMENT_EMAIL || "sophie@traxium.local",
-    role: Role.HEAD_OF_GLOBAL_PROCUREMENT
+    currency: Currency.USD,
+    rateToEUR: 0.92,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
   },
+];
+
+const annualTargetsSeed = [
   {
-    key: "marco",
-    name: "Marco Stein",
-    email: process.env.SEED_FINANCIAL_CONTROLLER_EMAIL || "marco@traxium.local",
-    role: Role.FINANCIAL_CONTROLLER
+    year: 2026,
+    targetValue: 1500000,
+    categoryKey: "rawMaterials",
   },
-  {
-    key: "luca",
-    name: "Luca Voss",
-    email: process.env.SEED_TACTICAL_BUYER_EMAIL || "luca@traxium.local",
-    role: Role.TACTICAL_BUYER
-  }
-] as const;
+];
 
-const businessUnitsSeed = [
-  { key: "coatings", name: "Coatings" },
-  { key: "polymers", name: "Polymers" }
-] as const;
+// Preserve legacy keys because seeded workflows reference them by key.
+// These remain authenticated app users, not buyer master data.
+const userSeeds = {
+  sophie: {
+    name: "Taylan Iscan Category Lead",
+    email: "gcmtaylaniscan@gmail.com",
+    role: Role.GLOBAL_CATEGORY_LEADER,
+  },
+  marco: {
+    name: "Taylan Iscan Finance",
+    email: "iscantaylan82@gmail.com",
+    role: Role.FINANCIAL_CONTROLLER,
+  },
+  luca: {
+    name: "Luca Buyer",
+    email: "luca@traxium.local",
+    role: Role.TACTICAL_BUYER,
+  },
+  helen: {
+    name: "Taylan Iscan Procurement Head",
+    email: "taylaniscan@gmail.com",
+    role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+  },
+} as const;
 
-const categoriesSeed = [
-  { key: "raw-materials", name: "Raw Materials", annualTarget: 2400000 },
-  { key: "logistics", name: "Logistics", annualTarget: 900000 },
-  { key: "packaging", name: "Packaging", annualTarget: 650000 }
-] as const;
+const buyerSeeds = {
+  luca: {
+    name: "Luca Buyer",
+  },
+} as const;
 
-const plantsSeed = [
-  { key: "rotterdam", name: "Rotterdam Plant", region: "EMEA" },
-  { key: "antwerp", name: "Antwerp Plant", region: "EMEA" }
-] as const;
+const supplierSeeds = {
+  basf: { name: "BASF" },
+  cabot: { name: "Cabot" },
+  clariant: { name: "Clariant" },
+} as const;
 
-const suppliersSeed = [
-  { key: "kronos", name: "Kronos Europe" },
-  { key: "tronox", name: "Tronox Holdings" },
-  { key: "orion", name: "Orion Engineered Carbons" },
-  { key: "sabic", name: "SABIC Polymers" },
-  { key: "dhl", name: "DHL Freight" }
-] as const;
+const materialSeeds = {
+  tio2: { name: "Titanium Dioxide" },
+  carbonBlack: { name: "Carbon Black" },
+  peCarrier: { name: "PE Carrier" },
+} as const;
 
-const materialsSeed = [
-  { key: "tio2", name: "Titanium Dioxide Rutile" },
-  { key: "carbon-black", name: "Carbon Black N330" },
-  { key: "pp-carrier", name: "PP Carrier Resin" },
-  { key: "freight-lane", name: "Freight Lane EMEA" },
-  { key: "stretch-film", name: "Stretch Film 23um" }
-] as const;
+const categorySeeds = {
+  rawMaterials: { name: "Raw Materials" },
+  packaging: { name: "Packaging" },
+} as const;
 
-type UserKey = (typeof usersSeed)[number]["key"];
-type BusinessUnitKey = (typeof businessUnitsSeed)[number]["key"];
-type CategoryKey = (typeof categoriesSeed)[number]["key"];
-type PlantKey = (typeof plantsSeed)[number]["key"];
-type SupplierKey = (typeof suppliersSeed)[number]["key"];
-type MaterialKey = (typeof materialsSeed)[number]["key"];
-type IdLookup<TKey extends string> = Record<TKey, { id: string }>;
-type AnnualTargetSeed = {
-  year: number;
-  targetValue: number;
-  categoryKey?: CategoryKey;
-};
-type SavingCardSeed = {
+const plantSeeds = {
+  almere: { name: "Almere Plant", region: "NL" },
+  antwerp: { name: "Antwerp Plant", region: "BE" },
+} as const;
+
+const businessUnitSeeds = {
+  coatings: { name: "Coatings" },
+  masterbatch: { name: "Masterbatch" },
+} as const;
+
+const DEFAULT_EVIDENCE_BUCKET = "evidence-private";
+
+type UserKey = keyof typeof userSeeds;
+type BuyerKey = keyof typeof buyerSeeds;
+type SupplierKey = keyof typeof supplierSeeds;
+type MaterialKey = keyof typeof materialSeeds;
+type CategoryKey = keyof typeof categorySeeds;
+type PlantKey = keyof typeof plantSeeds;
+type BusinessUnitKey = keyof typeof businessUnitSeeds;
+
+type IdLookup<T extends string> = Record<T, { id: string; name: string }>;
+
+function getEvidenceStorageBucketName() {
+  return process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_EVIDENCE_BUCKET;
+}
+
+function buildSeedEvidenceStoragePath(
+  organizationId: string,
+  savingCardId: string,
+  fileName: string
+) {
+  return `organizations/${organizationId}/saving-cards/${savingCardId}/evidence/${path.basename(fileName)}`;
+}
+
+const savingCardsSeed: Array<{
   title: string;
   description: string;
   savingType: string;
   phase: Phase;
   supplierKey: SupplierKey;
   materialKey: MaterialKey;
-  alternativeSupplierKey?: SupplierKey;
-  alternativeMaterialManualName?: string;
+  alternativeSupplierKey: SupplierKey | null;
+  alternativeMaterialManualName: string | null;
   categoryKey: CategoryKey;
   plantKey: PlantKey;
   businessUnitKey: BusinessUnitKey;
-  buyerKey: UserKey;
+  buyerKey: BuyerKey;
+  stakeholderKeys: UserKey[];
   baselinePrice: number;
   newPrice: number;
   annualVolume: number;
@@ -95,328 +136,477 @@ type SavingCardSeed = {
   endDate: Date;
   impactStartDate: Date;
   impactEndDate: Date;
-  stakeholderKeys: UserKey[];
   evidenceFileName: string;
   evidenceType: string;
-  cancellationReason?: string;
-};
-
-const fxRatesSeed = [
-  { currency: Currency.EUR, rateToEUR: 1, validFrom: date("2026-01-01") },
-  { currency: Currency.USD, rateToEUR: 0.92, validFrom: date("2026-01-01") }
-] as const;
-
-const annualTargetsSeed: AnnualTargetSeed[] = [
-  { year: 2026, targetValue: 3950000 },
-  { year: 2026, targetValue: 2400000, categoryKey: "raw-materials" },
-  { year: 2026, targetValue: 900000, categoryKey: "logistics" },
-  { year: 2026, targetValue: 650000, categoryKey: "packaging" }
-] as const;
-
-const savingCardsSeed: SavingCardSeed[] = [
+  cancellationReason: string | null;
+}> = [
   {
-    title: "Titanium dioxide renegotiation",
-    description: "Reopen annual TiO2 pricing with Kronos for the Rotterdam decorative coatings portfolio.",
+    title: "BASF TiO2 renegotiation",
+    description: "Renegotiate annual TiO2 pricing for coatings portfolio.",
     savingType: "Price renegotiation",
     phase: Phase.IDEA,
-    supplierKey: "kronos",
-    materialKey: "tio2",
-    categoryKey: "raw-materials",
-    plantKey: "rotterdam",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 2860,
-    newPrice: 2715,
-    annualVolume: 420,
+    supplierKey: "basf" as SupplierKey,
+    materialKey: "tio2" as MaterialKey,
+    alternativeSupplierKey: "clariant" as SupplierKey,
+    alternativeMaterialManualName: null,
+    categoryKey: "rawMaterials" as CategoryKey,
+    plantKey: "almere" as PlantKey,
+    businessUnitKey: "coatings" as BusinessUnitKey,
+    buyerKey: "luca" as BuyerKey,
+    stakeholderKeys: ["sophie", "marco"] as UserKey[],
+    baselinePrice: 10,
+    newPrice: 9.25,
+    annualVolume: 100000,
     currency: Currency.EUR,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Negotiation",
     implementationComplexity: "Medium",
-    qualificationStatus: "Not Started",
-    startDate: date("2026-01-10"),
-    endDate: date("2026-09-30"),
-    impactStartDate: date("2026-04-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["sophie", "marco"],
-    evidenceFileName: "titanium-dioxide-renegotiation.pdf",
-    evidenceType: "commercial_quote"
+    qualificationStatus: "Approved",
+    startDate: new Date("2026-01-01T00:00:00.000Z"),
+    endDate: new Date("2026-12-31T00:00:00.000Z"),
+    impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+    evidenceFileName: "basf-tio2-proposal.pdf",
+    evidenceType: "application/pdf",
+    cancellationReason: null,
   },
   {
-    title: "Carbon black dual sourcing",
-    description: "Qualify a second carbon black source to reduce dependency on a single supplier for black masterbatch.",
-    savingType: "Dual sourcing",
-    phase: Phase.IDEA,
-    supplierKey: "orion",
-    materialKey: "carbon-black",
-    categoryKey: "raw-materials",
-    plantKey: "antwerp",
-    businessUnitKey: "polymers",
-    buyerKey: "luca",
-    baselinePrice: 1450,
-    newPrice: 1360,
-    annualVolume: 680,
-    currency: Currency.EUR,
-    fxRate: 1,
-    frequency: Frequency.MULTI_YEAR,
-    savingDriver: "Supplier Change",
-    implementationComplexity: "High",
-    qualificationStatus: "Lab Testing",
-    startDate: date("2026-02-01"),
-    endDate: date("2026-11-30"),
-    impactStartDate: date("2026-07-01"),
-    impactEndDate: date("2027-06-30"),
-    stakeholderKeys: ["sophie"],
-    evidenceFileName: "carbon-black-dual-sourcing.pdf",
-    evidenceType: "qualification_plan"
-  },
-  {
-    title: "PP carrier resin optimization",
-    description: "Optimize PP carrier resin specification and price ladder for standard white masterbatch formulations.",
-    savingType: "Specification optimization",
+    title: "Cabot carbon black dual sourcing",
+    description: "Evaluate second source to reduce cost and supply risk.",
+    savingType: "Alternative supplier",
     phase: Phase.VALIDATED,
-    supplierKey: "sabic",
-    materialKey: "pp-carrier",
-    categoryKey: "raw-materials",
-    plantKey: "rotterdam",
-    businessUnitKey: "polymers",
-    buyerKey: "luca",
-    baselinePrice: 1325,
-    newPrice: 1240,
-    annualVolume: 950,
+    supplierKey: "cabot" as SupplierKey,
+    materialKey: "carbonBlack" as MaterialKey,
+    alternativeSupplierKey: "clariant" as SupplierKey,
+    alternativeMaterialManualName: null,
+    categoryKey: "rawMaterials" as CategoryKey,
+    plantKey: "antwerp" as PlantKey,
+    businessUnitKey: "masterbatch" as BusinessUnitKey,
+    buyerKey: "luca" as BuyerKey,
+    stakeholderKeys: ["sophie"] as UserKey[],
+    baselinePrice: 8.7,
+    newPrice: 8.1,
+    annualVolume: 85000,
     currency: Currency.EUR,
     fxRate: 1,
     frequency: Frequency.RECURRING,
-    savingDriver: "Specification Optimization",
-    implementationComplexity: "Medium",
-    qualificationStatus: "Approved",
-    startDate: date("2025-12-15"),
-    endDate: date("2026-10-31"),
-    impactStartDate: date("2026-03-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["sophie", "marco"],
-    evidenceFileName: "pp-carrier-resin-optimization.pdf",
-    evidenceType: "sourcing_analysis"
-  },
-  {
-    title: "Logistics optimization",
-    description: "Consolidate inbound freight lanes into weekly milk runs between Antwerp and Rotterdam.",
-    savingType: "Logistics optimization",
-    phase: Phase.VALIDATED,
-    supplierKey: "dhl",
-    materialKey: "freight-lane",
-    categoryKey: "logistics",
-    plantKey: "antwerp",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 1180,
-    newPrice: 1035,
-    annualVolume: 520,
-    currency: Currency.EUR,
-    fxRate: 1,
-    frequency: Frequency.ONE_TIME,
-    savingDriver: "Logistics Optimization",
-    implementationComplexity: "Low",
-    qualificationStatus: "Approved",
-    startDate: date("2026-01-05"),
-    endDate: date("2026-06-30"),
-    impactStartDate: date("2026-03-15"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["marco"],
-    evidenceFileName: "logistics-optimization.pdf",
-    evidenceType: "logistics_tender"
-  },
-  {
-    title: "Payment terms improvement",
-    description: "Extend payment terms on titanium dioxide contracts from net 45 to net 75 days.",
-    savingType: "Payment terms improvement",
-    phase: Phase.REALISED,
-    supplierKey: "kronos",
-    materialKey: "tio2",
-    categoryKey: "raw-materials",
-    plantKey: "rotterdam",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 2780,
-    newPrice: 2705,
-    annualVolume: 380,
-    currency: Currency.EUR,
-    fxRate: 1,
-    frequency: Frequency.RECURRING,
-    savingDriver: "Payment Term Improvement",
-    implementationComplexity: "Low",
-    qualificationStatus: "Approved",
-    startDate: date("2025-11-01"),
-    endDate: date("2026-12-31"),
-    impactStartDate: date("2026-01-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["sophie", "marco"],
-    evidenceFileName: "payment-terms-improvement.pdf",
-    evidenceType: "signed_amendment"
-  },
-  {
-    title: "Demand reduction",
-    description: "Reduce stretch film consumption per pallet through revised wrapping patterns and operator standards.",
-    savingType: "Demand reduction",
-    phase: Phase.REALISED,
-    supplierKey: "sabic",
-    materialKey: "stretch-film",
-    categoryKey: "packaging",
-    plantKey: "antwerp",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 2.84,
-    newPrice: 2.43,
-    annualVolume: 190000,
-    currency: Currency.EUR,
-    fxRate: 1,
-    frequency: Frequency.RECURRING,
-    savingDriver: "Demand Reduction",
-    implementationComplexity: "Medium",
-    qualificationStatus: "Approved",
-    startDate: date("2025-10-01"),
-    endDate: date("2026-09-30"),
-    impactStartDate: date("2026-01-15"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["marco"],
-    evidenceFileName: "demand-reduction.pdf",
-    evidenceType: "plant_trial"
-  },
-  {
-    title: "Material substitution",
-    description: "Substitute the standard carbon black grade with a lower-cost equivalent approved for non-critical shades.",
-    savingType: "Material substitution",
-    phase: Phase.REALISED,
-    supplierKey: "orion",
-    materialKey: "carbon-black",
-    alternativeMaterialManualName: "Carbon Black N326",
-    categoryKey: "raw-materials",
-    plantKey: "rotterdam",
-    businessUnitKey: "polymers",
-    buyerKey: "luca",
-    baselinePrice: 1485,
-    newPrice: 1375,
-    annualVolume: 340,
-    currency: Currency.EUR,
-    fxRate: 1,
-    frequency: Frequency.MULTI_YEAR,
-    savingDriver: "Material Substitution",
+    savingDriver: "Dual sourcing",
     implementationComplexity: "High",
     qualificationStatus: "Plant Trial",
-    startDate: date("2025-09-01"),
-    endDate: date("2027-03-31"),
-    impactStartDate: date("2026-02-01"),
-    impactEndDate: date("2027-03-31"),
-    stakeholderKeys: ["sophie", "marco"],
-    evidenceFileName: "material-substitution.pdf",
-    evidenceType: "technical_evaluation"
+    startDate: new Date("2026-01-01T00:00:00.000Z"),
+    endDate: new Date("2026-12-31T00:00:00.000Z"),
+    impactStartDate: new Date("2026-06-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+    evidenceFileName: "carbon-black-trial.xlsx",
+    evidenceType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    cancellationReason: null,
   },
   {
-    title: "Supplier switch",
-    description: "Shift titanium dioxide demand from Kronos to Tronox on approved architectural white grades.",
-    savingType: "Supplier switch",
-    phase: Phase.ACHIEVED,
-    supplierKey: "kronos",
-    materialKey: "tio2",
-    alternativeSupplierKey: "tronox",
-    categoryKey: "raw-materials",
-    plantKey: "antwerp",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 2925,
-    newPrice: 2635,
-    annualVolume: 240,
-    currency: Currency.USD,
-    fxRate: 0.92,
-    frequency: Frequency.MULTI_YEAR,
-    savingDriver: "Supplier Change",
-    implementationComplexity: "Strategic",
-    qualificationStatus: "Approved",
-    startDate: date("2025-06-01"),
-    endDate: date("2026-12-31"),
-    impactStartDate: date("2025-11-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["sophie", "marco"],
-    evidenceFileName: "supplier-switch.pdf",
-    evidenceType: "award_decision"
-  },
-  {
-    title: "Index decrease pass-through",
-    description: "Pass through lower propylene index levels into the PP carrier resin formula pricing.",
-    savingType: "Index decrease pass-through",
-    phase: Phase.ACHIEVED,
-    supplierKey: "sabic",
-    materialKey: "pp-carrier",
-    categoryKey: "raw-materials",
-    plantKey: "rotterdam",
-    businessUnitKey: "polymers",
-    buyerKey: "luca",
-    baselinePrice: 1385,
-    newPrice: 1270,
-    annualVolume: 880,
-    currency: Currency.USD,
-    fxRate: 0.92,
-    frequency: Frequency.RECURRING,
-    savingDriver: "Index Reduction",
-    implementationComplexity: "Medium",
-    qualificationStatus: "Approved",
-    startDate: date("2025-07-01"),
-    endDate: date("2026-12-31"),
-    impactStartDate: date("2026-01-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["marco"],
-    evidenceFileName: "index-decrease-pass-through.pdf",
-    evidenceType: "index_formula"
-  },
-  {
-    title: "Packaging specification optimization",
-    description: "Downgauge pallet stretch film after warehouse trials without compromising load stability.",
-    savingType: "Packaging specification optimization",
-    phase: Phase.CANCELLED,
-    supplierKey: "sabic",
-    materialKey: "stretch-film",
-    alternativeMaterialManualName: "Stretch Film 20um",
-    categoryKey: "packaging",
-    plantKey: "antwerp",
-    businessUnitKey: "coatings",
-    buyerKey: "luca",
-    baselinePrice: 2.82,
-    newPrice: 2.36,
-    annualVolume: 150000,
+    title: "PE carrier formulation optimization",
+    description: "Reduce PE carrier cost through formulation adjustment.",
+    savingType: "Specification change",
+    phase: Phase.REALISED,
+    supplierKey: "basf" as SupplierKey,
+    materialKey: "peCarrier" as MaterialKey,
+    alternativeSupplierKey: null,
+    alternativeMaterialManualName: "Optimized PE mix",
+    categoryKey: "rawMaterials" as CategoryKey,
+    plantKey: "almere" as PlantKey,
+    businessUnitKey: "masterbatch" as BusinessUnitKey,
+    buyerKey: "luca" as BuyerKey,
+    stakeholderKeys: ["marco"] as UserKey[],
+    baselinePrice: 5.5,
+    newPrice: 5.0,
+    annualVolume: 140000,
     currency: Currency.EUR,
     fxRate: 1,
     frequency: Frequency.RECURRING,
-    savingDriver: "Specification Optimization",
+    savingDriver: "Formulation optimization",
     implementationComplexity: "Medium",
-    qualificationStatus: "Rejected",
-    startDate: date("2026-01-01"),
-    endDate: date("2026-08-31"),
-    impactStartDate: date("2026-05-01"),
-    impactEndDate: date("2026-12-31"),
-    stakeholderKeys: ["sophie"],
-    evidenceFileName: "packaging-specification-optimization.pdf",
-    evidenceType: "trial_report",
-    cancellationReason: "Warehouse trial showed unacceptable pallet instability during export shipments."
+    qualificationStatus: "Approved",
+    startDate: new Date("2026-01-01T00:00:00.000Z"),
+    endDate: new Date("2026-12-31T00:00:00.000Z"),
+    impactStartDate: new Date("2026-03-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+    evidenceFileName: "pe-carrier-optimization.docx",
+    evidenceType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    cancellationReason: null,
+  },
+] as const;
+
+async function clearExistingData() {
+  await prisma.phaseChangeRequestApproval.deleteMany();
+  await prisma.phaseChangeRequest.deleteMany();
+  await prisma.approval.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.phaseHistory.deleteMany();
+  await prisma.savingCardComment.deleteMany();
+  await prisma.savingCardAlternativeMaterial.deleteMany();
+  await prisma.savingCardAlternativeSupplier.deleteMany();
+  await prisma.savingCardEvidence.deleteMany();
+  await prisma.savingCardStakeholder.deleteMany();
+  await prisma.savingCard.deleteMany();
+  await prisma.annualTarget.deleteMany();
+  await prisma.fxRate.deleteMany();
+  await prisma.buyer.deleteMany();
+  await prisma.businessUnit.deleteMany();
+  await prisma.plant.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.material.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
+}
+
+async function upsertOrganization() {
+  return prisma.organization.upsert({
+    where: { slug: "demo-org" },
+    update: {},
+    create: {
+      name: "Demo Org",
+      slug: "demo-org",
+    },
+  });
+}
+
+async function upsertUsers(organizationId: string): Promise<IdLookup<UserKey>> {
+  const entries = await Promise.all(
+    (Object.entries(userSeeds) as [UserKey, (typeof userSeeds)[UserKey]][]).map(async ([key, user]) => {
+      const created = await prisma.user.upsert({
+        where: {
+          organizationId_email: {
+            organizationId,
+            email: user.email,
+          },
+        },
+        update: {
+          name: user.name,
+          role: user.role,
+        },
+        create: {
+          organizationId,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<UserKey>;
+}
+
+async function upsertBuyers(organizationId: string): Promise<IdLookup<BuyerKey>> {
+  const entries = await Promise.all(
+    (Object.entries(buyerSeeds) as [BuyerKey, (typeof buyerSeeds)[BuyerKey]][]).map(async ([key, buyer]) => {
+      const created = await prisma.buyer.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: buyer.name,
+          },
+        },
+        update: {},
+        create: {
+          organizationId,
+          name: buyer.name,
+          email: null,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<BuyerKey>;
+}
+
+async function upsertSuppliers(organizationId: string): Promise<IdLookup<SupplierKey>> {
+  const entries = await Promise.all(
+    (Object.entries(supplierSeeds) as [SupplierKey, (typeof supplierSeeds)[SupplierKey]][]).map(async ([key, supplier]) => {
+      const created = await prisma.supplier.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: supplier.name,
+          },
+        },
+        update: {},
+        create: {
+          organizationId,
+          name: supplier.name,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<SupplierKey>;
+}
+
+async function upsertMaterials(organizationId: string): Promise<IdLookup<MaterialKey>> {
+  const entries = await Promise.all(
+    (Object.entries(materialSeeds) as [MaterialKey, (typeof materialSeeds)[MaterialKey]][]).map(async ([key, material]) => {
+      const created = await prisma.material.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: material.name,
+          },
+        },
+        update: {},
+        create: {
+          organizationId,
+          name: material.name,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<MaterialKey>;
+}
+
+async function upsertCategories(organizationId: string): Promise<IdLookup<CategoryKey>> {
+  const entries = await Promise.all(
+    (Object.entries(categorySeeds) as [CategoryKey, (typeof categorySeeds)[CategoryKey]][]).map(async ([key, category]) => {
+      const created = await prisma.category.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: category.name,
+          },
+        },
+        update: {},
+        create: {
+          organizationId,
+          name: category.name,
+          annualTarget: 0,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<CategoryKey>;
+}
+
+async function upsertPlants(organizationId: string): Promise<IdLookup<PlantKey>> {
+  const entries = await Promise.all(
+    (Object.entries(plantSeeds) as [PlantKey, (typeof plantSeeds)[PlantKey]][]).map(async ([key, plant]) => {
+      const created = await prisma.plant.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: plant.name,
+          },
+        },
+        update: {
+          region: plant.region,
+        },
+        create: {
+          organizationId,
+          name: plant.name,
+          region: plant.region,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<PlantKey>;
+}
+
+async function upsertBusinessUnits(organizationId: string): Promise<IdLookup<BusinessUnitKey>> {
+  const entries = await Promise.all(
+    (Object.entries(businessUnitSeeds) as [BusinessUnitKey, (typeof businessUnitSeeds)[BusinessUnitKey]][]).map(async ([key, unit]) => {
+      const created = await prisma.businessUnit.upsert({
+        where: {
+          organizationId_name: {
+            organizationId,
+            name: unit.name,
+          },
+        },
+        update: {},
+        create: {
+          organizationId,
+          name: unit.name,
+        },
+      });
+
+      return [key, { id: created.id, name: created.name }] as const;
+    })
+  );
+
+  return Object.fromEntries(entries) as IdLookup<BusinessUnitKey>;
+}
+
+function buildPhaseHistory(phase: Phase, users: IdLookup<UserKey>) {
+  const history: Array<{
+    fromPhase: Phase | null;
+    toPhase: Phase;
+    changedById: string;
+  }> = [
+    {
+      fromPhase: null,
+      toPhase: Phase.IDEA,
+      changedById: users.luca.id,
+    },
+  ];
+
+  if (phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED) {
+    history.push({
+      fromPhase: Phase.IDEA,
+      toPhase: Phase.VALIDATED,
+      changedById: users.sophie.id,
+    });
   }
-];
+
+  if (phase === Phase.REALISED || phase === Phase.ACHIEVED) {
+    history.push({
+      fromPhase: Phase.VALIDATED,
+      toPhase: Phase.REALISED,
+      changedById: users.marco.id,
+    });
+  }
+
+  if (phase === Phase.ACHIEVED) {
+    history.push({
+      fromPhase: Phase.REALISED,
+      toPhase: Phase.ACHIEVED,
+      changedById: users.helen.id,
+    });
+  }
+
+  if (phase === Phase.CANCELLED) {
+    history.push({
+      fromPhase: Phase.IDEA,
+      toPhase: Phase.CANCELLED,
+      changedById: users.helen.id,
+    });
+  }
+
+  return history;
+}
+
+function buildApprovals(
+  savingCardId: string,
+  phase: Phase,
+  users: IdLookup<UserKey>
+) {
+  const approvals: Array<{
+    savingCardId: string;
+    approverId: string;
+    phase: Phase;
+    approved: boolean;
+    status: ApprovalStatus;
+    comment: string;
+  }> = [];
+
+  if (phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED) {
+    approvals.push({
+      savingCardId,
+      approverId: users.sophie.id,
+      phase: Phase.VALIDATED,
+      approved: true,
+      status: ApprovalStatus.APPROVED,
+      comment: "Seeded approval",
+    });
+  }
+
+  if (phase === Phase.REALISED || phase === Phase.ACHIEVED) {
+    approvals.push({
+      savingCardId,
+      approverId: users.marco.id,
+      phase: Phase.REALISED,
+      approved: true,
+      status: ApprovalStatus.APPROVED,
+      comment: "Seeded approval",
+    });
+  }
+
+  if (phase === Phase.ACHIEVED) {
+    approvals.push({
+      savingCardId,
+      approverId: users.helen.id,
+      phase: Phase.ACHIEVED,
+      approved: true,
+      status: ApprovalStatus.APPROVED,
+      comment: "Seeded approval",
+    });
+  }
+
+  return approvals;
+}
+
+async function createPendingWorkflow(
+  createdCards: Record<string, { id: string }>,
+  users: IdLookup<UserKey>
+) {
+  const card = createdCards["BASF TiO2 renegotiation"];
+  if (!card) return;
+
+  await prisma.phaseChangeRequest.create({
+    data: {
+      savingCardId: card.id,
+      currentPhase: Phase.IDEA,
+      requestedPhase: Phase.VALIDATED,
+      requestedById: users.luca.id,
+      approvalStatus: ApprovalStatus.PENDING,
+      comment: "Please review seeded transition request.",
+      approvals: {
+        create: [
+          {
+            approverId: users.sophie.id,
+            role: Role.GLOBAL_CATEGORY_LEADER,
+            status: ApprovalStatus.PENDING,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.notification.create({
+    data: {
+      userId: users.sophie.id,
+      title: "Phase change approval required",
+      message: "BASF TiO2 renegotiation requests movement from IDEA to VALIDATED.",
+    },
+  });
+}
 
 async function main() {
   await clearExistingData();
 
-  const users = await upsertUsers();
-  const businessUnits = await upsertBusinessUnits();
-  const categories = await upsertCategories();
-  const plants = await upsertPlants();
-  const suppliers = await upsertSuppliers();
-  const materials = await upsertMaterials();
+  const organization = await upsertOrganization();
 
-  await prisma.fxRate.createMany({ data: fxRatesSeed.map((rate) => ({ ...rate })) });
+  const users = await upsertUsers(organization.id);
+  const buyers = await upsertBuyers(organization.id);
+  const businessUnits = await upsertBusinessUnits(organization.id);
+  const categories = await upsertCategories(organization.id);
+  const plants = await upsertPlants(organization.id);
+  const suppliers = await upsertSuppliers(organization.id);
+  const materials = await upsertMaterials(organization.id);
+
+  await prisma.fxRate.createMany({
+    data: fxRatesSeed.map((rate) => ({ ...rate })),
+  });
+
   await prisma.annualTarget.createMany({
     data: annualTargetsSeed.map((target) => ({
+      organizationId: organization.id,
       year: target.year,
       targetValue: target.targetValue,
-      categoryId: target.categoryKey ? categories[target.categoryKey].id : null
-    }))
+      categoryId: target.categoryKey ? categories[target.categoryKey as CategoryKey].id : null,
+    })),
   });
 
   const createdCards: Record<string, { id: string }> = {};
@@ -427,25 +617,28 @@ async function main() {
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
       currency: card.currency,
-      fxRate: card.fxRate
+      fxRate: card.fxRate,
     });
 
     const created = await prisma.savingCard.create({
       data: {
+        organizationId: organization.id,
         title: card.title,
         description: card.description,
         savingType: card.savingType,
         phase: card.phase,
         supplierId: suppliers[card.supplierKey].id,
         materialId: materials[card.materialKey].id,
-        alternativeSupplierId: card.alternativeSupplierKey ? suppliers[card.alternativeSupplierKey].id : null,
+        alternativeSupplierId: card.alternativeSupplierKey
+          ? suppliers[card.alternativeSupplierKey].id
+          : null,
         alternativeSupplierManualName: null,
         alternativeMaterialId: null,
         alternativeMaterialManualName: card.alternativeMaterialManualName ?? null,
         categoryId: categories[card.categoryKey].id,
         plantId: plants[card.plantKey].id,
         businessUnitId: businessUnits[card.businessUnitKey].id,
-        buyerId: users[card.buyerKey].id,
+        buyerId: buyers[card.buyerKey].id,
         baselinePrice: card.baselinePrice,
         newPrice: card.newPrice,
         annualVolume: card.annualVolume,
@@ -461,43 +654,45 @@ async function main() {
         endDate: card.endDate,
         impactStartDate: card.impactStartDate,
         impactEndDate: card.impactEndDate,
-        financeLocked: isFinanceLocked(card.phase),
+        financeLocked: card.phase === "REALISED" || card.phase === "ACHIEVED",
         cancellationReason: card.cancellationReason ?? null,
         stakeholders: {
           create: card.stakeholderKeys.map((stakeholderKey) => ({
-            userId: users[stakeholderKey].id
-          }))
-        },
-        evidence: {
-          create: {
-  fileName: card.evidenceFileName,
-  storageBucket: "evidence-private",
-  storagePath: `demo/${card.evidenceFileName}`,
-  fileSize: 245760,
-  fileType: card.evidenceType,
-  uploadedById: users.luca.id
-}
+            userId: users[stakeholderKey].id,
+          })),
         },
         comments: {
           create: {
             authorId: users.luca.id,
-            body: `Seeded demo case for ${card.title.toLowerCase()}.`
-          }
+            body: `Seeded demo case for ${card.title.toLowerCase()}.`,
+          },
         },
         phaseHistory: {
-          create: buildPhaseHistory(card.phase, users)
+          create: buildPhaseHistory(card.phase, users),
         },
         auditLogs: {
           create: {
             userId: users.luca.id,
             action: "saving_card.seeded",
-            detail: `Seeded demo saving card in ${card.phase} phase`
-          }
-        }
-      }
+            detail: `Seeded demo saving card in ${card.phase} phase`,
+          },
+        },
+      },
     });
 
     createdCards[card.title] = { id: created.id };
+
+    await prisma.savingCardEvidence.create({
+      data: {
+        savingCardId: created.id,
+        fileName: card.evidenceFileName,
+        storageBucket: getEvidenceStorageBucketName(),
+        storagePath: buildSeedEvidenceStoragePath(organization.id, created.id, card.evidenceFileName),
+        fileSize: 245760,
+        fileType: card.evidenceType,
+        uploadedById: users.luca.id,
+      },
+    });
 
     const approvals = buildApprovals(created.id, card.phase, users);
     if (approvals.length) {
@@ -507,305 +702,15 @@ async function main() {
 
   await createPendingWorkflow(createdCards, users);
 
-  console.log("Seed completed with 10 saving cards.");
-}
-
-async function clearExistingData() {
-  await prisma.auditLog.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.phaseChangeRequestApproval.deleteMany();
-  await prisma.phaseChangeRequest.deleteMany();
-  await prisma.approval.deleteMany();
-  await prisma.phaseHistory.deleteMany();
-  await prisma.savingCardComment.deleteMany();
-  await prisma.savingCardEvidence.deleteMany();
-  await prisma.savingCardAlternativeMaterial.deleteMany();
-  await prisma.savingCardAlternativeSupplier.deleteMany();
-  await prisma.savingCardStakeholder.deleteMany();
-  await prisma.savingCard.deleteMany();
-  await prisma.annualTarget.deleteMany();
-  await prisma.fxRate.deleteMany();
-  await prisma.businessUnit.deleteMany();
-  await prisma.plant.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.material.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.user.deleteMany();
-}
-
-async function upsertUsers(): Promise<IdLookup<UserKey>> {
-  const records = await Promise.all(
-    usersSeed.map((user) =>
-      prisma.user.upsert({
-        where: { email: user.email },
-        update: { name: user.name, role: user.role },
-        create: { name: user.name, email: user.email, role: user.role }
-      })
-    )
-  );
-
-  return buildIdLookup(usersSeed, records, (seedItem, record) => seedItem.email === record.email);
-}
-
-async function upsertBusinessUnits(): Promise<IdLookup<BusinessUnitKey>> {
-  const records = await Promise.all(
-    businessUnitsSeed.map((businessUnit) =>
-      prisma.businessUnit.upsert({
-        where: { name: businessUnit.name },
-        update: {},
-        create: { name: businessUnit.name }
-      })
-    )
-  );
-
-  return buildIdLookup(businessUnitsSeed, records, (seedItem, record) => seedItem.name === record.name);
-}
-
-async function upsertCategories(): Promise<IdLookup<CategoryKey>> {
-  const records = await Promise.all(
-    categoriesSeed.map((category) =>
-      prisma.category.upsert({
-        where: { name: category.name },
-        update: { annualTarget: category.annualTarget },
-        create: { name: category.name, annualTarget: category.annualTarget }
-      })
-    )
-  );
-
-  return buildIdLookup(categoriesSeed, records, (seedItem, record) => seedItem.name === record.name);
-}
-
-async function upsertPlants(): Promise<IdLookup<PlantKey>> {
-  const records = await Promise.all(
-    plantsSeed.map((plant) =>
-      prisma.plant.upsert({
-        where: { name: plant.name },
-        update: { region: plant.region },
-        create: { name: plant.name, region: plant.region }
-      })
-    )
-  );
-
-  return buildIdLookup(plantsSeed, records, (seedItem, record) => seedItem.name === record.name);
-}
-
-async function upsertSuppliers(): Promise<IdLookup<SupplierKey>> {
-  const records = await Promise.all(
-    suppliersSeed.map((supplier) =>
-      prisma.supplier.upsert({
-        where: { name: supplier.name },
-        update: {},
-        create: { name: supplier.name }
-      })
-    )
-  );
-
-  return buildIdLookup(suppliersSeed, records, (seedItem, record) => seedItem.name === record.name);
-}
-
-async function upsertMaterials(): Promise<IdLookup<MaterialKey>> {
-  const records = await Promise.all(
-    materialsSeed.map((material) =>
-      prisma.material.upsert({
-        where: { name: material.name },
-        update: {},
-        create: { name: material.name }
-      })
-    )
-  );
-
-  return buildIdLookup(materialsSeed, records, (seedItem, record) => seedItem.name === record.name);
-}
-
-function buildPhaseHistory(phase: Phase, users: IdLookup<UserKey>) {
-  const orderedPhases = historyPhasesFor(phase);
-
-  return orderedPhases.map((currentPhase, index) => ({
-    fromPhase: index === 0 ? null : orderedPhases[index - 1],
-    toPhase: currentPhase,
-    changedById: currentPhase === Phase.IDEA ? users.luca.id : currentPhase === Phase.CANCELLED ? users.sophie.id : users.marco.id
-  }));
-}
-
-function historyPhasesFor(phase: Phase) {
-  switch (phase) {
-    case Phase.IDEA:
-      return [Phase.IDEA];
-    case Phase.VALIDATED:
-      return [Phase.IDEA, Phase.VALIDATED];
-    case Phase.REALISED:
-      return [Phase.IDEA, Phase.VALIDATED, Phase.REALISED];
-    case Phase.ACHIEVED:
-      return [Phase.IDEA, Phase.VALIDATED, Phase.REALISED, Phase.ACHIEVED];
-    case Phase.CANCELLED:
-      return [Phase.IDEA, Phase.CANCELLED];
-  }
-}
-
-function buildApprovals(savingCardId: string, phase: Phase, users: IdLookup<UserKey>) {
-  const approvals: Array<{
-    savingCardId: string;
-    approverId: string;
-    phase: Phase;
-    approved: boolean;
-    status: ApprovalStatus;
-    comment: string;
-  }> = [];
-
-  if (phase !== Phase.IDEA && phase !== Phase.CANCELLED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.sophie.id,
-      phase: Phase.IDEA,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Idea phase approved during portfolio review."
-    });
-  }
-
-  if (phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push(
-      {
-        savingCardId,
-        approverId: users.sophie.id,
-        phase: Phase.VALIDATED,
-        approved: true,
-        status: ApprovalStatus.APPROVED,
-        comment: "Commercial case validated."
-      },
-      {
-        savingCardId,
-        approverId: users.marco.id,
-        phase: Phase.VALIDATED,
-        approved: true,
-        status: ApprovalStatus.APPROVED,
-        comment: "Finance assumptions validated."
-      }
-    );
-  }
-
-  if (phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.marco.id,
-      phase: Phase.REALISED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Savings realised in the monthly result."
-    });
-  }
-
-  if (phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.marco.id,
-      phase: Phase.ACHIEVED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Savings fully achieved and closed."
-    });
-  }
-
-  return approvals;
-}
-
-async function createPendingWorkflow(createdCards: Record<string, { id: string }>, users: IdLookup<UserKey>) {
-  const titaniumRequest = await prisma.phaseChangeRequest.create({
-    data: {
-      savingCardId: createdCards["Titanium dioxide renegotiation"].id,
-      currentPhase: Phase.IDEA,
-      requestedPhase: Phase.VALIDATED,
-      requestedById: users.luca.id,
-      approvalStatus: ApprovalStatus.PENDING,
-      comment: "Supplier meeting completed. Ready for leadership and finance validation.",
-      approvals: {
-        create: [
-          {
-            approverId: users.sophie.id,
-            role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
-            status: ApprovalStatus.PENDING
-          },
-          {
-            approverId: users.marco.id,
-            role: Role.FINANCIAL_CONTROLLER,
-            status: ApprovalStatus.PENDING
-          }
-        ]
-      }
-    }
-  });
-
-  const logisticsRequest = await prisma.phaseChangeRequest.create({
-    data: {
-      savingCardId: createdCards["Logistics optimization"].id,
-      currentPhase: Phase.VALIDATED,
-      requestedPhase: Phase.REALISED,
-      requestedById: users.luca.id,
-      approvalStatus: ApprovalStatus.PENDING,
-      comment: "Lane consolidation is live and first invoices are booked.",
-      approvals: {
-        create: [
-          {
-            approverId: users.marco.id,
-            role: Role.FINANCIAL_CONTROLLER,
-            status: ApprovalStatus.PENDING
-          }
-        ]
-      }
-    }
-  });
-
-  await prisma.notification.createMany({
-    data: [
-      {
-        userId: users.sophie.id,
-        title: "Approval required",
-        message: `Titanium dioxide renegotiation is waiting for your validated-phase approval (${titaniumRequest.id}).`
-      },
-      {
-        userId: users.marco.id,
-        title: "Approval required",
-        message: `Titanium dioxide renegotiation is waiting for your validated-phase approval (${titaniumRequest.id}).`
-      },
-      {
-        userId: users.marco.id,
-        title: "Approval required",
-        message: `Logistics optimization is waiting for your realised-phase approval (${logisticsRequest.id}).`
-      }
-    ]
-  });
-}
-
-function isFinanceLocked(phase: Phase) {
-  return phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED;
-}
-
-function buildIdLookup<
-  TSeed extends readonly { key: string }[],
-  TRecord extends { id: string }
->(seed: TSeed, records: TRecord[], matches: (seedItem: TSeed[number], record: TRecord) => boolean) {
-  const lookup = {} as Record<TSeed[number]["key"], { id: string }>;
-
-  for (const seedItem of seed) {
-    const record = records.find((item) => matches(seedItem, item));
-    if (!record) {
-      throw new Error(`Unable to build lookup for ${String(seedItem.key)}.`);
-    }
-    lookup[seedItem.key as TSeed[number]["key"]] = { id: record.id };
-  }
-
-  return lookup;
-}
-
-function date(value: string) {
-  return new Date(`${value}T00:00:00.000Z`);
+  console.log(`Seed completed for organization: ${organization.name}`);
 }
 
 main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
+  .then(async () => {
     await prisma.$disconnect();
+  })
+  .catch(async (error) => {
+    console.error(error);
+    await prisma.$disconnect();
+    process.exit(1);
   });

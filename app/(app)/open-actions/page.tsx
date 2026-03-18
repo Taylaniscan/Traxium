@@ -13,7 +13,7 @@ export default async function OpenActionsPage() {
   let approvals: PendingApprovals = [];
 
   try {
-    approvals = await getPendingApprovals(user.id);
+    approvals = await getPendingApprovals(user.id, user.organizationId);
   } catch (error) {
     console.log("Open actions data could not be loaded:", error);
   }

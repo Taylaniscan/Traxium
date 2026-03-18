@@ -27,25 +27,44 @@ export function OpenActionsList({ actions }: { actions: OpenAction[] }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  function getApprovalErrorMessage(status: number, apiMessage?: string) {
+    switch (status) {
+      case 401:
+        return apiMessage ?? "Your session has expired. Sign in again and retry.";
+      case 403:
+        return apiMessage ?? "You are not assigned to approve this phase change request.";
+      case 404:
+        return apiMessage ?? "This phase change request is no longer available or you do not have access.";
+      case 409:
+        return apiMessage ?? "This phase change request was already processed or is no longer pending.";
+      default:
+        return apiMessage ?? "Unable to update this action.";
+    }
+  }
+
   async function submitDecision(requestId: string, approved: boolean) {
     setLoadingId(requestId);
     setError(null);
 
-    const response = await fetch("/api/approve-phase-change", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, approved })
-    });
+    try {
+      const response = await fetch("/api/approve-phase-change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, approved })
+      });
 
-    if (!response.ok) {
-      const result = await response.json().catch(() => null);
-      setError(result?.error ?? "Unable to update this action.");
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setError(getApprovalErrorMessage(response.status, result?.error));
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Unable to reach the workflow service. Please retry.");
+    } finally {
       setLoadingId(null);
-      return;
     }
-
-    setLoadingId(null);
-    router.refresh();
   }
 
   if (!actions.length) {

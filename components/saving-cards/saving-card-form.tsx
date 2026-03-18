@@ -323,20 +323,13 @@ export function SavingCardForm({ mode, referenceData, card }: Props) {
                   value={form.businessUnit}
                   onChange={(businessUnit) => setForm({ ...form, businessUnit })}
                 />
-                <div className="space-y-2">
-                  <Label>Buyer</Label>
-                  <SearchableUserSelect
-                    users={referenceData.users}
-                    value={form.buyer.id}
-                    onChange={(userId) => {
-                      const user = referenceData.users.find((item) => item.id === userId);
-                      if (!user) return;
-                      setForm({ ...form, buyer: existingValue(user.id, user.name) });
-                    }}
-                    placeholder="Search buyers"
-                  />
-                  <p className="text-[12px] leading-5 text-[var(--muted-foreground)]">Select the accountable buyer from the user directory.</p>
-                </div>
+                <CreatableMasterDataField
+                  label="Buyer"
+                  items={referenceData.buyers}
+                  value={form.buyer}
+                  onChange={(buyer) => setForm({ ...form, buyer })}
+                  helper="Select the accountable buyer from buyer master data or create one inline."
+                />
                 </div>
                 {(form.savingType.toLowerCase().includes("supplier") || form.savingType.toLowerCase().includes("material")) && (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -675,71 +668,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SearchableUserSelect({
-  users,
-  value,
-  onChange,
-  placeholder
-}: {
-  users: Array<{ id: string; name: string; email: string; role: keyof typeof roleLabels }>;
-  value?: string;
-  onChange: (userId: string) => void;
-  placeholder: string;
-}) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return users;
-    return users.filter((user) =>
-      `${user.name} ${user.email} ${roleLabels[user.role]}`.toLowerCase().includes(normalized)
-    );
-  }, [query, users]);
-
-  const selected = users.find((user) => user.id === value);
-
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm"
-      >
-        <span className={selected ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>
-          {selected ? formatUserOption(selected) : placeholder}
-        </span>
-        <span className="text-[var(--muted-foreground)]">{open ? "Close" : "Select"}</span>
-      </button>
-      {open ? (
-        <div className="border-t border-[var(--border)] p-3">
-          <Input placeholder={placeholder} value={query} onChange={(event) => setQuery(event.target.value)} />
-          <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-            {filtered.map((user) => (
-              <button
-                key={user.id}
-                type="button"
-                onClick={() => {
-                  onChange(user.id);
-                  setQuery("");
-                  setOpen(false);
-                }}
-                className={`w-full rounded-2xl border px-3 py-3 text-left text-sm ${
-                  user.id === value ? "border-[var(--primary)] bg-[var(--secondary)]/55" : "border-[var(--border)] bg-[var(--muted)]/30"
-                }`}
-              >
-                <p className="font-medium">{user.name}</p>
-                <p className="text-[12px] text-[var(--muted-foreground)]">{roleLabels[user.role]}</p>
-              </button>
-            ))}
-            {filtered.length === 0 ? <p className="text-sm text-[var(--muted-foreground)]">No users found.</p> : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function SearchableUserMultiSelect({
   users,
   selectedUserIds,
@@ -802,10 +730,6 @@ function SearchableUserMultiSelect({
       {filtered.length === 0 ? <p className="text-sm text-[var(--muted-foreground)]">No users found.</p> : null}
     </div>
   );
-}
-
-function formatUserOption(user: { name: string; role: keyof typeof roleLabels }) {
-  return `${user.name} - ${roleLabels[user.role]}`;
 }
 
 function toDateValue(value?: string | Date) {

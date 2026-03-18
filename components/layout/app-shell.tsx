@@ -4,7 +4,10 @@ import { AppShellClient } from "@/components/layout/app-shell-client";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [notifications, pendingApprovals] = await Promise.all([getNotificationsForUser(user.id), getPendingApprovals(user.id)]);
+  const [notifications, pendingApprovals] = await Promise.all([
+    getNotificationsForUser(user.id),
+    getPendingApprovals(user.id, user.organizationId),
+  ]);
 
   return (
     <AppShellClient

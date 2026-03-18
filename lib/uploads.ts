@@ -1,30 +1,39 @@
+import "server-only";
+
 import crypto from "node:crypto";
 import path from "node:path";
-import { createClient } from "@supabase/supabase-js";
 import {
   MAX_EVIDENCE_FILE_SIZE,
   isAllowedEvidenceFileName,
 } from "@/lib/evidence-config";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const DEFAULT_EVIDENCE_BUCKET = "evidence-private";
+const EVIDENCE_SIGNED_URL_TTL_SECONDS = 60;
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase storage environment variables are missing.");
-  }
+type EvidenceStorageLocation = {
+  storageBucket: string;
+  storagePath: string;
+  organizationId: string;
+  savingCardId: string;
+  uploadedById?: string | null;
+  fileName?: string | null;
+};
 
-  try {
-    new URL(supabaseUrl);
-  } catch {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL is invalid.");
-  }
+export class EvidenceStorageNotFoundError extends Error {}
 
-  return createClient(supabaseUrl, serviceRoleKey);
+function getEvidenceStorageBucketName() {
+  return process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_EVIDENCE_BUCKET;
 }
 
-function getBucketName() {
-  return process.env.SUPABASE_STORAGE_BUCKET?.trim() || "evidence-private";
+function sanitizePathSegment(value: string, fallback: string) {
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return normalized || fallback;
 }
 
 function sanitizeBaseName(fileName: string, extension: string) {
@@ -35,10 +44,45 @@ function sanitizeBaseName(fileName: string, extension: string) {
     .replace(/^-|-$/g, "");
 }
 
+function buildTenantEvidencePrefix(organizationId: string, savingCardId: string) {
+  return `organizations/${sanitizePathSegment(organizationId, "org")}/saving-cards/${sanitizePathSegment(
+    savingCardId,
+    "card"
+  )}/evidence`;
+}
+
+function normalizeStoragePath(storagePath: string) {
+  return storagePath.trim().replace(/^\/+/, "");
+}
+
+export function isManagedEvidenceStorageLocation({
+  storageBucket,
+  storagePath,
+  organizationId,
+  savingCardId,
+}: EvidenceStorageLocation) {
+  if (storageBucket !== getEvidenceStorageBucketName()) {
+    return false;
+  }
+
+  const normalizedStoragePath = normalizeStoragePath(storagePath);
+  if (!normalizedStoragePath) {
+    return false;
+  }
+
+  if (normalizedStoragePath.startsWith(`${buildTenantEvidencePrefix(organizationId, savingCardId)}/`)) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function storeEvidenceFile(
   file: File,
-  savingCardId: string,
-  uploadedById: string,
+  context: {
+    organizationId: string;
+    savingCardId: string;
+  },
 ) {
   if (!isAllowedEvidenceFileName(file.name)) {
     throw new Error("Unsupported file type. Upload PDF, Office, or image files only.");
@@ -48,27 +92,24 @@ export async function storeEvidenceFile(
     throw new Error("File exceeds 25 MB. Please upload a smaller file.");
   }
 
-  const bucketName = getBucketName();
+  const bucketName = getEvidenceStorageBucketName();
   const extension = path.extname(file.name).toLowerCase();
   const safeBaseName = sanitizeBaseName(file.name, extension);
   const uniqueName = `${safeBaseName || "evidence"}-${crypto.randomUUID()}${extension}`;
-
-  // Tenant yokken geçici path standardı
-  const storagePath = `users/${uploadedById}/saving-cards/${savingCardId}/${uniqueName}`;
+  const storagePath = `${buildTenantEvidencePrefix(context.organizationId, context.savingCardId)}/${uniqueName}`;
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const supabase = getSupabaseAdminClient();
+  const supabase = createSupabaseAdminClient();
 
-  // TEMP DEBUG
   const { error } = await supabase.storage.from(bucketName).upload(storagePath, bytes, {
-  contentType: file.type || undefined,
-  upsert: false,
-  cacheControl: "3600",
-});
+    contentType: file.type || undefined,
+    upsert: false,
+    cacheControl: "3600",
+  });
 
-if (error) {
-  throw new Error(`Upload failed: ${error.message}`);
-}
+  if (error) {
+    throw new Error(`Upload failed: ${error.message}`);
+  }
 
   return {
     fileName: file.name,
@@ -82,16 +123,31 @@ if (error) {
 export async function createEvidenceSignedUrl(
   storageBucket: string,
   storagePath: string,
-  expiresInSeconds = 60,
+  expiresInSeconds = EVIDENCE_SIGNED_URL_TTL_SECONDS,
 ) {
-  const supabase = getSupabaseAdminClient();
+  if (storageBucket !== getEvidenceStorageBucketName()) {
+    throw new EvidenceStorageNotFoundError("Evidence storage bucket mismatch.");
+  }
+
+  const normalizedStoragePath = normalizeStoragePath(storagePath);
+  if (!normalizedStoragePath) {
+    throw new EvidenceStorageNotFoundError("Evidence storage path is invalid.");
+  }
+
+  const supabase = createSupabaseAdminClient();
 
   const { data, error } = await supabase.storage
     .from(storageBucket)
-    .createSignedUrl(storagePath, expiresInSeconds);
+    .createSignedUrl(normalizedStoragePath, expiresInSeconds);
 
   if (error || !data?.signedUrl) {
-    throw new Error(`Could not create signed URL: ${error?.message || "Unknown error"}`);
+    const message = error?.message || "Unknown error";
+
+    if (/not found|not exist|missing/i.test(message)) {
+      throw new EvidenceStorageNotFoundError("Evidence file not found.");
+    }
+
+    throw new Error(`Could not create signed URL: ${message}`);
   }
 
   return data.signedUrl;

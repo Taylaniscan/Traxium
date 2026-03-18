@@ -1,89 +1,127 @@
-import { ApprovalStatus, Prisma, Phase, Role } from "@prisma/client";
+import { ApprovalStatus, Currency, Phase, Prisma, Role } from "@prisma/client";
 import { calculateSavings, getForecastMultiplier } from "@/lib/calculations";
 import { phaseLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { requiredRolesForPhase } from "@/lib/permissions";
 import { alternativeMaterialSchema, alternativeSupplierSchema, savingCardSchema } from "@/lib/validation";
 
-export async function getReferenceData() {
-  const [users, suppliers, materials, categories, plants, businessUnits, fxRates] = await Promise.all([
-    prisma.user.findMany({ orderBy: { name: "asc" } }),
-    prisma.supplier.findMany({ orderBy: { name: "asc" } }),
-    prisma.material.findMany({ orderBy: { name: "asc" } }),
-    prisma.category.findMany({ orderBy: { name: "asc" } }),
-    prisma.plant.findMany({ orderBy: { name: "asc" } }),
-    prisma.businessUnit.findMany({ orderBy: { name: "asc" } }),
-    prisma.fxRate.findMany({ orderBy: { validFrom: "desc" } })
-  ]);
+const GLOBAL_ACCESS_ROLES = new Set<Role>([
+  Role.HEAD_OF_GLOBAL_PROCUREMENT,
+  Role.GLOBAL_CATEGORY_LEADER,
+  Role.FINANCIAL_CONTROLLER,
+]);
 
-  return { users, suppliers, materials, categories, plants, businessUnits, fxRates };
+function hasGlobalAccess(role: Role) {
+  return GLOBAL_ACCESS_ROLES.has(role);
 }
 
-export async function getSavingCards(filters?: {
-  phase?: string;
-  categoryId?: string;
-  buyerId?: string;
-  supplierId?: string;
-  businessUnitId?: string;
-}) {
-  return prisma.savingCard.findMany({
-    where: {
-      phase: filters?.phase ? (filters.phase as Phase) : undefined,
-      categoryId: filters?.categoryId || undefined,
-      buyerId: filters?.buyerId || undefined,
-      supplierId: filters?.supplierId || undefined,
-      businessUnitId: filters?.businessUnitId || undefined
-    },
-    include: {
-      supplier: true,
-      material: true,
-      alternativeSupplier: true,
-      alternativeMaterial: true,
-      category: true,
-      plant: true,
-      businessUnit: true,
-      buyer: true,
-      stakeholders: { include: { user: true } },
-      evidence: true,
-      alternativeSuppliers: { include: { supplier: true } },
-      alternativeMaterials: { include: { material: true, supplier: true } },
-      approvals: { include: { approver: true } },
-      phaseChangeRequests: {
-        include: { requestedBy: true, approvals: { include: { approver: true } } },
-        orderBy: { createdAt: "desc" }
-      },
-      comments: { include: { author: true }, orderBy: { createdAt: "desc" } },
-      phaseHistory: { orderBy: { createdAt: "desc" } }
-    },
-    orderBy: { updatedAt: "desc" }
-  });
+export class WorkflowError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+    this.name = "WorkflowError";
+  }
 }
 
-export async function getSavingCard(id: string) {
-  return prisma.savingCard.findUnique({
-    where: { id },
+const phaseChangeRequestResultInclude = {
+  savingCard: true,
+  requestedBy: true,
+  approvals: {
+    include: {
+      approver: true,
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} satisfies Prisma.PhaseChangeRequestInclude;
+
+const savingCardDetailInclude = {
+  supplier: true,
+  material: true,
+  alternativeSupplier: true,
+  alternativeMaterial: true,
+  category: true,
+  buyer: true,
+  plant: true,
+  businessUnit: true,
+  evidence: true,
+  stakeholders: {
+    include: {
+      user: true,
+    },
+  },
+  comments: {
+    include: {
+      author: true,
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+  alternativeSuppliers: {
     include: {
       supplier: true,
+    },
+  },
+  alternativeMaterials: {
+    include: {
       material: true,
-      alternativeSupplier: true,
-      alternativeMaterial: true,
-      category: true,
-      plant: true,
-      businessUnit: true,
-      buyer: true,
-      stakeholders: { include: { user: true } },
-      evidence: true,
-      alternativeSuppliers: { include: { supplier: true }, orderBy: { createdAt: "desc" } },
-      alternativeMaterials: { include: { material: true, supplier: true }, orderBy: { createdAt: "desc" } },
-      approvals: { include: { approver: true }, orderBy: { createdAt: "desc" } },
-      phaseChangeRequests: {
-        include: { requestedBy: true, approvals: { include: { approver: true } } },
-        orderBy: { createdAt: "desc" }
+      supplier: true,
+    },
+  },
+  approvals: {
+    include: {
+      approver: true,
+    },
+  },
+  phaseHistory: {
+    include: {
+      changedBy: true,
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+  phaseChangeRequests: {
+    include: {
+      requestedBy: true,
+      approvals: {
+        include: {
+          approver: true,
+        },
       },
-      comments: { include: { author: true }, orderBy: { createdAt: "desc" } },
-      phaseHistory: { orderBy: { createdAt: "desc" } }
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+} satisfies Prisma.SavingCardInclude;
+
+function normalizeName(value?: string) {
+  return value?.trim() || "";
+}
+
+function normalizeOptionalName(value?: string) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value === "string") {
+    return normalizeOptionalName(value);
+  }
+
+  if (value && typeof value === "object" && "name" in value) {
+    const name = (value as { name?: unknown }).name;
+    if (typeof name === "string") {
+      return normalizeOptionalName(name);
     }
-  });
+  }
+
+  return null;
+}
+
+function normalizeOptionalId(value: unknown) {
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === "string") {
+      return normalizeOptionalName(id);
+    }
+  }
+
+  return null;
 }
 
 function buildSavingCardPayload(input: Prisma.JsonObject | Record<string, unknown>) {
@@ -93,60 +131,365 @@ function buildSavingCardPayload(input: Prisma.JsonObject | Record<string, unknow
     newPrice: parsed.newPrice,
     annualVolume: parsed.annualVolume,
     fxRate: parsed.fxRate,
-    currency: parsed.currency
+    currency: parsed.currency,
   });
 
   return {
     ...parsed,
     calculatedSavings: totals.savingsEUR,
-    calculatedSavingsUSD: totals.savingsUSD
+    calculatedSavingsUSD: totals.savingsUSD,
   };
+}
+
+export async function getReferenceData(organizationId: string) {
+  const [users, buyers, suppliers, materials, categories, plants, businessUnits, fxRates] = await Promise.all([
+    prisma.user.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.buyer.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.supplier.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.material.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.category.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.plant.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.businessUnit.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.fxRate.findMany({
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  return {
+    users,
+    buyers,
+    suppliers,
+    materials,
+    categories,
+    plants,
+    businessUnits,
+    fxRates,
+  };
+}
+
+export async function getSavingCards(
+  organizationId: string,
+  filters?: {
+    categoryId?: string;
+    businessUnitId?: string;
+    buyerId?: string;
+    plantId?: string;
+    supplierId?: string;
+  }
+) {
+  return prisma.savingCard.findMany({
+    where: {
+      organizationId,
+      ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(filters?.businessUnitId ? { businessUnitId: filters.businessUnitId } : {}),
+      ...(filters?.buyerId ? { buyerId: filters.buyerId } : {}),
+      ...(filters?.plantId ? { plantId: filters.plantId } : {}),
+      ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
+    },
+    include: savingCardDetailInclude,
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getSavingCard(id: string, organizationId: string) {
+  return prisma.savingCard.findFirst({
+    where: {
+      id,
+      organizationId,
+    },
+    include: savingCardDetailInclude,
+  });
+}
+
+async function getLatestFxRate(tx: Prisma.TransactionClient, currency: Currency) {
+  if (currency === Currency.EUR) return 1;
+
+  const rate = await tx.fxRate.findFirst({
+    where: { currency },
+    orderBy: { validFrom: "desc" },
+  });
+
+  return rate?.rateToEUR ?? 1;
+}
+
+async function resolveOrCreateSupplier(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Supplier is required.");
+  }
+
+  const existing = await tx.supplier.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.supplier.create({
+    data: {
+      organizationId,
+      name,
+    },
+  });
+}
+
+async function resolveOptionalSupplier(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreateSupplier(tx, organizationId, { id: value?.id, name });
+}
+
+async function resolveOrCreateMaterial(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Material is required.");
+  }
+
+  const existing = await tx.material.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.material.create({
+    data: {
+      organizationId,
+      name,
+    },
+  });
+}
+
+async function resolveOptionalMaterial(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreateMaterial(tx, organizationId, { id: value?.id, name });
+}
+
+async function resolveOrCreateBusinessUnit(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Business unit is required.");
+  }
+
+  const existing = await tx.businessUnit.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.businessUnit.create({
+    data: {
+      organizationId,
+      name,
+    },
+  });
+}
+
+async function resolveOrCreateCategory(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Category is required.");
+  }
+
+  const existing = await tx.category.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.category.create({
+    data: {
+      organizationId,
+      name,
+      annualTarget: 0,
+    },
+  });
+}
+
+async function resolveOrCreatePlant(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Plant is required.");
+  }
+
+  const existing = await tx.plant.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.plant.create({
+    data: {
+      organizationId,
+      name,
+      region: "Global",
+    },
+  });
+}
+
+async function resolveOrCreateBuyer(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value: unknown
+) {
+  const id = normalizeOptionalId(value);
+  if (id) {
+    const existingById = await tx.buyer.findFirst({
+      where: {
+        id,
+        organizationId,
+      },
+    });
+
+    if (existingById) return existingById;
+  }
+
+  const name = normalizeOptionalString(value);
+  if (!name) {
+    throw new Error("Buyer is required.");
+  }
+
+  const existing = await tx.buyer.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name,
+      },
+    },
+  });
+
+  if (existing) return existing;
+
+  return tx.buyer.create({
+    data: {
+      organizationId,
+      name,
+      email: null,
+    },
+  });
 }
 
 async function resolveMasterData(
   tx: Prisma.TransactionClient,
   actorId: string,
+  organizationId: string,
   payload: ReturnType<typeof buildSavingCardPayload>
 ) {
-  const supplierId = await resolveOrCreateSupplier(tx, payload.supplier);
-  const materialId = await resolveOrCreateMaterial(tx, payload.material);
-  const alternativeSupplierId = await resolveOptionalSupplier(tx, payload.alternativeSupplier);
-  const alternativeMaterialId = await resolveOptionalMaterial(tx, payload.alternativeMaterial);
-  const categoryId = await resolveOrCreateCategory(tx, payload.category);
-  const plantId = await resolveOrCreatePlant(tx, payload.plant);
-  const businessUnitId = await resolveOrCreateBusinessUnit(tx, payload.businessUnit);
-  const buyerId = await resolveOrCreateBuyer(tx, payload.buyer);
+  const supplier = await resolveOrCreateSupplier(tx, organizationId, payload.supplier);
+  const material = await resolveOrCreateMaterial(tx, organizationId, payload.material);
+  const alternativeSupplier = await resolveOptionalSupplier(tx, organizationId, payload.alternativeSupplier);
+  const alternativeMaterial = await resolveOptionalMaterial(tx, organizationId, payload.alternativeMaterial);
+  const category = await resolveOrCreateCategory(tx, organizationId, payload.category);
+  const plant = await resolveOrCreatePlant(tx, organizationId, payload.plant);
+  const businessUnit = await resolveOrCreateBusinessUnit(tx, organizationId, payload.businessUnit);
+  const buyer = await resolveOrCreateBuyer(tx, organizationId, payload.buyer);
 
   await tx.auditLog.create({
     data: {
       userId: actorId,
       action: "master_data.resolved",
-      detail: `Resolved supplier ${supplierId}, material ${materialId}, alternative supplier ${alternativeSupplierId ?? "none"}, alternative material ${alternativeMaterialId ?? "none"}, category ${categoryId}, plant ${plantId}, business unit ${businessUnitId}, buyer ${buyerId}`
-    }
+      detail: `Resolved supplier ${supplier.id}, material ${material.id}, alternative supplier ${alternativeSupplier?.id ?? "none"}, alternative material ${alternativeMaterial?.id ?? "none"}, category ${category.id}, plant ${plant.id}, business unit ${businessUnit.id}, buyer ${buyer.id}`,
+    },
   });
 
-  return { supplierId, materialId, alternativeSupplierId, alternativeMaterialId, categoryId, plantId, businessUnitId, buyerId };
-}
-
-async function getLatestFxRate(tx: Prisma.TransactionClient, currency: "EUR" | "USD") {
-  if (currency === "EUR") return 1;
-  const rate = await tx.fxRate.findFirst({
-    where: { currency },
-    orderBy: { validFrom: "desc" }
-  });
-  return rate?.rateToEUR ?? 1;
+  return {
+    supplierId: supplier.id,
+    materialId: material.id,
+    alternativeSupplierId: alternativeSupplier?.id ?? null,
+    alternativeMaterialId: alternativeMaterial?.id ?? null,
+    categoryId: category.id,
+    plantId: plant.id,
+    businessUnitId: businessUnit.id,
+    buyerId: buyer.id,
+  };
 }
 
 export async function createSavingCard(
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  organizationId: string
 ) {
   const payload = buildSavingCardPayload(input);
 
   return prisma.$transaction(async (tx) => {
-    const resolved = await resolveMasterData(tx, actorId, payload);
+    const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
+
     const card = await tx.savingCard.create({
       data: {
+        organizationId,
         title: payload.title,
         description: payload.description,
         savingType: payload.savingType,
@@ -154,9 +497,13 @@ export async function createSavingCard(
         supplierId: resolved.supplierId,
         materialId: resolved.materialId,
         alternativeSupplierId: resolved.alternativeSupplierId,
-        alternativeSupplierManualName: resolved.alternativeSupplierId ? null : normalizeOptionalName(payload.alternativeSupplier?.name),
+        alternativeSupplierManualName: resolved.alternativeSupplierId
+          ? null
+          : normalizeOptionalName(payload.alternativeSupplier?.name),
         alternativeMaterialId: resolved.alternativeMaterialId,
-        alternativeMaterialManualName: resolved.alternativeMaterialId ? null : normalizeOptionalName(payload.alternativeMaterial?.name),
+        alternativeMaterialManualName: resolved.alternativeMaterialId
+          ? null
+          : normalizeOptionalName(payload.alternativeMaterial?.name),
         categoryId: resolved.categoryId,
         plantId: resolved.plantId,
         businessUnitId: resolved.businessUnitId,
@@ -176,28 +523,32 @@ export async function createSavingCard(
         endDate: payload.endDate,
         impactStartDate: payload.impactStartDate,
         impactEndDate: payload.impactEndDate,
+        financeLocked: false,
         cancellationReason: payload.cancellationReason || null,
         stakeholders: {
-          create: payload.stakeholderIds.map((userId) => ({ userId }))
+          create: (payload.stakeholderIds ?? []).map((userId) => ({
+            userId,
+          })),
         },
         phaseHistory: {
           create: {
             fromPhase: null,
             toPhase: payload.phase,
-            changedById: actorId
-          }
+            changedById: actorId,
+          },
         },
         auditLogs: {
           create: {
             userId: actorId,
             action: "saving_card.created",
-            detail: `Saving card created in ${payload.phase} phase`
-          }
-        }
-      }
+            detail: `Saving card created in ${payload.phase} phase`,
+          },
+        },
+      },
+      include: savingCardDetailInclude,
     });
 
-    await createWorkflowNotifications(tx, card.id, payload.phase);
+    await createWorkflowNotifications(tx, card.id, payload.phase, organizationId);
     return card;
   });
 }
@@ -205,15 +556,25 @@ export async function createSavingCard(
 export async function updateSavingCard(
   id: string,
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  organizationId: string
 ) {
-  const existing = await prisma.savingCard.findUnique({ where: { id } });
-  if (!existing) throw new Error("Saving card not found.");
-
   const payload = buildSavingCardPayload(input);
 
   return prisma.$transaction(async (tx) => {
-    const resolved = await resolveMasterData(tx, actorId, payload);
+    const existing = await tx.savingCard.findFirst({
+      where: {
+        id,
+        organizationId,
+      },
+    });
+
+    if (!existing) {
+      throw new Error("Saving card not found.");
+    }
+
+    const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
+
     const updated = await tx.savingCard.update({
       where: { id },
       data: {
@@ -224,9 +585,13 @@ export async function updateSavingCard(
         supplierId: resolved.supplierId,
         materialId: resolved.materialId,
         alternativeSupplierId: resolved.alternativeSupplierId,
-        alternativeSupplierManualName: resolved.alternativeSupplierId ? null : normalizeOptionalName(payload.alternativeSupplier?.name),
+        alternativeSupplierManualName: resolved.alternativeSupplierId
+          ? null
+          : normalizeOptionalName(payload.alternativeSupplier?.name),
         alternativeMaterialId: resolved.alternativeMaterialId,
-        alternativeMaterialManualName: resolved.alternativeMaterialId ? null : normalizeOptionalName(payload.alternativeMaterial?.name),
+        alternativeMaterialManualName: resolved.alternativeMaterialId
+          ? null
+          : normalizeOptionalName(payload.alternativeMaterial?.name),
         categoryId: resolved.categoryId,
         plantId: resolved.plantId,
         businessUnitId: resolved.businessUnitId,
@@ -246,13 +611,20 @@ export async function updateSavingCard(
         endDate: payload.endDate,
         impactStartDate: existing.financeLocked ? existing.impactStartDate : payload.impactStartDate,
         impactEndDate: existing.financeLocked ? existing.impactEndDate : payload.impactEndDate,
-        cancellationReason: payload.cancellationReason || null
-      }
+        cancellationReason: payload.cancellationReason || null,
+      },
+      include: savingCardDetailInclude,
     });
 
-    await tx.savingCardStakeholder.deleteMany({ where: { savingCardId: id } });
+    await tx.savingCardStakeholder.deleteMany({
+      where: { savingCardId: id },
+    });
+
     await tx.savingCardStakeholder.createMany({
-      data: payload.stakeholderIds.map((userId) => ({ savingCardId: id, userId }))
+      data: (payload.stakeholderIds ?? []).map((userId) => ({
+        savingCardId: id,
+        userId,
+      })),
     });
 
     if (existing.phase !== payload.phase) {
@@ -261,10 +633,11 @@ export async function updateSavingCard(
           savingCardId: id,
           fromPhase: existing.phase,
           toPhase: payload.phase,
-          changedById: actorId
-        }
+          changedById: actorId,
+        },
       });
-      await createWorkflowNotifications(tx, id, payload.phase);
+
+      await createWorkflowNotifications(tx, id, payload.phase, organizationId);
     }
 
     await tx.auditLog.create({
@@ -272,12 +645,28 @@ export async function updateSavingCard(
         userId: actorId,
         savingCardId: id,
         action: "saving_card.updated",
-        detail: `Saving card updated. Current phase: ${payload.phase}`
-      }
+        detail: `Saving card updated. Current phase: ${payload.phase}`,
+      },
     });
 
     return updated;
   });
+}
+
+async function getOrganizationIdForSavingCard(
+  tx: Prisma.TransactionClient,
+  savingCardId: string
+) {
+  const card = await tx.savingCard.findUnique({
+    where: { id: savingCardId },
+    select: { organizationId: true },
+  });
+
+  if (!card) {
+    throw new Error("Saving card not found.");
+  }
+
+  return card.organizationId;
 }
 
 export async function createAlternativeSupplier(
@@ -288,11 +677,16 @@ export async function createAlternativeSupplier(
   const payload = alternativeSupplierSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const supplierId = payload.supplier ? await resolveOrCreateSupplier(tx, payload.supplier) : null;
+    const organizationId = await getOrganizationIdForSavingCard(tx, savingCardId);
+
+    const supplierId = payload.supplier
+      ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
+      : null;
+
     if (payload.isSelected) {
       await tx.savingCardAlternativeSupplier.updateMany({
         where: { savingCardId },
-        data: { isSelected: false }
+        data: { isSelected: false },
       });
     }
 
@@ -310,9 +704,9 @@ export async function createAlternativeSupplier(
         qualityRating: payload.qualityRating,
         riskLevel: payload.riskLevel,
         notes: payload.notes || null,
-        isSelected: payload.isSelected
+        isSelected: payload.isSelected,
       },
-      include: { supplier: true }
+      include: { supplier: true },
     });
 
     if (payload.isSelected) {
@@ -331,14 +725,24 @@ export async function updateAlternativeSupplier(
   const payload = alternativeSupplierSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.savingCardAlternativeSupplier.findUnique({ where: { id: alternativeId } });
-    if (!existing) throw new Error("Alternative supplier not found.");
+    const existing = await tx.savingCardAlternativeSupplier.findUnique({
+      where: { id: alternativeId },
+    });
 
-    const supplierId = payload.supplier ? await resolveOrCreateSupplier(tx, payload.supplier) : null;
+    if (!existing) {
+      throw new Error("Alternative supplier not found.");
+    }
+
+    const organizationId = await getOrganizationIdForSavingCard(tx, existing.savingCardId);
+
+    const supplierId = payload.supplier
+      ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
+      : null;
+
     if (payload.isSelected) {
       await tx.savingCardAlternativeSupplier.updateMany({
         where: { savingCardId: existing.savingCardId },
-        data: { isSelected: false }
+        data: { isSelected: false },
       });
     }
 
@@ -356,9 +760,9 @@ export async function updateAlternativeSupplier(
         qualityRating: payload.qualityRating,
         riskLevel: payload.riskLevel,
         notes: payload.notes || null,
-        isSelected: payload.isSelected
+        isSelected: payload.isSelected,
       },
-      include: { supplier: true }
+      include: { supplier: true },
     });
 
     if (payload.isSelected) {
@@ -371,7 +775,7 @@ export async function updateAlternativeSupplier(
 
 export async function deleteAlternativeSupplier(alternativeId: string) {
   return prisma.savingCardAlternativeSupplier.delete({
-    where: { id: alternativeId }
+    where: { id: alternativeId },
   });
 }
 
@@ -383,13 +787,20 @@ export async function createAlternativeMaterial(
   const payload = alternativeMaterialSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const materialId = payload.material ? await resolveOrCreateMaterial(tx, payload.material) : null;
-    const supplierId = payload.supplier ? await resolveOrCreateSupplier(tx, payload.supplier) : null;
+    const organizationId = await getOrganizationIdForSavingCard(tx, savingCardId);
+
+    const materialId = payload.material
+      ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
+      : null;
+
+    const supplierId = payload.supplier
+      ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
+      : null;
 
     if (payload.isSelected) {
       await tx.savingCardAlternativeMaterial.updateMany({
         where: { savingCardId },
-        data: { isSelected: false }
+        data: { isSelected: false },
       });
     }
 
@@ -407,9 +818,9 @@ export async function createAlternativeMaterial(
         qualificationStatus: payload.qualificationStatus,
         riskLevel: payload.riskLevel,
         notes: payload.notes || null,
-        isSelected: payload.isSelected
+        isSelected: payload.isSelected,
       },
-      include: { material: true, supplier: true }
+      include: { material: true, supplier: true },
     });
 
     if (payload.isSelected) {
@@ -428,16 +839,28 @@ export async function updateAlternativeMaterial(
   const payload = alternativeMaterialSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.savingCardAlternativeMaterial.findUnique({ where: { id: alternativeId } });
-    if (!existing) throw new Error("Alternative material not found.");
+    const existing = await tx.savingCardAlternativeMaterial.findUnique({
+      where: { id: alternativeId },
+    });
 
-    const materialId = payload.material ? await resolveOrCreateMaterial(tx, payload.material) : null;
-    const supplierId = payload.supplier ? await resolveOrCreateSupplier(tx, payload.supplier) : null;
+    if (!existing) {
+      throw new Error("Alternative material not found.");
+    }
+
+    const organizationId = await getOrganizationIdForSavingCard(tx, existing.savingCardId);
+
+    const materialId = payload.material
+      ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
+      : null;
+
+    const supplierId = payload.supplier
+      ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
+      : null;
 
     if (payload.isSelected) {
       await tx.savingCardAlternativeMaterial.updateMany({
         where: { savingCardId: existing.savingCardId },
-        data: { isSelected: false }
+        data: { isSelected: false },
       });
     }
 
@@ -455,9 +878,9 @@ export async function updateAlternativeMaterial(
         qualificationStatus: payload.qualificationStatus,
         riskLevel: payload.riskLevel,
         notes: payload.notes || null,
-        isSelected: payload.isSelected
+        isSelected: payload.isSelected,
       },
-      include: { material: true, supplier: true }
+      include: { material: true, supplier: true },
     });
 
     if (payload.isSelected) {
@@ -470,7 +893,7 @@ export async function updateAlternativeMaterial(
 
 export async function deleteAlternativeMaterial(alternativeId: string) {
   return prisma.savingCardAlternativeMaterial.delete({
-    where: { id: alternativeId }
+    where: { id: alternativeId },
   });
 }
 
@@ -482,17 +905,20 @@ async function applySelectedAlternativeSupplier(
 ) {
   const [card, alternative] = await Promise.all([
     tx.savingCard.findUnique({ where: { id: savingCardId } }),
-    tx.savingCardAlternativeSupplier.findUnique({ where: { id: alternativeId } })
+    tx.savingCardAlternativeSupplier.findUnique({ where: { id: alternativeId } }),
   ]);
 
-  if (!card || !alternative) throw new Error("Unable to apply selected supplier scenario.");
+  if (!card || !alternative) {
+    throw new Error("Unable to apply selected supplier scenario.");
+  }
+
   const fxRate = await getLatestFxRate(tx, alternative.currency);
   const totals = calculateSavings({
     baselinePrice: card.baselinePrice,
     newPrice: alternative.quotedPrice,
     annualVolume: card.annualVolume,
     fxRate,
-    currency: alternative.currency
+    currency: alternative.currency,
   });
 
   await tx.savingCard.update({
@@ -505,8 +931,8 @@ async function applySelectedAlternativeSupplier(
       currency: alternative.currency,
       fxRate,
       calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD
-    }
+      calculatedSavingsUSD: totals.savingsUSD,
+    },
   });
 
   await tx.auditLog.create({
@@ -514,8 +940,8 @@ async function applySelectedAlternativeSupplier(
       userId: actorId,
       savingCardId,
       action: "alternative_supplier.selected",
-      detail: `Alternative supplier ${alternativeId} applied to saving card`
-    }
+      detail: `Alternative supplier ${alternativeId} applied to saving card`,
+    },
   });
 }
 
@@ -527,17 +953,20 @@ async function applySelectedAlternativeMaterial(
 ) {
   const [card, alternative] = await Promise.all([
     tx.savingCard.findUnique({ where: { id: savingCardId } }),
-    tx.savingCardAlternativeMaterial.findUnique({ where: { id: alternativeId } })
+    tx.savingCardAlternativeMaterial.findUnique({ where: { id: alternativeId } }),
   ]);
 
-  if (!card || !alternative) throw new Error("Unable to apply selected material scenario.");
+  if (!card || !alternative) {
+    throw new Error("Unable to apply selected material scenario.");
+  }
+
   const fxRate = await getLatestFxRate(tx, alternative.currency);
   const totals = calculateSavings({
     baselinePrice: card.baselinePrice,
     newPrice: alternative.quotedPrice,
     annualVolume: card.annualVolume,
     fxRate,
-    currency: alternative.currency
+    currency: alternative.currency,
   });
 
   await tx.savingCard.update({
@@ -553,8 +982,8 @@ async function applySelectedAlternativeMaterial(
       currency: alternative.currency,
       fxRate,
       calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD
-    }
+      calculatedSavingsUSD: totals.savingsUSD,
+    },
   });
 
   await tx.auditLog.create({
@@ -562,114 +991,9 @@ async function applySelectedAlternativeMaterial(
       userId: actorId,
       savingCardId,
       action: "alternative_material.selected",
-      detail: `Alternative material ${alternativeId} applied to saving card`
-    }
+      detail: `Alternative material ${alternativeId} applied to saving card`,
+    },
   });
-}
-
-function normalizeName(value?: string) {
-  return value?.trim() || "";
-}
-
-function normalizeOptionalName(value?: string) {
-  const normalized = value?.trim();
-  return normalized ? normalized : null;
-}
-
-async function resolveOrCreateSupplier(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) {
-    return value.id;
-  }
-  const name = normalizeName(value.name);
-  const existing = await tx.supplier.findUnique({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.supplier.create({ data: { name } });
-  return created.id;
-}
-
-async function resolveOptionalSupplier(tx: Prisma.TransactionClient, value?: { id?: string; name?: string }) {
-  const name = normalizeName(value?.name);
-  if (!value?.id && !name) return null;
-  return resolveOrCreateSupplier(tx, { id: value?.id, name });
-}
-
-async function resolveOrCreateMaterial(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) {
-    return value.id;
-  }
-  const name = normalizeName(value.name);
-  const existing = await tx.material.findUnique({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.material.create({ data: { name } });
-  return created.id;
-}
-
-async function resolveOptionalMaterial(tx: Prisma.TransactionClient, value?: { id?: string; name?: string }) {
-  const name = normalizeName(value?.name);
-  if (!value?.id && !name) return null;
-  return resolveOrCreateMaterial(tx, { id: value?.id, name });
-}
-
-async function resolveOrCreateBusinessUnit(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) {
-    return value.id;
-  }
-  const name = normalizeName(value.name);
-  const existing = await tx.businessUnit.findUnique({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.businessUnit.create({ data: { name } });
-  return created.id;
-}
-
-async function resolveOrCreateCategory(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) return value.id;
-  const name = normalizeName(value.name);
-  const existing = await tx.category.findUnique({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.category.create({ data: { name, annualTarget: 0 } });
-  return created.id;
-}
-
-async function resolveOrCreatePlant(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) return value.id;
-  const name = normalizeName(value.name);
-  const existing = await tx.plant.findUnique({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.plant.create({ data: { name, region: "Global" } });
-  return created.id;
-}
-
-async function resolveOrCreateBuyer(tx: Prisma.TransactionClient, value: { id?: string; name?: string }) {
-  if (value.id) return value.id;
-  const name = normalizeName(value.name);
-  const existing = await tx.user.findFirst({
-    where: {
-      name
-    }
-  });
-  if (existing) return existing.id;
-
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/(^\.|\.$)/g, "");
-  let email = `${slug || "buyer"}@traxium.local`;
-  let suffix = 1;
-
-  while (await tx.user.findUnique({ where: { email } })) {
-    suffix += 1;
-    email = `${slug || "buyer"}${suffix}@traxium.local`;
-  }
-
-  const created = await tx.user.create({
-    data: {
-      name,
-      email,
-      role: Role.TACTICAL_BUYER
-    }
-  });
-
-  return created.id;
 }
 
 export async function addApproval(
@@ -687,8 +1011,8 @@ export async function addApproval(
         phase,
         approved,
         status: approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED,
-        comment
-      }
+        comment,
+      },
     });
 
     await tx.auditLog.create({
@@ -696,11 +1020,55 @@ export async function addApproval(
         userId: approverId,
         savingCardId,
         action: "approval.recorded",
-        detail: `${phase} approval ${approved ? "approved" : "rejected"}`
-      }
+        detail: `${phase} approval ${approved ? "approved" : "rejected"}`,
+      },
     });
 
     return record;
+  });
+}
+
+async function lockSavingCardForWorkflow(
+  tx: Prisma.TransactionClient,
+  savingCardId: string,
+  organizationId: string
+) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "SavingCard"
+    WHERE "id" = ${savingCardId}
+      AND "organizationId" = ${organizationId}
+    FOR UPDATE
+  `);
+
+  if (!rows.length) {
+    throw new WorkflowError("Saving card not found.", 404);
+  }
+}
+
+async function lockPhaseChangeRequestForWorkflow(
+  tx: Prisma.TransactionClient,
+  requestId: string
+) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "PhaseChangeRequest"
+    WHERE "id" = ${requestId}
+    FOR UPDATE
+  `);
+
+  if (!rows.length) {
+    throw new WorkflowError("Phase change request not found.", 404);
+  }
+}
+
+async function getPhaseChangeRequestWithRelations(
+  tx: Prisma.TransactionClient,
+  requestId: string
+) {
+  return tx.phaseChangeRequest.findUnique({
+    where: { id: requestId },
+    include: phaseChangeRequestResultInclude,
   });
 }
 
@@ -708,36 +1076,49 @@ export async function createPhaseChangeRequest(
   savingCardId: string,
   requestedPhase: Phase,
   requestedById: string,
+  organizationId: string,
   comment?: string,
   cancellationReason?: string
 ) {
   return prisma.$transaction(async (tx) => {
-    const card = await tx.savingCard.findUnique({
-      where: { id: savingCardId },
+    await lockSavingCardForWorkflow(tx, savingCardId, organizationId);
+
+    const card = await tx.savingCard.findFirst({
+      where: {
+        id: savingCardId,
+        organizationId,
+      },
       include: {
         phaseChangeRequests: {
           where: { approvalStatus: ApprovalStatus.PENDING },
-          include: { approvals: true }
-        }
-      }
+          include: { approvals: true },
+        },
+      },
     });
 
-    if (!card) throw new Error("Saving card not found.");
-    if (card.phase === requestedPhase) throw new Error("Saving card is already in that phase.");
+    if (!card) throw new WorkflowError("Saving card not found.", 404);
+    if (card.phase === requestedPhase) throw new WorkflowError("Saving card is already in that phase.");
     if (requestedPhase === "CANCELLED" && !cancellationReason?.trim()) {
-      throw new Error("Cancellation reason is required.");
+      throw new WorkflowError("Cancellation reason is required.");
     }
     if (card.phaseChangeRequests.length) {
-      throw new Error("There is already a pending phase change request for this saving card.");
+      throw new WorkflowError("There is already a pending phase change request for this saving card.", 409);
     }
 
     const requiredRoles = requestedPhase === "CANCELLED" ? [] : requiredRolesForPhase(requestedPhase);
+
     const approvers = requiredRoles.length
-      ? await tx.user.findMany({ where: { role: { in: requiredRoles } }, orderBy: { name: "asc" } })
+      ? await tx.user.findMany({
+          where: {
+            organizationId,
+            role: { in: requiredRoles },
+          },
+          orderBy: { name: "asc" },
+        })
       : [];
 
     if (requiredRoles.length && !approvers.length) {
-      throw new Error("No approvers are configured for the requested phase.");
+      throw new WorkflowError("No approvers are configured for the requested phase.");
     }
 
     const request = await tx.phaseChangeRequest.create({
@@ -752,23 +1133,23 @@ export async function createPhaseChangeRequest(
         approvals: {
           create: approvers.map((approver) => ({
             approverId: approver.id,
-            role: approver.role
-          }))
-        }
+            role: approver.role,
+          })),
+        },
       },
       include: {
         requestedBy: true,
-        approvals: { include: { approver: true } }
-      }
+        approvals: { include: { approver: true } },
+      },
     });
 
     if (approvers.length) {
       await tx.notification.createMany({
         data: approvers.map((approver) => ({
           userId: approver.id,
-          title: `Phase change approval required`,
-          message: `${card.title} requests movement from ${card.phase} to ${requestedPhase}.`
-        }))
+          title: "Phase change approval required",
+          message: `${card.title} requests movement from ${card.phase} to ${requestedPhase}.`,
+        })),
       });
     }
 
@@ -777,68 +1158,89 @@ export async function createPhaseChangeRequest(
         userId: requestedById,
         savingCardId,
         action: "phase_change.requested",
-        detail: `Requested phase change from ${card.phase} to ${requestedPhase}`
-      }
+        detail: `Requested phase change from ${card.phase} to ${requestedPhase}`,
+      },
     });
 
     if (!requiredRoles.length) {
-      await finalizePhaseChangeRequest(tx, request.id, requestedById);
-      return tx.phaseChangeRequest.findUniqueOrThrow({
-        where: { id: request.id },
-        include: { requestedBy: true, approvals: { include: { approver: true } } }
+      await tx.auditLog.create({
+        data: {
+          userId: requestedById,
+          savingCardId,
+          action: "phase_change.approved",
+          detail: `Phase change to ${requestedPhase} auto-approved`,
+        },
       });
+
+      await finalizePhaseChangeRequest(tx, request.id, requestedById);
+      const finalizedRequest = await getPhaseChangeRequestWithRelations(tx, request.id);
+
+      if (!finalizedRequest) {
+        throw new WorkflowError("Phase change request not found.", 404);
+      }
+
+      return finalizedRequest;
     }
 
-    return request;
+    const createdRequest = await getPhaseChangeRequestWithRelations(tx, request.id);
+
+    if (!createdRequest) {
+      throw new WorkflowError("Phase change request not found.", 404);
+    }
+
+    return createdRequest;
   });
 }
 
 export async function approvePhaseChangeRequest(
   requestId: string,
   approverId: string,
+  organizationId: string,
   approved: boolean,
   comment?: string
 ) {
   return prisma.$transaction(async (tx) => {
-    const request = await tx.phaseChangeRequest.findUnique({
-      where: { id: requestId },
-      include: {
-        savingCard: true,
-        requestedBy: true,
-        approvals: { include: { approver: true } }
-      }
-    });
+    await lockPhaseChangeRequestForWorkflow(tx, requestId);
 
-    if (!request) throw new Error("Phase change request not found.");
+    const request = await getPhaseChangeRequestWithRelations(tx, requestId);
+
+    if (!request) throw new WorkflowError("Phase change request not found.", 404);
+    if (request.savingCard.organizationId !== organizationId) throw new WorkflowError("Phase change request not found.", 404);
     if (request.approvalStatus !== ApprovalStatus.PENDING) {
-      throw new Error("This phase change request is already closed.");
+      throw new WorkflowError("This phase change request is already closed.", 409);
     }
 
     const approval = request.approvals.find((item) => item.approverId === approverId);
-    if (!approval) throw new Error("You are not assigned to approve this request.");
-    if (approval.status !== ApprovalStatus.PENDING) throw new Error("You already processed this request.");
+    if (!approval) throw new WorkflowError("You are not assigned to approve this request.", 403);
 
-    await tx.phaseChangeRequestApproval.update({
-      where: { id: approval.id },
+    const approvalUpdate = await tx.phaseChangeRequestApproval.updateMany({
+      where: {
+        id: approval.id,
+        status: ApprovalStatus.PENDING,
+      },
       data: {
         status: approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED,
         comment: comment?.trim() || null,
-        decidedAt: new Date()
-      }
+        decidedAt: new Date(),
+      },
     });
+
+    if (!approvalUpdate.count) {
+      throw new WorkflowError("You already processed this request.", 409);
+    }
 
     if (!approved) {
       const rejectedRequest = await tx.phaseChangeRequest.update({
         where: { id: requestId },
-        data: { approvalStatus: ApprovalStatus.REJECTED }
+        data: { approvalStatus: ApprovalStatus.REJECTED },
       });
 
       await tx.notification.create({
         data: {
           userId: request.requestedById,
           title: "Phase change rejected",
-          message: `${request.savingCard.title} phase change to ${request.requestedPhase} was rejected.`
-        }
+          message: `${request.savingCard.title} phase change to ${request.requestedPhase} was rejected.`,
+        },
       });
 
       await tx.auditLog.create({
@@ -846,46 +1248,54 @@ export async function approvePhaseChangeRequest(
           userId: approverId,
           savingCardId: request.savingCardId,
           action: "phase_change.rejected",
-          detail: `Phase change to ${request.requestedPhase} rejected`
-        }
+          detail: `Phase change to ${request.requestedPhase} rejected`,
+        },
       });
 
-      return rejectedRequest;
+      const result = await getPhaseChangeRequestWithRelations(tx, rejectedRequest.id);
+
+      if (!result) {
+        throw new WorkflowError("Phase change request not found.", 404);
+      }
+
+      return result;
     }
 
     const remaining = await tx.phaseChangeRequestApproval.count({
       where: {
         phaseChangeRequestId: requestId,
-        status: ApprovalStatus.PENDING
-      }
+        status: ApprovalStatus.PENDING,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: approverId,
+        savingCardId: request.savingCardId,
+        action: "phase_change.approved",
+        detail:
+          remaining === 0
+            ? `Final approval recorded for phase change to ${request.requestedPhase}`
+            : `Approval recorded for phase change to ${request.requestedPhase}`,
+      },
     });
 
     if (remaining === 0) {
       await tx.phaseChangeRequest.update({
         where: { id: requestId },
-        data: { approvalStatus: ApprovalStatus.APPROVED }
+        data: { approvalStatus: ApprovalStatus.APPROVED },
       });
 
       await finalizePhaseChangeRequest(tx, requestId, approverId);
-    } else {
-      await tx.auditLog.create({
-        data: {
-          userId: approverId,
-          savingCardId: request.savingCardId,
-          action: "phase_change.approved_partial",
-          detail: `Partial approval recorded for ${request.requestedPhase}`
-        }
-      });
     }
 
-    return tx.phaseChangeRequest.findUniqueOrThrow({
-      where: { id: requestId },
-      include: {
-        savingCard: true,
-        requestedBy: true,
-        approvals: { include: { approver: true } }
-      }
-    });
+    const result = await getPhaseChangeRequestWithRelations(tx, requestId);
+
+    if (!result) {
+      throw new WorkflowError("Phase change request not found.", 404);
+    }
+
+    return result;
   });
 }
 
@@ -896,7 +1306,7 @@ async function finalizePhaseChangeRequest(
 ) {
   const request = await tx.phaseChangeRequest.findUnique({
     where: { id: requestId },
-    include: { savingCard: true }
+    include: { savingCard: true },
   });
 
   if (!request) throw new Error("Phase change request not found.");
@@ -908,8 +1318,8 @@ async function finalizePhaseChangeRequest(
       cancellationReason:
         request.requestedPhase === "CANCELLED"
           ? request.cancellationReason ?? request.savingCard.cancellationReason
-          : request.savingCard.cancellationReason
-    }
+          : null,
+    },
   });
 
   await tx.phaseHistory.create({
@@ -917,16 +1327,16 @@ async function finalizePhaseChangeRequest(
       savingCardId: request.savingCardId,
       fromPhase: request.currentPhase,
       toPhase: request.requestedPhase,
-      changedById: actorId
-    }
+      changedById: actorId,
+    },
   });
 
   await tx.notification.create({
     data: {
       userId: request.requestedById,
       title: "Phase change completed",
-      message: `${request.savingCard.title} moved to ${request.requestedPhase}.`
-    }
+      message: `${request.savingCard.title} moved to ${request.requestedPhase}.`,
+    },
   });
 
   await tx.auditLog.create({
@@ -934,28 +1344,36 @@ async function finalizePhaseChangeRequest(
       userId: actorId,
       savingCardId: request.savingCardId,
       action: "phase_change.completed",
-      detail: `Phase changed from ${request.currentPhase} to ${request.requestedPhase}`
-    }
+      detail: `Phase changed from ${request.currentPhase} to ${request.requestedPhase}`,
+    },
   });
 }
 
-export async function getPendingApprovals(userId: string) {
+export async function getPendingApprovals(userId: string, organizationId?: string) {
   return prisma.phaseChangeRequestApproval.findMany({
     where: {
       approverId: userId,
-      status: ApprovalStatus.PENDING
+      status: ApprovalStatus.PENDING,
+      phaseChangeRequest: {
+        approvalStatus: ApprovalStatus.PENDING,
+        savingCard: organizationId
+          ? {
+              organizationId,
+            }
+          : undefined,
+      },
     },
     include: {
       phaseChangeRequest: {
         include: {
           savingCard: true,
           requestedBy: true,
-          approvals: { include: { approver: true } }
-        }
+          approvals: { include: { approver: true } },
+        },
       },
-      approver: true
+      approver: true,
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
   });
 }
 
@@ -963,7 +1381,7 @@ export async function setFinanceLock(savingCardId: string, actorId: string, lock
   return prisma.$transaction(async (tx) => {
     const card = await tx.savingCard.update({
       where: { id: savingCardId },
-      data: { financeLocked: locked }
+      data: { financeLocked: locked },
     });
 
     await tx.auditLog.create({
@@ -971,8 +1389,8 @@ export async function setFinanceLock(savingCardId: string, actorId: string, lock
         userId: actorId,
         savingCardId,
         action: locked ? "finance.locked" : "finance.unlocked",
-        detail: locked ? "Finance lock enabled" : "Finance lock removed"
-      }
+        detail: locked ? "Finance lock enabled" : "Finance lock removed",
+      },
     });
 
     return card;
@@ -982,13 +1400,17 @@ export async function setFinanceLock(savingCardId: string, actorId: string, lock
 async function createWorkflowNotifications(
   tx: Prisma.TransactionClient,
   savingCardId: string,
-  phase: Phase
+  phase: Phase,
+  organizationId: string
 ) {
   const roles = requiredRolesForPhase(phase);
   if (!roles.length) return;
 
   const users = await tx.user.findMany({
-    where: { role: { in: roles } }
+    where: {
+      organizationId,
+      role: { in: roles },
+    },
   });
 
   if (!users.length) return;
@@ -997,29 +1419,35 @@ async function createWorkflowNotifications(
     data: users.map((user) => ({
       userId: user.id,
       title: `Approval required for ${phase}`,
-      message: `Saving card ${savingCardId} requires your approval.`
-    }))
+      message: `Saving card ${savingCardId} requires your approval.`,
+    })),
   });
 }
 
-export async function getDashboardData() {
+export async function getDashboardData(organizationId: string) {
   const [cards, targets] = await Promise.all([
     prisma.savingCard.findMany({
+      where: { organizationId },
       include: {
         category: true,
         buyer: true,
-        businessUnit: true
-      }
+        businessUnit: true,
+      },
     }),
-    prisma.annualTarget.findMany({ include: { category: true } })
+    prisma.annualTarget.findMany({
+      where: { organizationId },
+      include: { category: true },
+    }),
   ]);
 
   const totalPipelineSavings = cards
     .filter((card) => card.phase !== "CANCELLED")
     .reduce((sum, card) => sum + card.calculatedSavings, 0);
+
   const totalRealisedSavings = cards
     .filter((card) => card.phase === "REALISED")
     .reduce((sum, card) => sum + card.calculatedSavings, 0);
+
   const totalAchievedSavings = cards
     .filter((card) => card.phase === "ACHIEVED")
     .reduce((sum, card) => sum + card.calculatedSavings, 0);
@@ -1055,7 +1483,7 @@ export async function getDashboardData() {
     cards.reduce<Record<string, { month: string; savings: number; forecast: number }>>((acc, card) => {
       const key = new Date(card.impactStartDate).toLocaleString("en-US", {
         month: "short",
-        year: "numeric"
+        year: "numeric",
       });
       acc[key] ??= { month: key, savings: 0, forecast: 0 };
       acc[key].savings += card.calculatedSavings;
@@ -1072,7 +1500,7 @@ export async function getDashboardData() {
     return {
       label: target.category?.name ?? `${target.year} Global`,
       target: target.targetValue,
-      actual: current
+      actual: current,
     };
   });
 
@@ -1085,7 +1513,7 @@ export async function getDashboardData() {
     byBuyer,
     byBusinessUnit,
     monthlyTrend,
-    savingsVsTarget
+    savingsVsTarget,
   };
 }
 
@@ -1097,30 +1525,57 @@ type CommandCenterFilters = {
   supplierId?: string;
 };
 
-function buildCommandCenterWhere(filters?: CommandCenterFilters): Prisma.SavingCardWhereInput {
+function buildCommandCenterWhere(
+  organizationId: string,
+  filters?: CommandCenterFilters
+): Prisma.SavingCardWhereInput {
   return {
+    organizationId,
     categoryId: filters?.categoryId || undefined,
     businessUnitId: filters?.businessUnitId || undefined,
     buyerId: filters?.buyerId || undefined,
     plantId: filters?.plantId || undefined,
-    supplierId: filters?.supplierId || undefined
+    supplierId: filters?.supplierId || undefined,
   };
 }
 
-export async function getCommandCenterFilterOptions() {
+export async function getCommandCenterFilterOptions(organizationId: string) {
   const [categories, businessUnits, buyers, plants, suppliers] = await Promise.all([
-    prisma.category.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.businessUnit.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.plant.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+    prisma.category.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.businessUnit.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.buyer.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.plant.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.supplier.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return { categories, businessUnits, buyers, plants, suppliers };
 }
 
-export async function getCommandCenterData(filters?: CommandCenterFilters) {
-  const where = buildCommandCenterWhere(filters);
+export async function getCommandCenterData(
+  organizationId: string,
+  filters?: CommandCenterFilters
+) {
+  const where = buildCommandCenterWhere(organizationId, filters);
 
   const [
     phaseSavings,
@@ -1130,12 +1585,12 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
     pendingApprovals,
     activeProjects,
     benchmarkCards,
-    riskCards
+    riskCards,
   ] = await Promise.all([
     prisma.savingCard.groupBy({
       by: ["phase"],
       where,
-      _sum: { calculatedSavings: true }
+      _sum: { calculatedSavings: true },
     }),
     prisma.savingCard.findMany({
       where,
@@ -1143,39 +1598,39 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
         impactStartDate: true,
         calculatedSavings: true,
         frequency: true,
-        phase: true
-      }
+        phase: true,
+      },
     }),
     prisma.savingCard.groupBy({
       by: ["supplierId"],
       where: {
         ...where,
-        phase: { not: Phase.CANCELLED }
+        phase: { not: Phase.CANCELLED },
       },
       _sum: { calculatedSavings: true },
       orderBy: {
         _sum: {
-          calculatedSavings: "desc"
-        }
+          calculatedSavings: "desc",
+        },
       },
-      take: 10
+      take: 10,
     }),
     prisma.savingCard.groupBy({
       by: ["qualificationStatus"],
       where,
-      _sum: { calculatedSavings: true }
+      _sum: { calculatedSavings: true },
     }),
     prisma.phaseChangeRequest.count({
       where: {
         approvalStatus: ApprovalStatus.PENDING,
-        savingCard: where
-      }
+        savingCard: where,
+      },
     }),
     prisma.savingCard.count({
       where: {
         ...where,
-        phase: { not: Phase.CANCELLED }
-      }
+        phase: { not: Phase.CANCELLED },
+      },
     }),
     prisma.savingCard.findMany({
       where,
@@ -1187,8 +1642,8 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
         baselinePrice: true,
         newPrice: true,
         annualVolume: true,
-        calculatedSavings: true
-      }
+        calculatedSavings: true,
+      },
     }),
     prisma.savingCard.findMany({
       where,
@@ -1196,50 +1651,72 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
         calculatedSavings: true,
         alternativeSuppliers: {
           where: { isSelected: true },
-          select: { riskLevel: true }
+          select: { riskLevel: true },
         },
         alternativeMaterials: {
           where: { isSelected: true },
-          select: { riskLevel: true }
-        }
-      }
-    })
+          select: { riskLevel: true },
+        },
+      },
+    }),
   ]);
 
   const phaseMap = new Map(phaseSavings.map((item) => [item.phase, item._sum.calculatedSavings ?? 0]));
+
   const pipelineByPhase = ["IDEA", "VALIDATED", "REALISED", "ACHIEVED", "CANCELLED"].map((phase) => ({
     phase,
     label: phaseLabels[phase as Phase],
-    savings: phaseMap.get(phase as Phase) ?? 0
+    savings: phaseMap.get(phase as Phase) ?? 0,
   }));
 
   const forecastCurve = Object.values(
-    forecastCards.reduce<Record<string, { month: string; savings: number; forecast: number; sortValue: number }>>((acc, card) => {
-      const date = new Date(card.impactStartDate);
-      const monthKey = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
-      acc[monthKey] ??= { month: monthKey, savings: 0, forecast: 0, sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime() };
-      acc[monthKey].savings += card.calculatedSavings;
-      acc[monthKey].forecast += card.calculatedSavings * getForecastMultiplier(card.frequency);
-      return acc;
-    }, {})
+    forecastCards.reduce<Record<string, { month: string; savings: number; forecast: number; sortValue: number }>>(
+      (acc, card) => {
+        const date = new Date(card.impactStartDate);
+        const monthKey = new Intl.DateTimeFormat("en-US", {
+          month: "short",
+          year: "numeric",
+        }).format(date);
+
+        acc[monthKey] ??= {
+          month: monthKey,
+          savings: 0,
+          forecast: 0,
+          sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
+        };
+
+        acc[monthKey].savings += card.calculatedSavings;
+        acc[monthKey].forecast += card.calculatedSavings * getForecastMultiplier(card.frequency);
+        return acc;
+      },
+      {}
+    )
   ).sort((a, b) => a.sortValue - b.sortValue);
 
   const supplierIds = supplierSavings.map((item) => item.supplierId);
   const suppliers = supplierIds.length
     ? await prisma.supplier.findMany({
-        where: { id: { in: supplierIds } },
-        select: { id: true, name: true }
+        where: {
+          organizationId,
+          id: { in: supplierIds },
+        },
+        select: { id: true, name: true },
       })
     : [];
+
   const supplierNameMap = new Map(suppliers.map((item) => [item.id, item.name]));
+
   const topSuppliers = supplierSavings.map((item) => ({
     supplier: supplierNameMap.get(item.supplierId) ?? "Unknown supplier",
-    savings: item._sum.calculatedSavings ?? 0
+    savings: item._sum.calculatedSavings ?? 0,
   }));
 
   const benchmarkOpportunities = benchmarkCards
     .map((card) => {
-      const variancePercent = card.baselinePrice ? ((card.baselinePrice - card.newPrice) / card.baselinePrice) * 100 : 0;
+      const variancePercent = card.baselinePrice
+        ? ((card.baselinePrice - card.newPrice) / card.baselinePrice) * 100
+        : 0;
+
       return {
         savingCardId: card.id,
         material: card.material.name,
@@ -1248,7 +1725,7 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
         currentPrice: card.baselinePrice,
         benchmarkPrice: card.newPrice,
         variancePercent,
-        potentialSaving: Math.max(card.calculatedSavings, 0)
+        potentialSaving: Math.max(card.calculatedSavings, 0),
       };
     })
     .filter((item) => item.potentialSaving > 0)
@@ -1263,6 +1740,7 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
     acc[level] = (acc[level] ?? 0) + card.calculatedSavings;
     return acc;
   }, {});
+
   const savingsByRiskLevel = riskOrder
     .filter((level) => typeof riskAccumulator[level] === "number")
     .map((level) => ({ level, savings: riskAccumulator[level] ?? 0 }));
@@ -1272,13 +1750,15 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
     .map((status) => ({
       status,
       savings:
-        qualificationGroups.find((item) => (item.qualificationStatus ?? "Unspecified") === status)?._sum.calculatedSavings ?? 0
+        qualificationGroups.find((item) => (item.qualificationStatus ?? "Unspecified") === status)?._sum
+          .calculatedSavings ?? 0,
     }))
     .filter((item) => item.savings > 0 || item.status === "Unspecified");
 
   const totalPipelineSavings = pipelineByPhase
     .filter((item) => item.phase !== "CANCELLED")
     .reduce((sum, item) => sum + item.savings, 0);
+
   const realisedSavings = phaseMap.get(Phase.REALISED) ?? 0;
   const achievedSavings = phaseMap.get(Phase.ACHIEVED) ?? 0;
   const savingsForecast = forecastCurve.reduce((sum, item) => sum + item.forecast, 0);
@@ -1291,14 +1771,14 @@ export async function getCommandCenterData(filters?: CommandCenterFilters) {
       achievedSavings,
       savingsForecast,
       activeProjects,
-      pendingApprovals
+      pendingApprovals,
     },
     pipelineByPhase,
     forecastCurve: forecastCurve.map(({ sortValue, ...item }) => item),
     topSuppliers,
     benchmarkOpportunities,
     savingsByRiskLevel,
-    savingsByQualificationStatus
+    savingsByQualificationStatus,
   };
 }
 
@@ -1319,13 +1799,15 @@ function normalizeRiskLevel(value: string) {
 
 export async function getApprovalStatus(cardId: string, phase: Phase) {
   const approvals = await prisma.approval.findMany({
-    where: { savingCardId: cardId, phase }
+    where: { savingCardId: cardId, phase },
+    include: { approver: true },
   });
 
   const requiredRoles = requiredRolesForPhase(phase);
+
   return requiredRoles.map((role) => ({
     role,
-    approved: approvals.some((approval) => approval.approved && approval.approverId && approval)
+    approved: approvals.some((approval) => approval.approved && approval.approver.role === role),
   }));
 }
 
@@ -1333,13 +1815,17 @@ export async function getNotificationsForUser(userId: string) {
   return prisma.notification.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    take: 10
+    take: 10,
   });
 }
 
-export async function importSavingCards(rows: Record<string, unknown>[], actorId: string) {
+export async function importSavingCards(
+  rows: Record<string, unknown>[],
+  actorId: string,
+  organizationId: string
+) {
   for (const row of rows) {
-    await createSavingCard(row, actorId);
+    await createSavingCard(row, actorId, organizationId);
   }
 }
 
@@ -1367,6 +1853,6 @@ export function mapSavingCardsForExport(cards: Awaited<ReturnType<typeof getSavi
     EndDate: card.endDate,
     ImpactStartDate: card.impactStartDate,
     ImpactEndDate: card.impactEndDate,
-    FinanceLocked: card.financeLocked
+    FinanceLocked: card.financeLocked,
   }));
 }

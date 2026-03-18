@@ -9,6 +9,7 @@ import type { SavingCardWithRelations } from "@/lib/types";
 
 export function ApprovalPanel({
   card,
+  canApprove,
   canLock,
   currentUserId
 }: {
@@ -30,26 +31,49 @@ export function ApprovalPanel({
       ),
     [card.phaseChangeRequests, currentUserId]
   );
+  const hasPendingRequests = useMemo(
+    () => card.phaseChangeRequests.some((request) => request.approvalStatus === "PENDING"),
+    [card.phaseChangeRequests]
+  );
+
+  function getApprovalErrorMessage(status: number, apiMessage?: string) {
+    switch (status) {
+      case 401:
+        return apiMessage ?? "Your session has expired. Sign in again and retry.";
+      case 403:
+        return apiMessage ?? "You are not assigned to approve this phase change request.";
+      case 404:
+        return apiMessage ?? "This phase change request is no longer available or you do not have access.";
+      case 409:
+        return apiMessage ?? "This phase change request was already processed or is no longer pending.";
+      default:
+        return apiMessage ?? "Approval failed.";
+    }
+  }
 
   async function submitApproval(requestId: string, approved: boolean) {
     setLoading(requestId);
     setError(null);
 
-    const response = await fetch("/api/approve-phase-change", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, approved })
-    });
+    try {
+      const response = await fetch("/api/approve-phase-change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, approved })
+      });
 
-    if (!response.ok) {
-      const result = await response.json().catch(() => null);
-      setError(result?.error ?? "Approval failed.");
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setError(getApprovalErrorMessage(response.status, result?.error));
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Unable to reach the workflow service. Please retry.");
+    } finally {
       setLoading(null);
-      return;
     }
-
-    setLoading(null);
-    router.refresh();
   }
 
   async function toggleFinanceLock() {
@@ -96,7 +120,9 @@ export function ApprovalPanel({
           ))
         ) : (
           <div className="rounded-2xl bg-[var(--muted)] p-4 text-sm text-[var(--muted-foreground)]">
-            No pending phase-change approvals are currently assigned to you for this saving card.
+            {hasPendingRequests && !canApprove
+              ? "A phase-change request is pending on this saving card, but it is not assigned to you."
+              : "No pending phase-change approvals are currently assigned to you for this saving card."}
           </div>
         )}
 

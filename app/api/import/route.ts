@@ -1,15 +1,16 @@
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
 
-function normalizeRow(row: Record<string, unknown>, referenceData: Awaited<ReturnType<typeof getReferenceData>>) {
-  const resolveId = (collection: Array<{ id: string; name: string }>, key: string) => {
-    const match = collection.find((item) => item.name === row[key]);
+function normalizeRow(
+  row: Record<string, unknown>,
+  referenceData: Awaited<ReturnType<typeof getReferenceData>>
+) {
+  const resolveId = (collection: Array<{ id: string; name: string }>, columnName: string) => {
+    const match = collection.find((item) => item.name === row[columnName]);
     return match?.id ?? "";
   };
-
-  const buyer = referenceData.users.find((item) => item.name === row.Buyer);
 
   return {
     title: row.Title,
@@ -21,7 +22,7 @@ function normalizeRow(row: Record<string, unknown>, referenceData: Awaited<Retur
     category: { id: resolveId(referenceData.categories, "Category"), name: String(row.Category ?? "") },
     plant: { id: resolveId(referenceData.plants, "Plant"), name: String(row.Plant ?? "") },
     businessUnit: { id: resolveId(referenceData.businessUnits, "BusinessUnit"), name: String(row.BusinessUnit ?? "") },
-    buyer: { id: buyer?.id ?? "", name: String(row.Buyer ?? "") },
+    buyer: { id: resolveId(referenceData.buyers, "Buyer"), name: String(row.Buyer ?? "") },
     baselinePrice: row.BaselinePrice,
     newPrice: row.NewPrice,
     annualVolume: row.AnnualVolume,
@@ -34,13 +35,18 @@ function normalizeRow(row: Record<string, unknown>, referenceData: Awaited<Retur
     impactEndDate: row.ImpactEndDate ?? row.EndDate,
     cancellationReason: row.CancellationReason ?? "",
     stakeholderIds: [],
-    evidence: []
+    evidence: [],
   };
 }
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
 
@@ -52,13 +58,16 @@ export async function POST(request: Request) {
     const workbook = XLSX.read(arrayBuffer, { type: "array" });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
-    const referenceData = await getReferenceData();
+    const referenceData = await getReferenceData(user.organizationId);
     const normalized = rows.map((row) => normalizeRow(row, referenceData));
 
-    await importSavingCards(normalized, user.id);
+    await importSavingCards(normalized, user.id, user.organizationId);
 
     return NextResponse.json({ count: normalized.length });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Import failed." }, { status: 400 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Import failed." },
+      { status: 400 }
+    );
   }
 }

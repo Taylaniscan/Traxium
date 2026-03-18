@@ -4,9 +4,9 @@ import { getSavingCards, mapSavingCardsForExport } from "@/lib/data";
 
 export async function GET() {
   try {
-    await requireUser();
+    const user = await requireUser();
 
-    const cards = await getSavingCards();
+    const cards = await getSavingCards(user.organizationId);
     const rows = mapSavingCardsForExport(cards);
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
@@ -23,8 +23,7 @@ export async function GET() {
   } catch (error) {
     return Response.json(
       {
-        error:
-          error instanceof Error ? error.message : "Export failed.",
+        error: error instanceof Error ? error.message : "Export failed.",
       },
       { status: 401 }
     );

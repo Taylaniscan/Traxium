@@ -4,15 +4,18 @@ import Link from "next/link";
 import { SavingCardTable } from "@/components/saving-cards/saving-card-table";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { requireUser } from "@/lib/auth";
 import { getSavingCards } from "@/lib/data";
 
 type SavingCards = Awaited<ReturnType<typeof getSavingCards>>;
 
 export default async function SavingCardsPage() {
+  const user = await requireUser();
+
   let cards: SavingCards = [];
 
   try {
-    cards = await getSavingCards();
+    cards = await getSavingCards(user.organizationId);
   } catch (error) {
     console.log("Saving cards could not be loaded:", error);
   }
@@ -25,7 +28,7 @@ export default async function SavingCardsPage() {
           <Button>Create Saving Card</Button>
         </Link>
       </div>
-      <SavingCardTable cards={cards as never} />
+      <SavingCardTable cards={cards} />
     </div>
   );
 }

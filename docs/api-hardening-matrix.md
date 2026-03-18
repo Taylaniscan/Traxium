@@ -6,8 +6,8 @@
 | /api/saving-cards | POST | Create saving card | Unknown | Unknown | Unknown | Unknown | Unknown | No | TODO |  |
 | /api/saving-cards/[id] | GET | Get single saving card | Unknown | Unknown | N/A | Unknown | Unknown | No | TODO |  |
 | /api/saving-cards/[id] | PATCH/PUT | Update saving card | Unknown | Unknown | Unknown | Unknown | Unknown | No | TODO |  |
-| /api/upload/evidence | POST | Upload evidence file | Yes | Partial | Partial | Partial | Partial | No | IN PROGRESS | Requires auth, checks savingCard access via buyer/stakeholder/approver or global role, validates savingCardId and files presence, but has no audit log and no standardized error envelope |
-| /api/evidence/[id]/download | GET | Download evidence via signed URL | Yes | Partial | Partial | Partial | Partial | No | IN PROGRESS | Requires auth, checks evidence access via related saving card ownership/stakeholder/approver or global role, returns signed URL redirect, but has no audit log and no standardized error envelope |
+| /api/upload/evidence | POST | Upload evidence file | Yes | Partial | Partial | Partial | Yes | Yes | STRONGER | Requires auth, checks savingCard access via buyer/stakeholder/approver or global role, validates savingCardId and file presence, uses standardized error shape, audit log added |
+| /api/evidence/[id]/download | GET | Download evidence via signed URL | Yes | Partial | Partial | Partial | Yes | Yes | STRONGER | Requires auth, checks evidence access via related saving card ownership/stakeholder/approver or global role, returns signed URL redirect, uses standardized error shape, audit log added |
 | /api/import | POST | Import data | Unknown | Unknown | Unknown | Unknown | Unknown | No | TODO |  |
 | /api/export | GET/POST | Export data | Unknown | Unknown | Unknown | Unknown | Unknown | No | TODO |  |
 | /api/pending-approvals | GET | Approval queue | Unknown | Unknown | N/A | Unknown | Unknown | No | TODO |  |

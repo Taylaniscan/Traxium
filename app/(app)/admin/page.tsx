@@ -2,13 +2,17 @@ export const dynamic = "force-dynamic";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { requireUser } from "@/lib/auth";
 import { getReferenceData } from "@/lib/data";
 
 type ReferenceData = Awaited<ReturnType<typeof getReferenceData>>;
 
 export default async function AdminPage() {
+  const user = await requireUser();
+
   let referenceData: ReferenceData = {
     users: [],
+    buyers: [],
     suppliers: [],
     materials: [],
     categories: [],
@@ -18,7 +22,7 @@ export default async function AdminPage() {
   };
 
   try {
-    referenceData = await getReferenceData();
+    referenceData = await getReferenceData(user.organizationId);
   } catch (error) {
     console.log("Admin reference data could not be loaded:", error);
   }

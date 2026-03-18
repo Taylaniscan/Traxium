@@ -1,37 +1,40 @@
 import { Phase, Role } from "@prisma/client";
 
+const PHASE_APPROVER_ROLES: Record<Phase, readonly Role[]> = {
+  [Phase.IDEA]: [Role.HEAD_OF_GLOBAL_PROCUREMENT],
+  [Phase.VALIDATED]: [Role.GLOBAL_CATEGORY_LEADER],
+  [Phase.REALISED]: [Role.FINANCIAL_CONTROLLER],
+  [Phase.ACHIEVED]: [Role.HEAD_OF_GLOBAL_PROCUREMENT],
+  [Phase.CANCELLED]: [],
+};
+
+const FINANCE_LOCK_ROLES = new Set<Role>([Role.FINANCIAL_CONTROLLER]);
+
+const LOCKED_FINANCE_FIELDS = new Set([
+  "baselinePrice",
+  "newPrice",
+  "annualVolume",
+  "currency",
+  "impactStartDate",
+  "impactEndDate",
+]);
+
 export function requiredRolesForPhase(phase: Phase): Role[] {
-  switch (phase) {
-    case "IDEA":
-      return ["HEAD_OF_GLOBAL_PROCUREMENT"];
-    case "VALIDATED":
-      return ["HEAD_OF_GLOBAL_PROCUREMENT", "FINANCIAL_CONTROLLER"];
-    case "REALISED":
-      return ["FINANCIAL_CONTROLLER"];
-    case "ACHIEVED":
-      return ["FINANCIAL_CONTROLLER"];
-    case "CANCELLED":
-      return [];
-    default:
-      return [];
-  }
+  return [...PHASE_APPROVER_ROLES[phase]];
 }
 
-export function canApprovePhase(role: Role, phase: Phase) {
-  return requiredRolesForPhase(phase).includes(role);
+export function hasAnyRole(role: Role, roles: readonly Role[]): boolean {
+  return roles.includes(role);
 }
 
-export function canLockFinance(role: Role) {
-  return role === "FINANCIAL_CONTROLLER";
+export function canApprovePhase(role: Role, phase: Phase): boolean {
+  return hasAnyRole(role, PHASE_APPROVER_ROLES[phase]);
 }
 
-export function isLockedField(field: string) {
-  return [
-    "baselinePrice",
-    "newPrice",
-    "annualVolume",
-    "currency",
-    "impactStartDate",
-    "impactEndDate"
-  ].includes(field);
+export function canLockFinance(role: Role): boolean {
+  return FINANCE_LOCK_ROLES.has(role);
+}
+
+export function isLockedField(field: string): boolean {
+  return LOCKED_FINANCE_FIELDS.has(field);
 }

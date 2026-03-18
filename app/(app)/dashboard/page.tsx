@@ -2,24 +2,32 @@ export const dynamic = "force-dynamic";
 
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { requireUser } from "@/lib/auth";
 import { getDashboardData } from "@/lib/data";
 
-export default async function DashboardPage() {
+type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
-  let data;
+const EMPTY_DASHBOARD_DATA: DashboardData = {
+  cards: [],
+  totalPipelineSavings: 0,
+  totalRealisedSavings: 0,
+  totalAchievedSavings: 0,
+  byCategory: [],
+  byBuyer: [],
+  byBusinessUnit: [],
+  monthlyTrend: [],
+  savingsVsTarget: [],
+};
+
+export default async function DashboardPage() {
+  const user = await requireUser();
+
+  let data: DashboardData = EMPTY_DASHBOARD_DATA;
 
   try {
-    data = await getDashboardData();
+    data = await getDashboardData(user.organizationId);
   } catch (error) {
     console.log("Dashboard data could not be loaded:", error);
-
-    data = {
-      cards: [],
-      monthlyTrend: [],
-      savingsByCategory: [],
-      savingsByBuyer: [],
-      savingsVsTarget: []
-    } as any;
   }
 
   return (
