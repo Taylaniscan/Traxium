@@ -3,13 +3,13 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
 
-type KanbanBoardCards = Parameters<typeof KanbanBoard>[0]["initialCards"];
+type KanbanCards = Awaited<ReturnType<typeof getSavingCards>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 export default async function KanbanPage() {
   const user = await requireUser();
 
-  let cards: KanbanBoardCards = [];
+  let cards: KanbanCards = [];
   let workspaceReadiness: WorkspaceReadiness | null = null;
 
   const [cardsResult, readinessResult] = await Promise.allSettled([
@@ -18,7 +18,7 @@ export default async function KanbanPage() {
   ]);
 
   if (cardsResult.status === "fulfilled") {
-    cards = cardsResult.value as unknown as KanbanBoardCards;
+    cards = cardsResult.value;
   } else {
     console.log("Kanban data could not be loaded:", cardsResult.reason);
   }

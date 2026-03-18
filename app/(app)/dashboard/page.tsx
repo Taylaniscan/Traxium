@@ -4,20 +4,12 @@ import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getDashboardData, getWorkspaceReadiness } from "@/lib/data";
+import type { DashboardData } from "@/lib/types";
 
-type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 const EMPTY_DASHBOARD_DATA: DashboardData = {
   cards: [],
-  totalPipelineSavings: 0,
-  totalRealisedSavings: 0,
-  totalAchievedSavings: 0,
-  byCategory: [],
-  byBuyer: [],
-  byBusinessUnit: [],
-  monthlyTrend: [],
-  savingsVsTarget: [],
 };
 
 export default async function DashboardPage() {

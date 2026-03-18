@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { phases, phaseLabels } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
-import type { SavingCardWithRelations } from "@/lib/types";
+import type { SavingCardPortfolio } from "@/lib/types";
 
 const ROW_HEIGHT = 84;
 const PROJECT_COLUMN_WIDTH = 280;
@@ -91,7 +91,7 @@ export function TimelineBoard({
   filters,
   readiness
 }: {
-  cards: SavingCardWithRelations[];
+  cards: SavingCardPortfolio[];
   nowIso: string;
   filters: {
     categories: Array<{ id: string; name: string }>;
@@ -716,7 +716,7 @@ function TooltipRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buildTimelineSegments(cards: SavingCardWithRelations[], scale: ZoomLevel) {
+function buildTimelineSegments(cards: SavingCardPortfolio[], scale: ZoomLevel) {
   if (cards.length === 0) {
     const now = new Date();
     return [buildSegmentForDate(now, scale)];
@@ -821,7 +821,7 @@ function getRangeHighlight(timelineStart: number, totalRange: number, range: { s
   };
 }
 
-function getProjectProgress(card: SavingCardWithRelations, now: number) {
+function getProjectProgress(card: SavingCardPortfolio, now: number) {
   if (card.phase === "ACHIEVED") return 1;
   if (card.phase === "CANCELLED") return 0;
 

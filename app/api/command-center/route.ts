@@ -2,16 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getCommandCenterData } from "@/lib/data";
+import type { CommandCenterData, CommandCenterFilters } from "@/lib/types";
+import { commandCenterFilterKeys } from "@/lib/types";
 
-const FILTER_KEYS = [
-  "categoryId",
-  "businessUnitId",
-  "buyerId",
-  "plantId",
-  "supplierId",
-] as const;
-
-const commandCenterFilterSchema = z.object({
+const commandCenterFilterSchema: z.ZodType<CommandCenterFilters> = z.object({
   categoryId: z.string().trim().min(1).optional(),
   businessUnitId: z.string().trim().min(1).optional(),
   buyerId: z.string().trim().min(1).optional(),
@@ -37,19 +31,17 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const duplicateKey = FILTER_KEYS.find((key) => searchParams.getAll(key).length > 1);
+    const duplicateKey = commandCenterFilterKeys.find((key) => searchParams.getAll(key).length > 1);
 
     if (duplicateKey) {
       return jsonError(`Query parameter "${duplicateKey}" must only be provided once.`, 400);
     }
 
-    const filters = commandCenterFilterSchema.safeParse({
-      categoryId: normalizeFilterValue(searchParams.get("categoryId")),
-      businessUnitId: normalizeFilterValue(searchParams.get("businessUnitId")),
-      buyerId: normalizeFilterValue(searchParams.get("buyerId")),
-      plantId: normalizeFilterValue(searchParams.get("plantId")),
-      supplierId: normalizeFilterValue(searchParams.get("supplierId")),
-    });
+    const rawFilters = Object.fromEntries(
+      commandCenterFilterKeys.map((key) => [key, normalizeFilterValue(searchParams.get(key))])
+    );
+
+    const filters = commandCenterFilterSchema.safeParse(rawFilters);
 
     if (!filters.success) {
       return jsonError(filters.error.issues[0]?.message ?? "Command center filters are invalid.", 422);
@@ -57,7 +49,7 @@ export async function GET(request: Request) {
 
     const data = await getCommandCenterData(user.organizationId, filters.data);
 
-    return NextResponse.json(data);
+    return NextResponse.json<CommandCenterData>(data);
   } catch (error) {
     return jsonError(
       error instanceof Error ? error.message : "Unable to load command center.",

@@ -27,20 +27,21 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
+import type {
+  CommandCenterApiError,
+  CommandCenterData,
+  CommandCenterFilterOptions,
+  CommandCenterFilters,
+  CommandCenterResolvedFilters,
+} from "@/lib/types";
+import {
+  commandCenterFilterKeys,
+  emptyCommandCenterFilters,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 
-type CommandCenterData = Awaited<ReturnType<typeof import("@/lib/data").getCommandCenterData>>;
-type FilterOptions = Awaited<ReturnType<typeof import("@/lib/data").getCommandCenterFilterOptions>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
-
-type Filters = {
-  categoryId: string;
-  businessUnitId: string;
-  buyerId: string;
-  plantId: string;
-  supplierId: string;
-};
 
 export function CommandCenterClient({
   initialData,
@@ -48,42 +49,31 @@ export function CommandCenterClient({
   readiness
 }: {
   initialData: CommandCenterData;
-  filterOptions: FilterOptions;
+  filterOptions: CommandCenterFilterOptions;
   readiness?: WorkspaceReadiness | null;
 }) {
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState<Filters>({
-    categoryId: initialData.filters.categoryId ?? "",
-    businessUnitId: initialData.filters.businessUnitId ?? "",
-    buyerId: initialData.filters.buyerId ?? "",
-    plantId: initialData.filters.plantId ?? "",
-    supplierId: initialData.filters.supplierId ?? ""
-  });
-  const resetFilters = () =>
-    setFilters({
-      categoryId: "",
-      businessUnitId: "",
-      buyerId: "",
-      plantId: "",
-      supplierId: ""
-    });
+  const [filters, setFilters] = useState<CommandCenterResolvedFilters>(() => ({
+    ...emptyCommandCenterFilters,
+    ...initialData.filters,
+  }));
+  const resetFilters = () => setFilters(emptyCommandCenterFilters);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (filters.categoryId) params.set("categoryId", filters.categoryId);
-    if (filters.businessUnitId) params.set("businessUnitId", filters.businessUnitId);
-    if (filters.buyerId) params.set("buyerId", filters.buyerId);
-    if (filters.plantId) params.set("plantId", filters.plantId);
-    if (filters.supplierId) params.set("supplierId", filters.supplierId);
-
     let ignore = false;
     setLoading(true);
 
-    fetch(`/api/command-center?${params.toString()}`, { cache: "no-store" })
-      .then((response) => response.json())
+    fetchCommandCenterData(filters)
       .then((result) => {
-        if (!ignore) setData(result);
+        if (!ignore) {
+          setData(result);
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          console.error("Command Center data could not be refreshed:", error);
+        }
       })
       .finally(() => {
         if (!ignore) setLoading(false);
@@ -547,6 +537,40 @@ export function CommandCenterClient({
       )}
     </div>
   );
+}
+
+function buildCommandCenterSearchParams(filters: CommandCenterFilters) {
+  const params = new URLSearchParams();
+
+  for (const key of commandCenterFilterKeys) {
+    const value = filters[key]?.trim();
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  return params;
+}
+
+async function fetchCommandCenterData(
+  filters: CommandCenterFilters
+): Promise<CommandCenterData> {
+  const params = buildCommandCenterSearchParams(filters);
+  const query = params.toString();
+  const response = await fetch(
+    query ? `/api/command-center?${query}` : "/api/command-center",
+    { cache: "no-store" }
+  );
+
+  const result = (await response.json()) as CommandCenterData | CommandCenterApiError;
+
+  if (!response.ok || "error" in result) {
+    throw new Error(
+      "error" in result ? result.error : "Unable to refresh command center."
+    );
+  }
+
+  return result;
 }
 
 function CommandCenterMetric({

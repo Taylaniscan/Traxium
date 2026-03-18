@@ -3,6 +3,15 @@ import { calculateSavings, getForecastMultiplier } from "@/lib/calculations";
 import { phaseLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { requiredRolesForPhase } from "@/lib/permissions";
+import {
+  dashboardCardSelect,
+  savingCardPortfolioSelect,
+  type CommandCenterData,
+  type CommandCenterFilterOptions,
+  type CommandCenterFilters,
+  type DashboardData,
+  type SavingCardPortfolio,
+} from "@/lib/types";
 import { alternativeMaterialSchema, alternativeSupplierSchema, savingCardSchema } from "@/lib/validation";
 
 const GLOBAL_ACCESS_ROLES = new Set<Role>([
@@ -88,120 +97,6 @@ const savingCardDetailInclude = {
     orderBy: { createdAt: "desc" as const },
   },
 } satisfies Prisma.SavingCardInclude;
-
-const savingCardListSelect = {
-  id: true,
-  title: true,
-  savingType: true,
-  phase: true,
-  supplierId: true,
-  materialId: true,
-  categoryId: true,
-  businessUnitId: true,
-  buyerId: true,
-  alternativeSupplierManualName: true,
-  alternativeMaterialManualName: true,
-  baselinePrice: true,
-  newPrice: true,
-  annualVolume: true,
-  currency: true,
-  calculatedSavings: true,
-  calculatedSavingsUSD: true,
-  savingDriver: true,
-  implementationComplexity: true,
-  qualificationStatus: true,
-  startDate: true,
-  endDate: true,
-  impactStartDate: true,
-  impactEndDate: true,
-  financeLocked: true,
-  supplier: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  material: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  alternativeSupplier: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  alternativeMaterial: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  category: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  buyer: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  businessUnit: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  phaseChangeRequests: {
-    select: {
-      id: true,
-      approvalStatus: true,
-      requestedPhase: true,
-      requestedBy: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: { createdAt: "desc" as const },
-  },
-} satisfies Prisma.SavingCardSelect;
-
-const dashboardCardSelect = {
-  title: true,
-  phase: true,
-  categoryId: true,
-  baselinePrice: true,
-  newPrice: true,
-  annualVolume: true,
-  calculatedSavings: true,
-  frequency: true,
-  savingDriver: true,
-  implementationComplexity: true,
-  qualificationStatus: true,
-  impactStartDate: true,
-  category: {
-    select: {
-      name: true,
-    },
-  },
-  buyer: {
-    select: {
-      name: true,
-    },
-  },
-  businessUnit: {
-    select: {
-      name: true,
-    },
-  },
-} satisfies Prisma.SavingCardSelect;
 
 function normalizeName(value?: string) {
   return value?.trim() || "";
@@ -443,7 +338,7 @@ export async function getSavingCards(
     plantId?: string;
     supplierId?: string;
   }
-) {
+): Promise<SavingCardPortfolio[]> {
   return prisma.savingCard.findMany({
     where: {
       organizationId,
@@ -453,7 +348,7 @@ export async function getSavingCards(
       ...(filters?.plantId ? { plantId: filters.plantId } : {}),
       ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
     },
-    select: savingCardListSelect,
+    select: savingCardPortfolioSelect,
     orderBy: { updatedAt: "desc" },
   });
 }
@@ -1670,102 +1565,14 @@ async function createWorkflowNotifications(
   });
 }
 
-export async function getDashboardData(organizationId: string) {
-  const [cards, targets] = await Promise.all([
-    prisma.savingCard.findMany({
-      where: { organizationId },
-      select: dashboardCardSelect,
-    }),
-    prisma.annualTarget.findMany({
-      where: { organizationId },
-      include: { category: true },
-    }),
-  ]);
-
-  const totalPipelineSavings = cards
-    .filter((card) => card.phase !== "CANCELLED")
-    .reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-  const totalRealisedSavings = cards
-    .filter((card) => card.phase === "REALISED")
-    .reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-  const totalAchievedSavings = cards
-    .filter((card) => card.phase === "ACHIEVED")
-    .reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-  const byCategory = Object.values(
-    cards.reduce<Record<string, { category: string; savings: number }>>((acc, card) => {
-      const key = card.category.name;
-      acc[key] ??= { category: key, savings: 0 };
-      acc[key].savings += card.calculatedSavings;
-      return acc;
-    }, {})
-  );
-
-  const byBuyer = Object.values(
-    cards.reduce<Record<string, { buyer: string; savings: number }>>((acc, card) => {
-      const key = card.buyer.name;
-      acc[key] ??= { buyer: key, savings: 0 };
-      acc[key].savings += card.calculatedSavings;
-      return acc;
-    }, {})
-  );
-
-  const byBusinessUnit = Object.values(
-    cards.reduce<Record<string, { businessUnit: string; savings: number }>>((acc, card) => {
-      const key = card.businessUnit.name;
-      acc[key] ??= { businessUnit: key, savings: 0 };
-      acc[key].savings += card.calculatedSavings;
-      return acc;
-    }, {})
-  );
-
-  const monthlyTrend = Object.values(
-    cards.reduce<Record<string, { month: string; savings: number; forecast: number }>>((acc, card) => {
-      const key = new Date(card.impactStartDate).toLocaleString("en-US", {
-        month: "short",
-        year: "numeric",
-      });
-      acc[key] ??= { month: key, savings: 0, forecast: 0 };
-      acc[key].savings += card.calculatedSavings;
-      acc[key].forecast += card.calculatedSavings * getForecastMultiplier(card.frequency);
-      return acc;
-    }, {})
-  );
-
-  const savingsVsTarget = targets.map((target) => {
-    const current = cards
-      .filter((card) => !target.categoryId || card.categoryId === target.categoryId)
-      .reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-    return {
-      label: target.category?.name ?? `${target.year} Global`,
-      target: target.targetValue,
-      actual: current,
-    };
+export async function getDashboardData(organizationId: string): Promise<DashboardData> {
+  const cards = await prisma.savingCard.findMany({
+    where: { organizationId },
+    select: dashboardCardSelect,
   });
 
-  return {
-    cards,
-    totalPipelineSavings,
-    totalRealisedSavings,
-    totalAchievedSavings,
-    byCategory,
-    byBuyer,
-    byBusinessUnit,
-    monthlyTrend,
-    savingsVsTarget,
-  };
+  return { cards };
 }
-
-type CommandCenterFilters = {
-  categoryId?: string;
-  businessUnitId?: string;
-  buyerId?: string;
-  plantId?: string;
-  supplierId?: string;
-};
 
 function buildCommandCenterWhere(
   organizationId: string,
@@ -1781,7 +1588,9 @@ function buildCommandCenterWhere(
   };
 }
 
-export async function getCommandCenterFilterOptions(organizationId: string) {
+export async function getCommandCenterFilterOptions(
+  organizationId: string
+): Promise<CommandCenterFilterOptions> {
   const [categories, businessUnits, buyers, plants, suppliers] = await Promise.all([
     prisma.category.findMany({
       where: { organizationId },
@@ -1816,7 +1625,7 @@ export async function getCommandCenterFilterOptions(organizationId: string) {
 export async function getCommandCenterData(
   organizationId: string,
   filters?: CommandCenterFilters
-) {
+): Promise<CommandCenterData> {
   const where = buildCommandCenterWhere(organizationId, filters);
 
   const [
@@ -2071,7 +1880,7 @@ export async function importSavingCards(
   }
 }
 
-export function mapSavingCardsForExport(cards: Awaited<ReturnType<typeof getSavingCards>>) {
+export function mapSavingCardsForExport(cards: SavingCardPortfolio[]) {
   return cards.map((card) => ({
     Title: card.title,
     Phase: card.phase,

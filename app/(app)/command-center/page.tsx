@@ -8,9 +8,11 @@ import {
   getCommandCenterFilterOptions,
   getWorkspaceReadiness,
 } from "@/lib/data";
+import type {
+  CommandCenterData,
+  CommandCenterFilterOptions,
+} from "@/lib/types";
 
-type CommandCenterData = Awaited<ReturnType<typeof getCommandCenterData>>;
-type CommandCenterFilterOptions = Awaited<ReturnType<typeof getCommandCenterFilterOptions>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 const EMPTY_COMMAND_CENTER_DATA: CommandCenterData = {

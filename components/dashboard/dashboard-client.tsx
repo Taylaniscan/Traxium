@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { implementationComplexities, phaseLabels, qualificationStatuses, savingDrivers } from "@/lib/constants";
+import type { DashboardData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 
-type DashboardData = Awaited<ReturnType<typeof import("@/lib/data").getDashboardData>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 export function DashboardClient({

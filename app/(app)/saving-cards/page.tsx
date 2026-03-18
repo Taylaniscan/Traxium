@@ -7,13 +7,13 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
 
-type SavingCardTableCards = Parameters<typeof SavingCardTable>[0]["cards"];
+type SavingCards = Awaited<ReturnType<typeof getSavingCards>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
 export default async function SavingCardsPage() {
   const user = await requireUser();
 
-  let cards: SavingCardTableCards = [];
+  let cards: SavingCards = [];
   let workspaceReadiness: WorkspaceReadiness | null = null;
 
   const [cardsResult, readinessResult] = await Promise.allSettled([
@@ -22,7 +22,7 @@ export default async function SavingCardsPage() {
   ]);
 
   if (cardsResult.status === "fulfilled") {
-    cards = cardsResult.value as unknown as SavingCardTableCards;
+    cards = cardsResult.value;
   } else {
     console.log("Saving cards could not be loaded:", cardsResult.reason);
   }

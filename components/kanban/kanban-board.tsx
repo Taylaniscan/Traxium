@@ -23,12 +23,12 @@ import { implementationComplexities, phaseLabels, qualificationStatuses, roleLab
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 import { requiredRolesForPhase } from "@/lib/permissions";
-import type { SavingCardWithRelations } from "@/lib/types";
+import type { SavingCardPortfolio } from "@/lib/types";
 
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 type MoveRequest = {
-  card: SavingCardWithRelations;
+  card: SavingCardPortfolio;
   targetPhase: (typeof phases)[number];
 };
 
@@ -36,7 +36,7 @@ export function KanbanBoard({
   initialCards,
   readiness,
 }: {
-  initialCards: SavingCardWithRelations[];
+  initialCards: SavingCardPortfolio[];
   readiness?: WorkspaceReadiness | null;
 }) {
   const [cards, setCards] = useState(initialCards);
@@ -60,7 +60,7 @@ export function KanbanBoard({
 
   const grouped = useMemo(
     () =>
-      phases.reduce<Record<string, SavingCardWithRelations[]>>((acc, phase) => {
+      phases.reduce<Record<string, SavingCardPortfolio[]>>((acc, phase) => {
         acc[phase] = cards.filter((card) => {
           if (card.phase !== phase) return false;
           if (filters.savingDriver && card.savingDriver !== filters.savingDriver) return false;
@@ -74,7 +74,7 @@ export function KanbanBoard({
   );
   const visibleCards = useMemo(
     () =>
-      phases.reduce<SavingCardWithRelations[]>((acc, phase) => {
+      phases.reduce<SavingCardPortfolio[]>((acc, phase) => {
         acc.push(...grouped[phase]);
         return acc;
       }, []),
@@ -448,7 +448,7 @@ function KanbanColumn({
   staticMode = false
 }: {
   phase: (typeof phases)[number];
-  cards: SavingCardWithRelations[];
+  cards: SavingCardPortfolio[];
   staticMode?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: phase });
@@ -484,7 +484,7 @@ function KanbanCard({
   isOverlay = false,
   staticMode = false
 }: {
-  card: SavingCardWithRelations;
+  card: SavingCardPortfolio;
   isOverlay?: boolean;
   staticMode?: boolean;
 }) {
@@ -522,7 +522,7 @@ function KanbanCard({
   );
 }
 
-function KanbanCardShell({ card, className }: { card: SavingCardWithRelations; className?: string }) {
+function KanbanCardShell({ card, className }: { card: SavingCardPortfolio; className?: string }) {
   const pendingRequest = card.phaseChangeRequests.find((item) => item.approvalStatus === "PENDING");
   const rejectedRequest = card.phaseChangeRequests.find((item) => item.approvalStatus === "REJECTED");
   const tooltip = buildTooltip(card);
@@ -660,7 +660,7 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function describeScenario(card: SavingCardWithRelations) {
+function describeScenario(card: SavingCardPortfolio) {
   const alternativeSupplier = card.alternativeSupplier?.name ?? card.alternativeSupplierManualName;
   const alternativeMaterial = card.alternativeMaterial?.name ?? card.alternativeMaterialManualName;
 
@@ -679,7 +679,7 @@ function describeScenario(card: SavingCardWithRelations) {
   return `${card.supplier.name} · ${card.material.name}`;
 }
 
-function buildTooltip(card: SavingCardWithRelations) {
+function buildTooltip(card: SavingCardPortfolio) {
   const parts = [
     `Driver: ${card.savingDriver ?? "Not set"}`,
     `Complexity: ${card.implementationComplexity ?? "Not set"}`,

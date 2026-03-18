@@ -5,7 +5,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCards, getWorkspaceReadiness } from "@/lib/data";
 
-type TimelineBoardCards = Parameters<typeof TimelineBoard>[0]["cards"];
+type TimelineCards = Awaited<ReturnType<typeof getSavingCards>>;
 type TimelineReferenceData = Awaited<ReturnType<typeof getReferenceData>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
@@ -23,7 +23,7 @@ const EMPTY_REFERENCE_DATA: TimelineReferenceData = {
 export default async function TimelinePage() {
   const user = await requireUser();
 
-  let cards: TimelineBoardCards = [];
+  let cards: TimelineCards = [];
   let referenceData: TimelineReferenceData = EMPTY_REFERENCE_DATA;
   let workspaceReadiness: WorkspaceReadiness | null = null;
 
@@ -34,7 +34,7 @@ export default async function TimelinePage() {
   ]);
 
   if (cardsResult.status === "fulfilled") {
-    cards = cardsResult.value as unknown as TimelineBoardCards;
+    cards = cardsResult.value;
   } else {
     console.log("Timeline cards could not be loaded:", cardsResult.reason);
   }

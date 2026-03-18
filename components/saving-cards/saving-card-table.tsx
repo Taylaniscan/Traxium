@@ -13,7 +13,7 @@ import { getValueBadgeTone } from "@/lib/calculations";
 import { phaseLabels, phases } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
-import type { SavingCardWithRelations } from "@/lib/types";
+import type { SavingCardPortfolio } from "@/lib/types";
 
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
@@ -21,7 +21,7 @@ export function SavingCardTable({
   cards,
   readiness,
 }: {
-  cards: SavingCardWithRelations[];
+  cards: SavingCardPortfolio[];
   readiness?: WorkspaceReadiness | null;
 }) {
   const [search, setSearch] = useState("");
