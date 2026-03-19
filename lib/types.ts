@@ -126,6 +126,67 @@ export type DashboardData = {
   cards: DashboardCardSummary[];
 };
 
+export type WorkspaceIdentity = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type WorkspaceReadinessCounts = {
+  users: number;
+  buyers: number;
+  suppliers: number;
+  materials: number;
+  categories: number;
+  plants: number;
+  businessUnits: number;
+  savingCards: number;
+};
+
+export type WorkspaceMasterDataItem = {
+  key: "buyers" | "suppliers" | "materials" | "categories" | "plants" | "businessUnits";
+  label: string;
+  count: number;
+  ready: boolean;
+  description: string;
+};
+
+export type WorkspaceWorkflowCoverageItem = {
+  key: "HEAD_OF_GLOBAL_PROCUREMENT" | "GLOBAL_CATEGORY_LEADER" | "FINANCIAL_CONTROLLER";
+  label: string;
+  count: number;
+  ready: boolean;
+};
+
+export type WorkspaceCoverageSummary = {
+  masterDataReadyCount: number;
+  masterDataTotal: number;
+  workflowReadyCount: number;
+  workflowTotal: number;
+  overallPercent: number;
+};
+
+export type WorkspaceActivitySummary = {
+  firstSavingCardCreatedAt: Date | null;
+  lastPortfolioUpdateAt: Date | null;
+};
+
+export type WorkspaceReadiness = {
+  workspace: WorkspaceIdentity;
+  counts: WorkspaceReadinessCounts;
+  masterData: readonly WorkspaceMasterDataItem[];
+  workflowCoverage: readonly WorkspaceWorkflowCoverageItem[];
+  coverage: WorkspaceCoverageSummary;
+  activity: WorkspaceActivitySummary;
+  isMasterDataReady: boolean;
+  isWorkflowReady: boolean;
+  isWorkspaceReady: boolean;
+  missingCoreSetup: string[];
+  missingWorkflowCoverage: string[];
+};
+
 export const commandCenterFilterKeys = [
   "categoryId",
   "businessUnitId",

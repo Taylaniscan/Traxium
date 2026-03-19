@@ -9,11 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { implementationComplexities, phaseLabels, qualificationStatuses, savingDrivers } from "@/lib/constants";
-import type { DashboardData } from "@/lib/types";
+import type { DashboardData, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
-
-type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 export function DashboardClient({
   data,
@@ -70,6 +68,8 @@ export function DashboardClient({
 
   return (
     <div className="space-y-6">
+      <DashboardTrustCard readiness={readiness} cardCount={data.cards.length} />
+
       {showRampUpState ? (
         <DashboardRampUpCard
           readiness={readiness}
@@ -221,9 +221,11 @@ function DashboardZeroState({
               Workspace Launch
             </div>
             <div>
-              <h2 className="text-3xl font-semibold tracking-tight">No saving cards are live yet.</h2>
+              <h2 className="text-3xl font-semibold tracking-tight">
+                {readiness?.workspace.name ?? "This workspace"} does not have live saving cards yet.
+              </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                This dashboard will become the live portfolio view once your first initiatives are created. Start by confirming core setup, then create the first saving card so pipeline, forecast, and benchmark analytics have real workspace data to build on.
+                This dashboard becomes the operating view for {readiness?.workspace.name ?? "your workspace"} once the first initiatives are created. Start by confirming shared setup, then create the first saving card so pipeline, forecast, and benchmark analytics have real workspace data to build on.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -238,12 +240,12 @@ function DashboardZeroState({
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <LaunchMetric
-              label="Workspace Status"
-              value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+              label="Workspace"
+              value={readiness?.workspace.name ?? "Workspace"}
               detail={
                 readiness?.isWorkspaceReady
-                  ? "Master data and workflow coverage are in place."
-                  : "Complete shared setup before wider rollout."
+                  ? `Operational controls are in place for ${readiness.workspace.slug}.`
+                  : `Complete shared setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
               }
             />
             <LaunchMetric
@@ -318,7 +320,11 @@ function DashboardRampUpCard({
     <Card className="border-dashed">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="space-y-1">
-          <CardTitle>{readiness?.isWorkspaceReady ? "Portfolio still ramping up" : "Portfolio is live, but setup is still in progress"}</CardTitle>
+          <CardTitle>
+            {readiness?.isWorkspaceReady
+              ? `${readiness.workspace.name} is live and still ramping up`
+              : `${readiness?.workspace.name ?? "This workspace"} is live, but setup is still in progress`}
+          </CardTitle>
           <CardDescription>
             {readiness?.isWorkspaceReady
               ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Trends and benchmarks will become more reliable as more initiatives move through the workflow.`
@@ -357,6 +363,90 @@ function DashboardRampUpCard({
       </CardContent>
     </Card>
   );
+}
+
+function DashboardTrustCard({
+  readiness,
+  cardCount,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  cardCount: number;
+}) {
+  if (!readiness) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>{readiness.workspace.name}</CardTitle>
+          <CardDescription>
+            Executive reporting snapshot for live organization-scoped savings, workflow confidence, and portfolio coverage.
+          </CardDescription>
+        </div>
+        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-4">
+        <LaunchMetric
+          label="Workspace Slug"
+          value={readiness.workspace.slug}
+          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
+        />
+        <LaunchMetric
+          label="Setup Completeness"
+          value={`${readiness.coverage.overallPercent}%`}
+          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
+        />
+        <LaunchMetric
+          label="Reporting Scope"
+          value={`${cardCount} live card${cardCount === 1 ? "" : "s"}`}
+          detail={`First card ${formatDateLabel(readiness.activity.firstSavingCardCreatedAt, "Not available")}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
+        />
+        <LaunchMetric
+          label="Coverage Limits"
+          value={getCoverageLimitValue(readiness)}
+          detail={getCoverageLimitDetail(readiness)}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatDateLabel(value: Date | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function getCoverageLimitValue(readiness: WorkspaceReadiness) {
+  const gapCount =
+    readiness.missingCoreSetup.length + readiness.missingWorkflowCoverage.length;
+
+  return gapCount ? `${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Clear";
+}
+
+function getCoverageLimitDetail(readiness: WorkspaceReadiness) {
+  const gaps = [
+    ...readiness.missingCoreSetup,
+    ...readiness.missingWorkflowCoverage,
+  ];
+
+  if (!gaps.length) {
+    return "Core master data and approval coverage are in place for reporting.";
+  }
+
+  const visibleGaps = gaps.slice(0, 2).join(", ");
+  const remainder = gaps.length > 2 ? ` +${gaps.length - 2} more` : "";
+  return `${visibleGaps}${remainder} may limit report completeness.`;
 }
 
 function LaunchMetric({

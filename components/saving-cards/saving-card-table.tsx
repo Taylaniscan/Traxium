@@ -11,11 +11,9 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { getValueBadgeTone } from "@/lib/calculations";
 import { phaseLabels, phases } from "@/lib/constants";
+import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
-import type { SavingCardPortfolio } from "@/lib/types";
-
-type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 export function SavingCardTable({
   cards,
@@ -58,8 +56,11 @@ export function SavingCardTable({
   const totalSavings = filteredCards.reduce((sum, card) => sum + card.calculatedSavings, 0);
   const lockedCount = filteredCards.filter((card) => card.financeLocked).length;
   const realisedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
+  const totalLockedCount = cards.filter((card) => card.financeLocked).length;
   const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
   const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
+  const showRampUpState =
+    cards.length > 0 && (cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
   const nextActions = buildPortfolioNextActions(readiness, cards.length);
 
   if (!cards.length) {
@@ -72,9 +73,11 @@ export function SavingCardTable({
                 Portfolio Launch
               </div>
               <div>
-                <h2 className="text-3xl font-semibold tracking-tight">No saving cards have been created yet.</h2>
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  {readiness?.workspace.name ?? "This workspace"} does not have live saving cards yet.
+                </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This portfolio becomes the operating register for sourcing initiatives once the first cards are live. Start with one structured card, then use this page to track phase progression, ownership, supplier exposure, and finance-lock status.
+                  This portfolio becomes the operating register for {readiness?.workspace.name ?? "your workspace"} once the first cards are live. Start with one structured card, then use this page to track phase progression, ownership, supplier exposure, and finance-lock status.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -95,18 +98,18 @@ export function SavingCardTable({
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <PortfolioLaunchMetric
-                label="Workspace Status"
-                value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+                label="Workspace"
+                value={readiness?.workspace.name ?? "Workspace"}
                 detail={
                   readiness?.isWorkspaceReady
-                    ? "Master data and workflow coverage are in place."
-                    : "Complete setup before wider rollout."
+                    ? `Operational controls are in place for ${readiness.workspace.slug}.`
+                    : `Complete setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
                 }
               />
               <PortfolioLaunchMetric
-                label="Master Data"
-                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
-                detail="Configured collections ready for card creation."
+                label="Setup Completeness"
+                value={`${readiness?.coverage.overallPercent ?? 0}%`}
+                detail="Combined master-data and workflow readiness."
               />
               <PortfolioLaunchMetric
                 label="Workflow Coverage"
@@ -157,12 +160,29 @@ export function SavingCardTable({
 
   return (
     <div className="space-y-5">
+      <PortfolioTrustCard
+        readiness={readiness}
+        cardCount={cards.length}
+        lockedCount={totalLockedCount}
+      />
+
+      {showRampUpState ? (
+        <PortfolioRampUpCard
+          readiness={readiness}
+          cardCount={cards.length}
+          lockedCount={totalLockedCount}
+          configuredCollections={configuredCollections}
+          workflowCoverageReady={workflowCoverageReady}
+          nextActions={nextActions}
+        />
+      ) : null}
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle>Portfolio Controls</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase.
+              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase across the live workspace register.
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
@@ -212,7 +232,7 @@ export function SavingCardTable({
           <CardHeader>
             <CardTitle>No saving cards match the current view</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Your workspace still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active search or phase filter.
+              {readiness?.workspace.name ?? "Your workspace"} still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active search or phase filter.
             </p>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
@@ -340,6 +360,116 @@ function PortfolioPromise({
   );
 }
 
+function PortfolioTrustCard({
+  readiness,
+  cardCount,
+  lockedCount,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  cardCount: number;
+  lockedCount: number;
+}) {
+  if (!readiness) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>{readiness.workspace.name}</CardTitle>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Organization-scoped operating register for live sourcing initiatives, owners, suppliers, and finance controls.
+          </p>
+        </div>
+        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-4">
+        <PortfolioLaunchMetric
+          label="Workspace Slug"
+          value={readiness.workspace.slug}
+          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
+        />
+        <PortfolioLaunchMetric
+          label="Portfolio Status"
+          value={cardCount < 3 ? "Early-stage" : "Live"}
+          detail={`${cardCount} saving card${cardCount === 1 ? "" : "s"}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
+        />
+        <PortfolioLaunchMetric
+          label="Setup Completeness"
+          value={`${readiness.coverage.overallPercent}%`}
+          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
+        />
+        <PortfolioLaunchMetric
+          label="Finance Controls"
+          value={`${lockedCount} locked`}
+          detail={`${readiness.counts.users} users and ${readiness.counts.buyers} buyers configured`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function PortfolioRampUpCard({
+  readiness,
+  cardCount,
+  lockedCount,
+  configuredCollections,
+  workflowCoverageReady,
+  nextActions,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  cardCount: number;
+  lockedCount: number;
+  configuredCollections: number;
+  workflowCoverageReady: number;
+  nextActions: string[];
+}) {
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>
+            {readiness?.isWorkspaceReady
+              ? `${readiness.workspace.name} portfolio is live and still ramping up`
+              : `${readiness?.workspace.name ?? "This workspace"} portfolio is live, but setup is still in progress`}
+          </CardTitle>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {readiness?.isWorkspaceReady
+              ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Portfolio controls and search are active, and the view will become more representative as more initiatives are added.`
+              : `You already have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live, but some shared setup still needs attention to keep the register standardized and workflow-ready.`}
+          </p>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="grid gap-3 md:grid-cols-4">
+          <PortfolioLaunchMetric label="Live Cards" value={String(cardCount)} detail="Cards currently in the workspace" />
+          <PortfolioLaunchMetric label="Locked Cards" value={String(lockedCount)} detail="Cards currently under finance lock" />
+          <PortfolioLaunchMetric
+            label="Master Data"
+            value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
+            detail="Configured collections"
+          />
+          <PortfolioLaunchMetric
+            label="Workflow Coverage"
+            value={`${workflowCoverageReady}/${readiness?.workflowCoverage.length ?? 3}`}
+            detail="Assigned approval roles"
+          />
+        </div>
+        <div className="space-y-2">
+          {nextActions.slice(0, 3).map((item) => (
+            <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
+              {item}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <Card className="bg-white">
@@ -353,6 +483,18 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(date));
+}
+
+function formatDateLabel(value: Date | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function buildPortfolioNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {

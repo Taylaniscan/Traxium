@@ -11,6 +11,7 @@ import {
   type CommandCenterFilters,
   type DashboardData,
   type SavingCardPortfolio,
+  type WorkspaceReadiness,
 } from "@/lib/types";
 import { alternativeMaterialSchema, alternativeSupplierSchema, savingCardSchema } from "@/lib/validation";
 
@@ -197,8 +198,9 @@ export async function getReferenceData(organizationId: string) {
   };
 }
 
-export async function getWorkspaceReadiness(organizationId: string) {
+export async function getWorkspaceReadiness(organizationId: string): Promise<WorkspaceReadiness> {
   const [
+    organization,
     userCount,
     buyerCount,
     supplierCount,
@@ -210,7 +212,19 @@ export async function getWorkspaceReadiness(organizationId: string) {
     headOfGlobalProcurementCount,
     globalCategoryLeaderCount,
     financialControllerCount,
+    firstSavingCard,
+    latestSavingCard,
   ] = await prisma.$transaction([
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
     prisma.user.count({ where: { organizationId } }),
     prisma.buyer.count({ where: { organizationId } }),
     prisma.supplier.count({ where: { organizationId } }),
@@ -237,7 +251,21 @@ export async function getWorkspaceReadiness(organizationId: string) {
         role: Role.FINANCIAL_CONTROLLER,
       },
     }),
+    prisma.savingCard.findFirst({
+      where: { organizationId },
+      select: { createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.savingCard.findFirst({
+      where: { organizationId },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+    }),
   ]);
+
+  if (!organization) {
+    throw new Error("Organization not found.");
+  }
 
   const masterData = [
     {
@@ -307,8 +335,15 @@ export async function getWorkspaceReadiness(organizationId: string) {
 
   const isMasterDataReady = masterData.every((item) => item.ready);
   const isWorkflowReady = workflowCoverage.every((item) => item.ready);
+  const masterDataReadyCount = masterData.filter((item) => item.ready).length;
+  const workflowReadyCount = workflowCoverage.filter((item) => item.ready).length;
+  const totalChecks = masterData.length + workflowCoverage.length;
+  const overallPercent = totalChecks
+    ? Math.round(((masterDataReadyCount + workflowReadyCount) / totalChecks) * 100)
+    : 100;
 
   return {
+    workspace: organization,
     counts: {
       users: userCount,
       buyers: buyerCount,
@@ -321,6 +356,17 @@ export async function getWorkspaceReadiness(organizationId: string) {
     },
     masterData,
     workflowCoverage,
+    coverage: {
+      masterDataReadyCount,
+      masterDataTotal: masterData.length,
+      workflowReadyCount,
+      workflowTotal: workflowCoverage.length,
+      overallPercent,
+    },
+    activity: {
+      firstSavingCardCreatedAt: firstSavingCard?.createdAt ?? null,
+      lastPortfolioUpdateAt: latestSavingCard?.updatedAt ?? null,
+    },
     isMasterDataReady,
     isWorkflowReady,
     isWorkspaceReady: isMasterDataReady && isWorkflowReady,

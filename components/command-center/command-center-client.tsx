@@ -33,6 +33,7 @@ import type {
   CommandCenterFilterOptions,
   CommandCenterFilters,
   CommandCenterResolvedFilters,
+  WorkspaceReadiness,
 } from "@/lib/types";
 import {
   commandCenterFilterKeys,
@@ -40,8 +41,6 @@ import {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
-
-type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 export function CommandCenterClient({
   initialData,
@@ -130,9 +129,11 @@ export function CommandCenterClient({
                 Command Center Launch
               </div>
               <div>
-                <h2 className="text-3xl font-semibold tracking-tight">No live command-center data is available yet.</h2>
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  {readiness?.workspace.name ?? "This workspace"} does not have live command-center data yet.
+                </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This view becomes the operational summary for savings pipeline, forecast, supplier exposure, and benchmark headroom once the first saving cards are active.
+                  This view becomes the operating cockpit for {readiness?.workspace.name ?? "your workspace"} once the first saving cards are active. It summarizes pipeline, forecast, supplier exposure, and benchmark headroom from live portfolio data.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -153,18 +154,18 @@ export function CommandCenterClient({
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <CommandCenterMetric
-                label="Workspace Status"
-                value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+                label="Workspace"
+                value={readiness?.workspace.name ?? "Workspace"}
                 detail={
                   readiness?.isWorkspaceReady
-                    ? "Master data and workflow coverage are in place."
-                    : "Complete shared setup before wider rollout."
+                    ? `Operational controls are in place for ${readiness.workspace.slug}.`
+                    : `Complete shared setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
                 }
               />
               <CommandCenterMetric
-                label="Master Data"
-                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
-                detail="Configured collections ready for portfolio analytics."
+                label="Setup Completeness"
+                value={`${readiness?.coverage.overallPercent ?? 0}%`}
+                detail="Combined master-data and workflow readiness."
               />
               <CommandCenterMetric
                 label="Workflow Coverage"
@@ -215,13 +216,19 @@ export function CommandCenterClient({
 
   return (
     <div className="space-y-6">
+      <CommandCenterTrustCard
+        readiness={readiness}
+        workspaceCardCount={workspaceCardCount}
+        hasMeaningfulData={hasMeaningfulData}
+      />
+
       {showRampUpState ? (
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle>
               {readiness?.isWorkspaceReady
-                ? "Command Center is live and still ramping up"
-                : "Command Center is live, but setup is still in progress"}
+                ? `${readiness.workspace.name} command center is live and still ramping up`
+                : `${readiness?.workspace.name ?? "This workspace"} command center is live, but setup is still in progress`}
             </CardTitle>
             <CardDescription>
               {readiness?.isWorkspaceReady
@@ -593,6 +600,58 @@ function CommandCenterMetric({
   );
 }
 
+function CommandCenterTrustCard({
+  readiness,
+  workspaceCardCount,
+  hasMeaningfulData,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  workspaceCardCount: number;
+  hasMeaningfulData: boolean;
+}) {
+  if (!readiness) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>{readiness.workspace.name}</CardTitle>
+          <CardDescription>
+            Executive operating cockpit for live organization-scoped savings, supplier exposure, forecast timing, and workflow demand.
+          </CardDescription>
+        </div>
+        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {hasMeaningfulData ? "Live analytics" : "Early-stage analytics"}
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-4">
+        <CommandCenterMetric
+          label="Workspace Slug"
+          value={readiness.workspace.slug}
+          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
+        />
+        <CommandCenterMetric
+          label="Reporting Scope"
+          value={`${workspaceCardCount} live card${workspaceCardCount === 1 ? "" : "s"}`}
+          detail={`${hasMeaningfulData ? "Live analytics" : "Early-stage analytics"}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
+        />
+        <CommandCenterMetric
+          label="Setup Completeness"
+          value={`${readiness.coverage.overallPercent}%`}
+          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
+        />
+        <CommandCenterMetric
+          label="Coverage Limits"
+          value={getCoverageLimitValue(readiness)}
+          detail={getCoverageLimitDetail(readiness)}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 function CommandCenterPromise({
   title,
   description,
@@ -633,4 +692,38 @@ function buildCommandCenterNextActions(
   }
 
   return actions.slice(0, 4);
+}
+
+function formatDateLabel(value: Date | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function getCoverageLimitValue(readiness: WorkspaceReadiness) {
+  const gapCount =
+    readiness.missingCoreSetup.length + readiness.missingWorkflowCoverage.length;
+
+  return gapCount ? `${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Clear";
+}
+
+function getCoverageLimitDetail(readiness: WorkspaceReadiness) {
+  const gaps = [
+    ...readiness.missingCoreSetup,
+    ...readiness.missingWorkflowCoverage,
+  ];
+
+  if (!gaps.length) {
+    return "Core master data and approval coverage are in place for reporting.";
+  }
+
+  const visibleGaps = gaps.slice(0, 2).join(", ");
+  const remainder = gaps.length > 2 ? ` +${gaps.length - 2} more` : "";
+  return `${visibleGaps}${remainder} may limit report completeness.`;
 }

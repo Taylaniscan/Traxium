@@ -20,12 +20,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/select";
 import { getValueBadgeTone } from "@/lib/calculations";
 import { implementationComplexities, phaseLabels, qualificationStatuses, roleLabels, savingDrivers, phases } from "@/lib/constants";
+import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 import { requiredRolesForPhase } from "@/lib/permissions";
-import type { SavingCardPortfolio } from "@/lib/types";
-
-type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
 type MoveRequest = {
   card: SavingCardPortfolio;
@@ -153,9 +151,11 @@ export function KanbanBoard({
                 Board Launch
               </div>
               <div>
-                <h2 className="text-3xl font-semibold tracking-tight">No saving cards are on the board yet.</h2>
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  {readiness?.workspace.name ?? "This workspace"} does not have live board activity yet.
+                </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This board becomes the fastest way to review workflow stage, drag new requests forward, and spot blocked initiatives once the first cards are live.
+                  This board becomes the shared workflow operating view for {readiness?.workspace.name ?? "your workspace"} once the first saving cards are live. Use it to review phase progression, approval handoffs, and blocked initiatives in one organization-scoped board.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -176,18 +176,18 @@ export function KanbanBoard({
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <BoardMetric
-                label="Workspace Status"
-                value={readiness?.isWorkspaceReady ? "Configured" : "Setup in progress"}
+                label="Workspace"
+                value={readiness?.workspace.name ?? "Workspace"}
                 detail={
                   readiness?.isWorkspaceReady
-                    ? "Master data and workflow coverage are in place."
-                    : "Complete shared setup before broader rollout."
+                    ? `Operational controls are in place for ${readiness.workspace.slug}.`
+                    : `Complete setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
                 }
               />
               <BoardMetric
-                label="Master Data"
-                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
-                detail="Configured collections ready for new cards."
+                label="Setup Completeness"
+                value={`${readiness?.coverage.overallPercent ?? 0}%`}
+                detail="Combined master-data and workflow readiness."
               />
               <BoardMetric
                 label="Workflow Coverage"
@@ -240,10 +240,16 @@ export function KanbanBoard({
     <div className="space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+      <KanbanTrustCard readiness={readiness} cardCount={cards.length} />
+
       {showRampUpState ? (
         <Card className="border-dashed">
           <CardHeader>
-            <CardTitle>{readiness?.isWorkspaceReady ? "Board is live and still ramping up" : "Board is live, but setup is still in progress"}</CardTitle>
+            <CardTitle>
+              {readiness?.isWorkspaceReady
+                ? `${readiness?.workspace.name ?? "This workspace"} board is live and still ramping up`
+                : `${readiness?.workspace.name ?? "This workspace"} board is live, but setup is still in progress`}
+            </CardTitle>
             <CardDescription>
               {readiness?.isWorkspaceReady
                 ? `You currently have ${cards.length} saving card${cards.length === 1 ? "" : "s"} live. The board will become more representative as more initiatives progress through the workflow.`
@@ -332,7 +338,7 @@ export function KanbanBoard({
           <CardHeader>
             <CardTitle>No saving cards match the current view</CardTitle>
             <CardDescription>
-              Your workspace still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active Kanban filters.
+              {readiness?.workspace.name ?? "Your workspace"} still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active Kanban filters.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
@@ -439,6 +445,56 @@ function BoardPromise({
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
+  );
+}
+
+function KanbanTrustCard({
+  readiness,
+  cardCount,
+}: {
+  readiness?: WorkspaceReadiness | null;
+  cardCount: number;
+}) {
+  if (!readiness) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1">
+          <CardTitle>{readiness.workspace.name}</CardTitle>
+          <CardDescription>
+            Organization-scoped operating board for live workflow stage control, approval handoffs, and sourcing execution.
+          </CardDescription>
+        </div>
+        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-4">
+        <BoardMetric
+          label="Workspace Slug"
+          value={readiness.workspace.slug}
+          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
+        />
+        <BoardMetric
+          label="Board Status"
+          value={cardCount < 3 ? "Early-stage" : "Live"}
+          detail={`${cardCount} saving card${cardCount === 1 ? "" : "s"}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
+        />
+        <BoardMetric
+          label="Setup Completeness"
+          value={`${readiness.coverage.overallPercent}%`}
+          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
+        />
+        <BoardMetric
+          label="Workflow Controls"
+          value={readiness.isWorkflowReady ? "Ready" : "In progress"}
+          detail={`${readiness.counts.users} users and ${readiness.counts.buyers} buyers configured in the workspace`}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -687,6 +743,18 @@ function buildTooltip(card: SavingCardPortfolio) {
   ];
 
   return parts.join("\n");
+}
+
+function formatDateLabel(value: Date | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function buildKanbanNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {

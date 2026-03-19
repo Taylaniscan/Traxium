@@ -4,10 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getWorkspaceReadiness } from "@/lib/data";
-
-type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
+import type { WorkspaceReadiness } from "@/lib/types";
 
 const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
+  workspace: {
+    id: "workspace",
+    name: "Workspace",
+    slug: "workspace",
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  },
   counts: {
     users: 0,
     buyers: 0,
@@ -82,6 +88,17 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
       ready: false,
     },
   ],
+  coverage: {
+    masterDataReadyCount: 0,
+    masterDataTotal: 6,
+    workflowReadyCount: 0,
+    workflowTotal: 3,
+    overallPercent: 0,
+  },
+  activity: {
+    firstSavingCardCreatedAt: null,
+    lastPortfolioUpdateAt: null,
+  },
   isMasterDataReady: false,
   isWorkflowReady: false,
   isWorkspaceReady: false,
@@ -104,10 +121,15 @@ export default async function AdminPage() {
     console.log("Workspace readiness could not be loaded:", error);
   }
 
+  const workspaceName = readiness.workspace.name;
+  const liveDataStatus =
+    readiness.counts.savingCards > 0
+      ? `${readiness.counts.savingCards} live saving card${readiness.counts.savingCards === 1 ? "" : "s"}`
+      : "No live saving cards yet";
   const setupActions = readiness.isWorkspaceReady
     ? [
         "Core master data is configured and approval coverage is in place.",
-        "This workspace is ready for standardized saving-card creation and workflow routing.",
+        "Operational controls are ready for wider rollout and standardized saving-card execution.",
       ]
     : [
         ...readiness.missingCoreSetup.map((item) => `Add ${item}.`),
@@ -117,58 +139,105 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <SectionHeading title="Settings" />
+        <SectionHeading title="Workspace Settings" />
         <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          Review workspace readiness, core master data coverage, and approval-role coverage before onboarding more users or scaling saving-card creation.
+          Manage {workspaceName} as a live procurement workspace. Review operational readiness, control coverage, and master-data health before onboarding more users or scaling saving-card creation.
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Workspace Readiness</CardTitle>
-            <CardDescription>Use this as the first-run check for master data, governance coverage, and live workspace activity.</CardDescription>
+            <CardTitle>Workspace Identity</CardTitle>
+            <CardDescription>Core account details that anchor this workspace as an organization-scoped operating environment.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-5 md:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Workspace</p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight">{workspaceName}</p>
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    Organization slug <span className="font-medium text-[var(--foreground)]">{readiness.workspace.slug}</span>
+                  </p>
+                </div>
+                <StatusPill ready={readiness.isWorkspaceReady} />
+              </div>
+            </div>
             <MetricCard
-              label="Workspace Status"
-              value={readiness.isWorkspaceReady ? "Configured" : "Setup in progress"}
-              detail={
-                readiness.isWorkspaceReady
-                  ? "Master data and approval coverage are in place."
-                  : "Some setup items still need attention."
-              }
-              ready={readiness.isWorkspaceReady}
+              label="Launched"
+              value={formatDateLabel(readiness.workspace.createdAt, "Unknown")}
+              detail="Workspace creation date"
+              ready
             />
             <MetricCard
-              label="Card Creation Readiness"
-              value={readiness.isMasterDataReady ? "Standardized" : `${readiness.missingCoreSetup.length} gaps`}
-              detail={
-                readiness.isMasterDataReady
-                  ? "Core master data exists for repeatable card creation."
-                  : "Settings still has missing master-data collections."
-              }
-              ready={readiness.isMasterDataReady}
+              label="Portfolio Activity"
+              value={formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}
+              detail="Latest saving-card activity recorded in this workspace"
+              ready={Boolean(readiness.activity.lastPortfolioUpdateAt)}
             />
             <MetricCard
-              label="Users"
-              value={String(readiness.counts.users)}
-              detail="Authenticated workspace users"
-              ready={readiness.counts.users > 0}
-            />
-            <MetricCard
-              label="Saving Cards"
-              value={String(readiness.counts.savingCards)}
-              detail="Cards currently stored in this workspace"
+              label="Live Data Status"
+              value={liveDataStatus}
+              detail="Saving cards currently contributing live portfolio data"
               ready={readiness.counts.savingCards > 0}
+            />
+            <MetricCard
+              label="Authenticated Users"
+              value={String(readiness.counts.users)}
+              detail="Named users available for workflow, audit, and notifications"
+              ready={readiness.counts.users > 0}
             />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Next Setup Steps</CardTitle>
-            <CardDescription>Focus on the remaining gaps that affect structured data entry and approval routing.</CardDescription>
+            <CardTitle>Operational Control Posture</CardTitle>
+            <CardDescription>Use this as the commercial readiness summary for rollout, governance, and operational data quality.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <MetricCard
+              label="Setup Completeness"
+              value={`${readiness.coverage.overallPercent}%`}
+              detail={
+                readiness.isWorkspaceReady
+                  ? "Core setup checks are complete."
+                  : "Some setup checks still need attention."
+              }
+              ready={readiness.isWorkspaceReady}
+            />
+            <MetricCard
+              label="Master Data Health"
+              value={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal}`}
+              detail={
+                readiness.isMasterDataReady
+                  ? "Collections are in place for repeatable card creation."
+                  : "Some collections still need to be configured."
+              }
+              ready={readiness.isMasterDataReady}
+            />
+            <MetricCard
+              label="Approval Coverage"
+              value={`${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal}`}
+              detail="Required approval roles currently staffed"
+              ready={readiness.isWorkflowReady}
+            />
+            <MetricCard
+              label="Workspace Status"
+              value={readiness.isWorkspaceReady ? "Operationally ready" : "Setup in progress"}
+              detail="Master data, workflow roles, and access base in this tenant"
+              ready={readiness.isWorkspaceReady}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Rollout Priorities</CardTitle>
+            <CardDescription>Focus on the remaining gaps that affect structured data entry, approval routing, and operational trust.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {setupActions.map((item) => (
@@ -178,12 +247,45 @@ export default async function AdminPage() {
             ))}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Operational Trust Signals</CardTitle>
+            <CardDescription>Practical cues that show whether the workspace is ready for broader adoption.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <MetricCard
+              label="Org-Scoped Workspace"
+              value={readiness.workspace.slug}
+              detail="All cards, buyers, approvals, and audit data are tied to this workspace boundary"
+              ready
+            />
+            <MetricCard
+              label="Buyer Separation"
+              value={String(readiness.counts.buyers)}
+              detail="Buyer master data is maintained separately from authenticated users"
+              ready={readiness.counts.buyers > 0}
+            />
+            <MetricCard
+              label="Workflow Roles"
+              value={readiness.isWorkflowReady ? "Covered" : "Incomplete"}
+              detail="Approval routing is only production-ready when all required roles are assigned"
+              ready={readiness.isWorkflowReady}
+            />
+            <MetricCard
+              label="Portfolio Footprint"
+              value={String(readiness.counts.savingCards)}
+              detail="Saving cards currently stored inside this workspace"
+              ready={readiness.counts.savingCards > 0}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Core Master Data</CardTitle>
-          <CardDescription>These collections support consistent saving-card creation, filtering, and reporting.</CardDescription>
+          <CardTitle>Master Data Health</CardTitle>
+          <CardDescription>These collections underpin standardized card creation, filtering, reporting, and buyer assignment.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {readiness.masterData.map((item) => (
@@ -201,8 +303,8 @@ export default async function AdminPage() {
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Access Base</CardTitle>
-            <CardDescription>Users remain the authenticated actors for approvals, comments, audit, and notifications.</CardDescription>
+            <CardTitle>Access Model</CardTitle>
+            <CardDescription>Users remain the authenticated actors for approvals, comments, audit, notifications, and evidence actions.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <ReadinessCard
@@ -222,8 +324,8 @@ export default async function AdminPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Workflow Role Coverage</CardTitle>
-            <CardDescription>These roles support the seeded phase-approval workflow and should exist before wider rollout.</CardDescription>
+            <CardTitle>Approval Control Coverage</CardTitle>
+            <CardDescription>These roles support the live phase-approval workflow and should be staffed before wider rollout.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
             {readiness.workflowCoverage.map((item) => (
@@ -240,6 +342,18 @@ export default async function AdminPage() {
       </div>
     </div>
   );
+}
+
+function formatDateLabel(value: Date | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function MetricCard({

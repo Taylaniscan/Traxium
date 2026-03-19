@@ -20,28 +20,49 @@ function formatList(items: string[]) {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
+function formatDateLabel(value: Date | null) {
+  if (!value) {
+    return "No portfolio updates yet";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
 function buildSetupNotification(readiness: WorkspaceReadiness | null) {
   if (!readiness) {
     return null;
   }
 
+  const workspaceName = readiness.workspace.name;
+  const liveFootprint =
+    readiness.counts.savingCards > 0
+      ? `${readiness.counts.savingCards} live saving card${readiness.counts.savingCards === 1 ? "" : "s"}`
+      : "no live saving cards yet";
+
   if (!readiness.isMasterDataReady) {
     return {
       id: "workspace-setup",
-      title: "Workspace setup incomplete",
-      message: `Add ${formatList(readiness.missingCoreSetup)} in Settings to standardize saving-card creation.`,
+      title: `${workspaceName} setup in progress`,
+      message: `${readiness.counts.users} users, ${liveFootprint}. Add ${formatList(readiness.missingCoreSetup)} in Settings to standardize card creation.`,
     };
   }
 
   if (!readiness.isWorkflowReady) {
     return {
       id: "workflow-setup",
-      title: "Approval workflow incomplete",
-      message: `Assign ${formatList(readiness.missingWorkflowCoverage)} coverage in Settings to complete approval routing.`,
+      title: `${workspaceName} approval controls incomplete`,
+      message: `Assign ${formatList(readiness.missingWorkflowCoverage)} coverage in Settings to complete approval routing for this workspace.`,
     };
   }
 
-  return null;
+  return {
+    id: "workspace-status",
+    title: `${workspaceName} workspace ready`,
+    message: `${readiness.counts.users} users, ${liveFootprint}, ${readiness.coverage.overallPercent}% setup completeness. Last portfolio update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt)}.`,
+  };
 }
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
