@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { VolumeSCurve } from "@/components/timeline/volume-scurve";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -108,6 +109,7 @@ export function TimelineBoard({
     query: ""
   });
   const [scale, setScale] = useState<ZoomLevel>("YEAR");
+  const [timelineView, setTimelineView] = useState<"gantt" | "scurve">("gantt");
   const referenceNow = useMemo(() => new Date(nowIso), [nowIso]);
   const applyScale = (value: unknown) => {
     if (typeof value !== "string") return;
@@ -191,10 +193,10 @@ export function TimelineBoard({
               </div>
               <div>
                 <h2 className="text-3xl font-semibold tracking-tight">
-                  {readiness?.workspace.name ?? "This workspace"} does not have live timeline activity yet.
+                  No live timeline activity yet.
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This timeline becomes the shared rollout view for {readiness?.workspace.name ?? "your workspace"} once the first initiatives are active. Use it to align project timing, impact windows, and savings delivery across the live organization-scoped portfolio.
+                  This timeline becomes the shared rollout view once the first initiatives are active. Use it to align project timing, impact windows, and savings delivery across the live portfolio.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -215,18 +217,14 @@ export function TimelineBoard({
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <TimelineMetric
-                label="Workspace"
-                value={readiness?.workspace.name ?? "Workspace"}
-                detail={
-                  readiness?.isWorkspaceReady
-                    ? `Operational controls are in place for ${readiness.workspace.slug}.`
-                    : `Complete setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
-                }
-              />
-              <TimelineMetric
                 label="Setup Completeness"
                 value={`${readiness?.coverage.overallPercent ?? 0}%`}
                 detail="Combined master-data and workflow readiness."
+              />
+              <TimelineMetric
+                label="Master Data"
+                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
+                detail="Configured collections ready for planning."
               />
               <TimelineMetric
                 label="Workflow Coverage"
@@ -277,8 +275,29 @@ export function TimelineBoard({
 
   return (
     <div className="space-y-6">
-      <TimelineTrustCard readiness={readiness} cardCount={cards.length} />
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant={timelineView === "gantt" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setTimelineView("gantt")}
+        >
+          Gantt View
+        </Button>
+        <Button
+          type="button"
+          variant={timelineView === "scurve" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setTimelineView("scurve")}
+        >
+          Volume S-Curve
+        </Button>
+      </div>
 
+      {timelineView === "scurve" ? (
+        <VolumeSCurve cards={cards} nowIso={nowIso} />
+      ) : (
+        <>
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))_auto]">
         <Input
           placeholder="Search project, supplier, category"
@@ -336,8 +355,8 @@ export function TimelineBoard({
           <CardHeader>
             <CardTitle>
               {readiness?.isWorkspaceReady
-                ? `${readiness?.workspace.name ?? "This workspace"} timeline is live and still ramping up`
-                : `${readiness?.workspace.name ?? "This workspace"} timeline is live, but setup is still in progress`}
+                ? "Timeline is live and still ramping up"
+                : "Timeline is live, but setup is still in progress"}
             </CardTitle>
             <CardDescription>
               {readiness?.isWorkspaceReady
@@ -375,7 +394,7 @@ export function TimelineBoard({
           <CardHeader>
             <CardTitle>No saving cards match the current timeline view</CardTitle>
             <CardDescription>
-              {readiness?.workspace.name ?? "Your workspace"} still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active timeline filters.
+              The timeline still has {cards.length} saving card{cards.length === 1 ? "" : "s"}, but none match the active filters.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
@@ -644,6 +663,8 @@ export function TimelineBoard({
         </CardContent>
       </Card>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -678,56 +699,6 @@ function TimelinePromise({
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
-  );
-}
-
-function TimelineTrustCard({
-  readiness,
-  cardCount,
-}: {
-  readiness?: WorkspaceReadiness | null;
-  cardCount: number;
-}) {
-  if (!readiness) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>{readiness.workspace.name}</CardTitle>
-          <CardDescription>
-            Organization-scoped rollout view for live phase progression, delivery timing, and savings realization windows.
-          </CardDescription>
-        </div>
-        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-4">
-        <TimelineMetric
-          label="Workspace Slug"
-          value={readiness.workspace.slug}
-          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
-        />
-        <TimelineMetric
-          label="Timeline Status"
-          value={cardCount < 3 ? "Early-stage" : "Live"}
-          detail={`${cardCount} saving card${cardCount === 1 ? "" : "s"}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
-        />
-        <TimelineMetric
-          label="Setup Completeness"
-          value={`${readiness.coverage.overallPercent}%`}
-          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
-        />
-        <TimelineMetric
-          label="Planning Controls"
-          value={readiness.isMasterDataReady ? "Ready" : "In progress"}
-          detail={`${readiness.counts.buyers} buyers, ${readiness.counts.suppliers} suppliers, and ${readiness.counts.businessUnits} business units configured`}
-        />
-      </CardContent>
-    </Card>
   );
 }
 

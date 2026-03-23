@@ -26,7 +26,6 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import type {
   CommandCenterApiError,
   CommandCenterData,
@@ -45,7 +44,7 @@ import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 export function CommandCenterClient({
   initialData,
   filterOptions,
-  readiness
+  readiness,
 }: {
   initialData: CommandCenterData;
   filterOptions: CommandCenterFilterOptions;
@@ -106,7 +105,6 @@ export function CommandCenterClient({
     data.pipelineByPhase.some((item) => item.savings > 0) ||
     data.forecastCurve.length > 0 ||
     data.topSuppliers.length > 0 ||
-    data.benchmarkOpportunities.length > 0 ||
     data.savingsByRiskLevel.length > 0 ||
     data.savingsByQualificationStatus.some((item) => item.savings > 0);
   const workspaceCardCount =
@@ -130,10 +128,10 @@ export function CommandCenterClient({
               </div>
               <div>
                 <h2 className="text-3xl font-semibold tracking-tight">
-                  {readiness?.workspace.name ?? "This workspace"} does not have live command-center data yet.
+                  No live command-center data yet.
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This view becomes the operating cockpit for {readiness?.workspace.name ?? "your workspace"} once the first saving cards are active. It summarizes pipeline, forecast, supplier exposure, and benchmark headroom from live portfolio data.
+                  This view becomes the shared analytics surface once the first saving cards are active. It summarizes pipeline, forecast, supplier exposure, and risk concentration from live portfolio data.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -154,18 +152,14 @@ export function CommandCenterClient({
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <CommandCenterMetric
-                label="Workspace"
-                value={readiness?.workspace.name ?? "Workspace"}
-                detail={
-                  readiness?.isWorkspaceReady
-                    ? `Operational controls are in place for ${readiness.workspace.slug}.`
-                    : `Complete shared setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
-                }
-              />
-              <CommandCenterMetric
                 label="Setup Completeness"
                 value={`${readiness?.coverage.overallPercent ?? 0}%`}
                 detail="Combined master-data and workflow readiness."
+              />
+              <CommandCenterMetric
+                label="Master Data"
+                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
+                detail="Configured collections"
               />
               <CommandCenterMetric
                 label="Workflow Coverage"
@@ -201,7 +195,7 @@ export function CommandCenterClient({
               />
               <CommandCenterPromise
                 title="Supplier and risk concentration"
-                description="It surfaces supplier exposure, benchmark headroom, and risk concentration from the active sourcing portfolio."
+                description="It surfaces supplier exposure and risk concentration from the active sourcing portfolio."
               />
               <CommandCenterPromise
                 title="Workspace-wide operating picture"
@@ -216,23 +210,17 @@ export function CommandCenterClient({
 
   return (
     <div className="space-y-6">
-      <CommandCenterTrustCard
-        readiness={readiness}
-        workspaceCardCount={workspaceCardCount}
-        hasMeaningfulData={hasMeaningfulData}
-      />
-
       {showRampUpState ? (
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle>
               {readiness?.isWorkspaceReady
-                ? `${readiness.workspace.name} command center is live and still ramping up`
-                : `${readiness?.workspace.name ?? "This workspace"} command center is live, but setup is still in progress`}
+                ? "Command Center is live and still ramping up"
+                : "Command Center is live, but setup is still in progress"}
             </CardTitle>
             <CardDescription>
               {readiness?.isWorkspaceReady
-                ? `You currently have ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"} feeding this view. Trend, benchmark, and supplier analytics become more representative as more initiatives are added.`
+                ? `You currently have ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"} feeding this view. Trend, supplier, and risk analytics become more representative as more initiatives are added.`
                 : `You already have ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"} in the workspace, but shared setup still needs attention to keep reporting and approvals consistent.`}
             </CardDescription>
           </CardHeader>
@@ -333,15 +321,15 @@ export function CommandCenterClient({
             </CardTitle>
             <CardDescription>
               {hasActiveFilters
-                ? `Your workspace still has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but none match the active command-center filters.`
-                : `Your workspace has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but there is not enough live savings, timing, or supplier signal yet to populate this view cleanly.`}
+                ? `The command center still has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but none match the active filters.`
+                : `The command center has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but there is not enough live savings, timing, or supplier signal yet to populate this view cleanly.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-[var(--muted-foreground)]">
               {hasActiveFilters
                 ? "Clear the filters to return to the full command-center view, or create a new card if you are looking for a fresh initiative."
-                : "Complete the missing setup items, then add or enrich saving cards so pipeline, forecast, and benchmark analytics have enough real portfolio data to work with."}
+                : "Complete the missing setup items, then add or enrich saving cards so pipeline, forecast, and supplier analytics have enough real portfolio data to work with."}
             </div>
             <div className="flex flex-wrap gap-3">
               {hasActiveFilters ? (
@@ -491,55 +479,6 @@ export function CommandCenterClient({
               </Card>
             </div>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Benchmark Opportunities</CardTitle>
-              <CardDescription>High-value opportunities where current price remains above the benchmark scenario.</CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table className="min-w-[980px] bg-white">
-                <TableHead>
-                  <tr>
-                    <TableHeaderCell>Material</TableHeaderCell>
-                    <TableHeaderCell>Supplier</TableHeaderCell>
-                    <TableHeaderCell>Plant</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Current Price</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Benchmark Price</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Variance %</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Potential Saving</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Action</TableHeaderCell>
-                  </tr>
-                </TableHead>
-                <TableBody>
-                  {data.benchmarkOpportunities.length ? (
-                    data.benchmarkOpportunities.map((row) => (
-                      <TableRow key={row.savingCardId}>
-                        <TableCell className="font-medium">{row.material}</TableCell>
-                        <TableCell>{row.supplier}</TableCell>
-                        <TableCell>{row.plant}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.currentPrice, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.benchmarkPrice, "EUR")}</TableCell>
-                        <TableCell className="text-right font-medium">{row.variancePercent.toFixed(1)}%</TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(row.potentialSaving, "EUR")}</TableCell>
-                        <TableCell className="text-right">
-                          <Link href="/saving-cards/new" className="inline-flex h-8 items-center rounded-lg bg-[var(--primary)] px-3 text-xs font-medium text-white hover:bg-[#1d4ed8]">
-                            Create Saving Card
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-8 text-center text-[var(--muted-foreground)]">
-                        No benchmark opportunities match the active filters.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
         </>
       )}
     </div>
@@ -600,58 +539,6 @@ function CommandCenterMetric({
   );
 }
 
-function CommandCenterTrustCard({
-  readiness,
-  workspaceCardCount,
-  hasMeaningfulData,
-}: {
-  readiness?: WorkspaceReadiness | null;
-  workspaceCardCount: number;
-  hasMeaningfulData: boolean;
-}) {
-  if (!readiness) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>{readiness.workspace.name}</CardTitle>
-          <CardDescription>
-            Executive operating cockpit for live organization-scoped savings, supplier exposure, forecast timing, and workflow demand.
-          </CardDescription>
-        </div>
-        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {hasMeaningfulData ? "Live analytics" : "Early-stage analytics"}
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-4">
-        <CommandCenterMetric
-          label="Workspace Slug"
-          value={readiness.workspace.slug}
-          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
-        />
-        <CommandCenterMetric
-          label="Reporting Scope"
-          value={`${workspaceCardCount} live card${workspaceCardCount === 1 ? "" : "s"}`}
-          detail={`${hasMeaningfulData ? "Live analytics" : "Early-stage analytics"}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
-        />
-        <CommandCenterMetric
-          label="Setup Completeness"
-          value={`${readiness.coverage.overallPercent}%`}
-          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
-        />
-        <CommandCenterMetric
-          label="Coverage Limits"
-          value={getCoverageLimitValue(readiness)}
-          detail={getCoverageLimitDetail(readiness)}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
 function CommandCenterPromise({
   title,
   description,
@@ -676,7 +563,7 @@ function buildCommandCenterNextActions(
   if (!cardCount) {
     actions.push("Create the first saving card to activate live pipeline, forecast, and supplier analysis.");
   } else if (cardCount < 3) {
-    actions.push("Add more saving cards so pipeline, supplier, and benchmark analytics become more representative.");
+    actions.push("Add more saving cards so pipeline, supplier, and risk analytics become more representative.");
   }
 
   readiness?.missingCoreSetup.forEach((item) => {
@@ -692,38 +579,4 @@ function buildCommandCenterNextActions(
   }
 
   return actions.slice(0, 4);
-}
-
-function formatDateLabel(value: Date | null, fallback: string) {
-  if (!value) {
-    return fallback;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-function getCoverageLimitValue(readiness: WorkspaceReadiness) {
-  const gapCount =
-    readiness.missingCoreSetup.length + readiness.missingWorkflowCoverage.length;
-
-  return gapCount ? `${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Clear";
-}
-
-function getCoverageLimitDetail(readiness: WorkspaceReadiness) {
-  const gaps = [
-    ...readiness.missingCoreSetup,
-    ...readiness.missingWorkflowCoverage,
-  ];
-
-  if (!gaps.length) {
-    return "Core master data and approval coverage are in place for reporting.";
-  }
-
-  const visibleGaps = gaps.slice(0, 2).join(", ");
-  const remainder = gaps.length > 2 ? ` +${gaps.length - 2} more` : "";
-  return `${visibleGaps}${remainder} may limit report completeness.`;
 }

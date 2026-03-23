@@ -141,7 +141,7 @@ export default async function AdminPage() {
       <div className="space-y-2">
         <SectionHeading title="Workspace Settings" />
         <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          Manage {workspaceName} as a live procurement workspace. Review operational readiness, control coverage, and master-data health before onboarding more users or scaling saving-card creation.
+          Review operational readiness, control coverage, and master-data health before onboarding more users or scaling saving-card creation.
         </p>
       </div>
 

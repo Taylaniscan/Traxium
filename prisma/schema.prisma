@@ -41,6 +41,11 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum ForecastSource {
+  MANUAL_ENTRY
+  ERP_CSV_UPLOAD
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -75,10 +80,12 @@ model User {
   comments              SavingCardComment[]
   notifications         Notification[]
   auditLogs             AuditLog[]
-  requestedPhaseChanges PhaseChangeRequest[]         @relation("RequestedPhaseChanges")
+  requestedPhaseChanges PhaseChangeRequest[]          @relation("RequestedPhaseChanges")
   approvalRequests      PhaseChangeRequestApproval[]
-  uploadedEvidence      SavingCardEvidence[]         @relation("UploadedEvidence")
-  phaseHistoryEntries   PhaseHistory[]               @relation("PhaseHistoryChangedBy")
+  uploadedEvidence      SavingCardEvidence[]          @relation("UploadedEvidence")
+  phaseHistoryEntries   PhaseHistory[]                @relation("PhaseHistoryChangedBy")
+  createdForecasts      MaterialConsumptionForecast[]
+  confirmedActuals      MaterialConsumptionActual[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -111,6 +118,8 @@ model Supplier {
   alternativeScenarioCards SavingCard[]                    @relation("AlternativeScenarioSupplier")
   alternativeSuppliers     SavingCardAlternativeSupplier[]
   alternativeMaterials     SavingCardAlternativeMaterial[]
+  consumptionForecasts     MaterialConsumptionForecast[]
+  consumptionActuals       MaterialConsumptionActual[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -127,6 +136,8 @@ model Material {
   savingCards              SavingCard[]                    @relation("BaselineMaterial")
   alternativeScenarioCards SavingCard[]                    @relation("AlternativeScenarioMaterial")
   alternativeMaterials     SavingCardAlternativeMaterial[]
+  consumptionForecasts     MaterialConsumptionForecast[]
+  consumptionActuals       MaterialConsumptionActual[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -197,6 +208,7 @@ model SavingCard {
   baselinePrice                 Float
   newPrice                      Float
   annualVolume                  Float
+  volumeUnit                    String    @default("units")
   currency                      Currency
   fxRate                        Float
   calculatedSavings             Float
@@ -233,11 +245,58 @@ model SavingCard {
   phaseChangeRequests  PhaseChangeRequest[]
   phaseHistory         PhaseHistory[]
   auditLogs            AuditLog[]
+  forecasts            MaterialConsumptionForecast[]
+  actuals              MaterialConsumptionActual[]
 
   @@index([organizationId])
   @@index([organizationId, phase])
   @@index([organizationId, categoryId])
   @@index([organizationId, buyerId])
+}
+
+model MaterialConsumptionForecast {
+  id           String         @id @default(cuid())
+  savingCardId String
+  materialId   String
+  supplierId   String?
+  period       DateTime
+  forecastQty  Float
+  unit         String         @default("units")
+  source       ForecastSource @default(MANUAL_ENTRY)
+  notes        String?
+  createdById  String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material   Material   @relation(fields: [materialId], references: [id])
+  supplier   Supplier?  @relation(fields: [supplierId], references: [id])
+  createdBy  User       @relation(fields: [createdById], references: [id])
+
+  @@unique([savingCardId, materialId, period])
+  @@index([savingCardId, period])
+}
+
+model MaterialConsumptionActual {
+  id            String         @id @default(cuid())
+  savingCardId  String
+  materialId    String
+  supplierId    String?
+  period        DateTime
+  actualQty     Float
+  unit          String         @default("units")
+  source        ForecastSource @default(MANUAL_ENTRY)
+  invoiceRef    String?
+  confirmedById String
+  createdAt     DateTime       @default(now())
+
+  savingCard  SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material    Material   @relation(fields: [materialId], references: [id])
+  supplier    Supplier?  @relation(fields: [supplierId], references: [id])
+  confirmedBy User       @relation(fields: [confirmedById], references: [id])
+
+  @@unique([savingCardId, materialId, period])
+  @@index([savingCardId, period])
 }
 
 model SavingCardStakeholder {

@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
-import { buttonVariants } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getDashboardData, getWorkspaceReadiness } from "@/lib/data";
@@ -10,6 +9,9 @@ import type { DashboardData, WorkspaceReadiness } from "@/lib/types";
 const EMPTY_DASHBOARD_DATA: DashboardData = {
   cards: [],
 };
+
+const SERVER_OUTLINE_BUTTON_CLASS =
+  "inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -36,27 +38,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <SectionHeading title="Dashboard" />
-              {workspaceReadiness ? (
-                <span className="inline-flex rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-                  {workspaceReadiness.workspace.name}
-                </span>
-              ) : null}
-            </div>
-            <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-              {workspaceReadiness
-                ? `${workspaceReadiness.workspace.name} dashboard reflects ${workspaceReadiness.counts.savingCards} live organization-scoped saving card${workspaceReadiness.counts.savingCards === 1 ? "" : "s"}, workflow status, and reporting readiness for executive review.`
-                : "Dashboard analytics reflect live organization-scoped savings, workflow, and reporting readiness."}
-            </p>
-          </div>
-          <a href="/api/export" className={buttonVariants({ variant: "outline" })}>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <SectionHeading title="Dashboard" />
+          <a href="/api/export" className={SERVER_OUTLINE_BUTTON_CLASS}>
             Export workbook
           </a>
-        </div>
       </div>
       <DashboardClient data={data} readiness={workspaceReadiness} />
     </div>

@@ -16,8 +16,13 @@ export default async function EditSavingCardPage({ params }: { params: Promise<{
   if (!card) notFound();
 
   return (
-    <div className="space-y-6">
-      <SectionHeading title={card.title} />
+    <div className="space-y-8">
+      <div className="space-y-3">
+        <SectionHeading title={card.title} />
+        <p className="max-w-3xl text-[15px] leading-7 text-[var(--muted-foreground)]">
+          Update scope, commercial assumptions, dates, and stakeholders without changing the underlying workflow rules.
+        </p>
+      </div>
       <SavingCardForm mode="edit" referenceData={referenceData} card={card} />
     </div>
   );

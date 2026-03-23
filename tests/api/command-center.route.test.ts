@@ -61,7 +61,6 @@ describe("command center API route", () => {
       pipelineByPhase: [],
       forecastCurve: [],
       topSuppliers: [],
-      benchmarkOpportunities: [],
       savingsByRiskLevel: [],
       savingsByQualificationStatus: [],
     });
@@ -85,7 +84,6 @@ describe("command center API route", () => {
       pipelineByPhase: [],
       forecastCurve: [],
       topSuppliers: [],
-      benchmarkOpportunities: [],
       savingsByRiskLevel: [],
       savingsByQualificationStatus: [],
     });

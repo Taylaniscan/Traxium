@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { CommandCenterClient } from "@/components/command-center/command-center-client";
-import { buttonVariants } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import {
@@ -28,7 +27,6 @@ const EMPTY_COMMAND_CENTER_DATA: CommandCenterData = {
   pipelineByPhase: [],
   forecastCurve: [],
   topSuppliers: [],
-  benchmarkOpportunities: [],
   savingsByRiskLevel: [],
   savingsByQualificationStatus: [],
 };
@@ -40,6 +38,9 @@ const EMPTY_COMMAND_CENTER_FILTER_OPTIONS: CommandCenterFilterOptions = {
   plants: [],
   suppliers: [],
 };
+
+const SERVER_OUTLINE_BUTTON_CLASS =
+  "inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function CommandCenterPage() {
   const user = await requireUser();
@@ -74,27 +75,11 @@ export default async function CommandCenterPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <SectionHeading title="Command Center" />
-              {workspaceReadiness ? (
-                <span className="inline-flex rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-                  {workspaceReadiness.workspace.name}
-                </span>
-              ) : null}
-            </div>
-            <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-              {workspaceReadiness
-                ? `${workspaceReadiness.workspace.name} command center reflects ${workspaceReadiness.counts.savingCards} live organization-scoped saving card${workspaceReadiness.counts.savingCards === 1 ? "" : "s"}, supplier exposure, forecast timing, and workflow demand for operational reporting.`
-                : "Command center analytics reflect live organization-scoped savings, supplier, forecast, and workflow signals."}
-            </p>
-          </div>
-          <a href="/api/export" className={buttonVariants({ variant: "outline" })}>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <SectionHeading title="Command Center" />
+          <a href="/api/export" className={SERVER_OUTLINE_BUTTON_CLASS}>
             Export workbook
           </a>
-        </div>
       </div>
       <CommandCenterClient
         initialData={initialData}

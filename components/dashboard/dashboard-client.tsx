@@ -44,8 +44,6 @@ export function DashboardClient({
   );
   const showRampUpState =
     hasCards && (data.cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
-  const missingCoreSetup = readiness?.missingCoreSetup ?? [];
-  const missingWorkflowCoverage = readiness?.missingWorkflowCoverage ?? [];
   const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
   const nextActions = buildDashboardNextActions(readiness, data.cards.length);
 
@@ -68,8 +66,6 @@ export function DashboardClient({
 
   return (
     <div className="space-y-6">
-      <DashboardTrustCard readiness={readiness} cardCount={data.cards.length} />
-
       {showRampUpState ? (
         <DashboardRampUpCard
           readiness={readiness}
@@ -128,7 +124,7 @@ export function DashboardClient({
           <CardHeader>
             <CardTitle>No cards match the active filters</CardTitle>
             <CardDescription>
-              Clear the filters to return to the live portfolio view and restore KPI, forecast, and benchmark analysis.
+              Clear the filters to return to the live portfolio view and restore KPI, forecast, and portfolio analysis.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
@@ -182,18 +178,11 @@ export function DashboardClient({
         <ForecastCard data={metrics.monthlyTrend} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <TableCard
-          title="Top Saving Projects"
-          description="Highest-value saving cards in the current filtered portfolio."
-          rows={metrics.topProjects}
-        />
-        <TableCard
-          title="Benchmark Opportunities"
-          description="Cards with open commercial headroom based on remaining baseline-to-new price gap."
-          rows={metrics.benchmarkOpportunities}
-        />
-      </div>
+      <TableCard
+        title="Top Saving Projects"
+        description="Highest-value saving cards in the current filtered portfolio."
+        rows={metrics.topProjects}
+      />
         </>
       )}
     </div>
@@ -222,10 +211,10 @@ function DashboardZeroState({
             </div>
             <div>
               <h2 className="text-3xl font-semibold tracking-tight">
-                {readiness?.workspace.name ?? "This workspace"} does not have live saving cards yet.
+                No live saving cards yet.
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                This dashboard becomes the operating view for {readiness?.workspace.name ?? "your workspace"} once the first initiatives are created. Start by confirming shared setup, then create the first saving card so pipeline, forecast, and benchmark analytics have real workspace data to build on.
+                This dashboard becomes the operating view once the first initiatives are created. Start by confirming shared setup, then create the first saving card so pipeline, forecast, and portfolio analytics have real data to build on.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -240,13 +229,9 @@ function DashboardZeroState({
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <LaunchMetric
-              label="Workspace"
-              value={readiness?.workspace.name ?? "Workspace"}
-              detail={
-                readiness?.isWorkspaceReady
-                  ? `Operational controls are in place for ${readiness.workspace.slug}.`
-                  : `Complete shared setup before wider rollout in ${readiness?.workspace.slug ?? "this workspace"}.`
-              }
+              label="Setup Completeness"
+              value={`${readiness?.coverage.overallPercent ?? 0}%`}
+              detail="Combined master-data and workflow readiness."
             />
             <LaunchMetric
               label="Master Data"
@@ -288,12 +273,12 @@ function DashboardZeroState({
               description="Pipeline, realised, achieved, and forecast savings will use live card values instead of placeholders."
             />
             <PromiseCard
-              title="Trend and Benchmark Views"
+              title="Trend Views"
               description="Category, driver, and forecast charts will populate as impact dates and savings data accumulate."
             />
             <PromiseCard
               title="Operational Priorities"
-              description="Top-project and benchmark tables will highlight where commercial value is concentrated."
+              description="Top-project views will highlight where commercial value is concentrated."
             />
           </CardContent>
         </Card>
@@ -322,12 +307,12 @@ function DashboardRampUpCard({
         <div className="space-y-1">
           <CardTitle>
             {readiness?.isWorkspaceReady
-              ? `${readiness.workspace.name} is live and still ramping up`
-              : `${readiness?.workspace.name ?? "This workspace"} is live, but setup is still in progress`}
+              ? "Dashboard is live and still ramping up"
+              : "Dashboard is live, but setup is still in progress"}
           </CardTitle>
           <CardDescription>
             {readiness?.isWorkspaceReady
-              ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Trends and benchmarks will become more reliable as more initiatives move through the workflow.`
+              ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Trends and portfolio views will become more reliable as more initiatives move through the workflow.`
               : `You already have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live, but some shared setup still needs attention to keep the workspace standardized.`}
           </CardDescription>
         </div>
@@ -363,90 +348,6 @@ function DashboardRampUpCard({
       </CardContent>
     </Card>
   );
-}
-
-function DashboardTrustCard({
-  readiness,
-  cardCount,
-}: {
-  readiness?: WorkspaceReadiness | null;
-  cardCount: number;
-}) {
-  if (!readiness) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>{readiness.workspace.name}</CardTitle>
-          <CardDescription>
-            Executive reporting snapshot for live organization-scoped savings, workflow confidence, and portfolio coverage.
-          </CardDescription>
-        </div>
-        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-4">
-        <LaunchMetric
-          label="Workspace Slug"
-          value={readiness.workspace.slug}
-          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
-        />
-        <LaunchMetric
-          label="Setup Completeness"
-          value={`${readiness.coverage.overallPercent}%`}
-          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
-        />
-        <LaunchMetric
-          label="Reporting Scope"
-          value={`${cardCount} live card${cardCount === 1 ? "" : "s"}`}
-          detail={`First card ${formatDateLabel(readiness.activity.firstSavingCardCreatedAt, "Not available")}, last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
-        />
-        <LaunchMetric
-          label="Coverage Limits"
-          value={getCoverageLimitValue(readiness)}
-          detail={getCoverageLimitDetail(readiness)}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function formatDateLabel(value: Date | null, fallback: string) {
-  if (!value) {
-    return fallback;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-function getCoverageLimitValue(readiness: WorkspaceReadiness) {
-  const gapCount =
-    readiness.missingCoreSetup.length + readiness.missingWorkflowCoverage.length;
-
-  return gapCount ? `${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Clear";
-}
-
-function getCoverageLimitDetail(readiness: WorkspaceReadiness) {
-  const gaps = [
-    ...readiness.missingCoreSetup,
-    ...readiness.missingWorkflowCoverage,
-  ];
-
-  if (!gaps.length) {
-    return "Core master data and approval coverage are in place for reporting.";
-  }
-
-  const visibleGaps = gaps.slice(0, 2).join(", ");
-  const remainder = gaps.length > 2 ? ` +${gaps.length - 2} more` : "";
-  return `${visibleGaps}${remainder} may limit report completeness.`;
 }
 
 function LaunchMetric({
@@ -626,16 +527,7 @@ function deriveDashboardMetrics(cards: DashboardData["cards"]) {
         category: card.category.name,
         phase: phaseLabels[card.phase],
         value: card.calculatedSavings
-      })),
-    benchmarkOpportunities: [...cards]
-      .map((card) => ({
-        title: card.title,
-        category: card.category.name,
-        phase: phaseLabels[card.phase],
-        value: Math.max((card.baselinePrice - card.newPrice) * card.annualVolume, 0)
       }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5)
   };
 }
 
@@ -665,9 +557,9 @@ function buildDashboardNextActions(readiness: WorkspaceReadiness | null | undefi
   const actions: string[] = [];
 
   if (!cardCount) {
-    actions.push("Create the first saving card to activate live KPI, forecast, and benchmark reporting.");
+    actions.push("Create the first saving card to activate live KPI, forecast, and portfolio reporting.");
   } else if (cardCount < 3) {
-    actions.push("Add more saving cards so trends and benchmark views become more representative.");
+    actions.push("Add more saving cards so trends and portfolio views become more representative.");
   }
 
   readiness?.missingCoreSetup.forEach((item) => {

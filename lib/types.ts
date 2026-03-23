@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { ForecastSource, Prisma } from "@prisma/client";
 
 export const savingCardPortfolioSelect = {
   id: true,
@@ -248,17 +248,6 @@ export type CommandCenterTopSupplier = {
   savings: number;
 };
 
-export type CommandCenterBenchmarkOpportunity = {
-  savingCardId: string;
-  material: string;
-  supplier: string;
-  plant: string;
-  currentPrice: number;
-  benchmarkPrice: number;
-  variancePercent: number;
-  potentialSaving: number;
-};
-
 export type CommandCenterRiskPoint = {
   level: string;
   savings: number;
@@ -275,13 +264,54 @@ export type CommandCenterData = {
   pipelineByPhase: CommandCenterPipelinePoint[];
   forecastCurve: CommandCenterForecastPoint[];
   topSuppliers: CommandCenterTopSupplier[];
-  benchmarkOpportunities: CommandCenterBenchmarkOpportunity[];
   savingsByRiskLevel: CommandCenterRiskPoint[];
   savingsByQualificationStatus: CommandCenterQualificationPoint[];
 };
 
 export type CommandCenterApiError = {
   error: string;
+};
+
+export type VolumeTimelineRow = {
+  period: string;
+  periodKey: string;
+  periodDate: string;
+  forecastQty: number;
+  actualQty: number;
+  unit: string;
+  forecastSaving: number;
+  actualSaving: number;
+  varianceQty: number;
+  varianceSaving: number;
+  variancePercent: number | null;
+  isConfirmed: boolean;
+  isFuture: boolean;
+  forecastSource: ForecastSource | null;
+  actualSource: ForecastSource | null;
+};
+
+export type VolumeTimelineSummary = {
+  ytdForecastSaving: number;
+  ytdActualSaving: number;
+  ytdVarianceSaving: number;
+  ytdVariancePercent: number | null;
+  ytdForecastQty: number;
+  ytdActualQty: number;
+  ytdVarianceQty: number;
+  totalForecastMonths: number;
+  confirmedMonths: number;
+  hasData: boolean;
+};
+
+export type VolumeTimelineResult = {
+  timeline: VolumeTimelineRow[];
+  summary: VolumeTimelineSummary;
+};
+
+export type VolumeImportResult = {
+  imported: number;
+  rejected: number;
+  errors: string[];
 };
 
 export type SavingCardWithRelations = Prisma.SavingCardGetPayload<{

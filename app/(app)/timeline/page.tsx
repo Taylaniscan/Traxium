@@ -72,21 +72,7 @@ export default async function TimelinePage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <SectionHeading title="Timeline" />
-          {workspaceReadiness ? (
-            <span className="inline-flex rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-              {workspaceReadiness.workspace.name}
-            </span>
-          ) : null}
-        </div>
-        <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          {workspaceReadiness
-            ? `${workspaceReadiness.workspace.name} timeline reflects live organization-scoped rollout timing, phase progression, and savings delivery windows.`
-            : "This timeline reflects live organization-scoped rollout timing, phase progression, and savings delivery windows."}
-        </p>
-      </div>
+      <SectionHeading title="Timeline" />
       <TimelineBoard
         cards={cards}
         nowIso={new Date().toISOString()}

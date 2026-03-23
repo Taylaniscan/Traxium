@@ -44,17 +44,15 @@ export function ImportExportPanel({
 
   return (
     <div className="space-y-6">
-      <ReportingTrustCard readiness={readiness} />
-
       {showRampUpState ? (
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle>
               {!liveCardCount
-                ? `${readiness?.workspace.name ?? "This workspace"} reporting is ready to launch`
+                ? "Reporting is ready to launch"
                 : readiness?.isWorkspaceReady
-                  ? `${readiness.workspace.name} reporting is live and still ramping up`
-                  : `${readiness?.workspace.name ?? "This workspace"} reporting is live, but setup is still in progress`}
+                  ? "Reporting is live and still ramping up"
+                  : "Reporting is live, but setup is still in progress"}
             </CardTitle>
             <CardDescription>
               {!liveCardCount
@@ -179,54 +177,6 @@ export function ImportExportPanel({
         </Card>
       </div>
     </div>
-  );
-}
-
-function ReportingTrustCard({
-  readiness,
-}: {
-  readiness?: WorkspaceReadiness | null;
-}) {
-  if (!readiness) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>{readiness.workspace.name}</CardTitle>
-          <CardDescription>
-            Organization-scoped reporting operations area for workbook export, controlled bulk import, and portfolio coverage checks.
-          </CardDescription>
-        </div>
-        <div className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {readiness.isWorkspaceReady ? "Operationally ready" : "Setup still in progress"}
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-4">
-        <OperationsMetric
-          label="Workspace Slug"
-          value={readiness.workspace.slug}
-          detail={`Launched ${formatDateLabel(readiness.workspace.createdAt, "Unknown")}`}
-        />
-        <OperationsMetric
-          label="Reporting Scope"
-          value={`${readiness.counts.savingCards} live card${readiness.counts.savingCards === 1 ? "" : "s"}`}
-          detail={`Last update ${formatDateLabel(readiness.activity.lastPortfolioUpdateAt, "No updates yet")}`}
-        />
-        <OperationsMetric
-          label="Setup Completeness"
-          value={`${readiness.coverage.overallPercent}%`}
-          detail={`${readiness.coverage.masterDataReadyCount}/${readiness.coverage.masterDataTotal} collections and ${readiness.coverage.workflowReadyCount}/${readiness.coverage.workflowTotal} approval roles`}
-        />
-        <OperationsMetric
-          label="Coverage Limits"
-          value={getCoverageLimitValue(readiness)}
-          detail={getCoverageLimitDetail(readiness)}
-        />
-      </CardContent>
-    </Card>
   );
 }
 

@@ -1681,7 +1681,6 @@ export async function getCommandCenterData(
     qualificationGroups,
     pendingApprovals,
     activeProjects,
-    benchmarkCards,
     riskCards,
   ] = await Promise.all([
     prisma.savingCard.groupBy({
@@ -1727,19 +1726,6 @@ export async function getCommandCenterData(
       where: {
         ...where,
         phase: { not: Phase.CANCELLED },
-      },
-    }),
-    prisma.savingCard.findMany({
-      where,
-      select: {
-        id: true,
-        material: { select: { name: true } },
-        supplier: { select: { name: true } },
-        plant: { select: { name: true } },
-        baselinePrice: true,
-        newPrice: true,
-        annualVolume: true,
-        calculatedSavings: true,
       },
     }),
     prisma.savingCard.findMany({
@@ -1808,27 +1794,6 @@ export async function getCommandCenterData(
     savings: item._sum.calculatedSavings ?? 0,
   }));
 
-  const benchmarkOpportunities = benchmarkCards
-    .map((card) => {
-      const variancePercent = card.baselinePrice
-        ? ((card.baselinePrice - card.newPrice) / card.baselinePrice) * 100
-        : 0;
-
-      return {
-        savingCardId: card.id,
-        material: card.material.name,
-        supplier: card.supplier.name,
-        plant: card.plant.name,
-        currentPrice: card.baselinePrice,
-        benchmarkPrice: card.newPrice,
-        variancePercent,
-        potentialSaving: Math.max(card.calculatedSavings, 0),
-      };
-    })
-    .filter((item) => item.potentialSaving > 0)
-    .sort((a, b) => b.potentialSaving - a.potentialSaving)
-    .slice(0, 10);
-
   const riskOrder = ["Low", "Medium", "High", "Critical", "Unrated"];
   const riskAccumulator = riskCards.reduce<Record<string, number>>((acc, card) => {
     const supplierRisk = card.alternativeSuppliers[0]?.riskLevel;
@@ -1873,7 +1838,6 @@ export async function getCommandCenterData(
     pipelineByPhase,
     forecastCurve: forecastCurve.map(({ sortValue, ...item }) => item),
     topSuppliers,
-    benchmarkOpportunities,
     savingsByRiskLevel,
     savingsByQualificationStatus,
   };

@@ -31,21 +31,7 @@ export default async function KanbanPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <SectionHeading title="Kanban Board" />
-          {workspaceReadiness ? (
-            <span className="inline-flex rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-              {workspaceReadiness.workspace.name}
-            </span>
-          ) : null}
-        </div>
-        <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          {workspaceReadiness
-            ? `${workspaceReadiness.workspace.name} board reflects live organization-scoped workflow stages, approval handoffs, and sourcing momentum.`
-            : "This board reflects live organization-scoped workflow stages, approval handoffs, and sourcing momentum."}
-        </p>
-      </div>
+      <SectionHeading title="Kanban Board" />
       <KanbanBoard initialCards={cards} readiness={workspaceReadiness} />
     </div>
   );

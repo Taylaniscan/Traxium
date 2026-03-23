@@ -22,6 +22,7 @@ import {
   roleLabels,
   savingDrivers
 } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
@@ -73,16 +74,16 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     card?.stakeholders.map((item) => item.userId) ?? []
   );
   const [evidence, setEvidence] = useState<UploadedEvidenceFile[]>(
-  card?.evidence.map((item) => ({
-    id: item.id,
-    fileName: item.fileName,
-    downloadUrl: `/api/evidence/${item.id}/download`,
-    fileSize: item.fileSize,
-    fileType: item.fileType,
-    status: "uploaded",
-    progress: 100,
-  })) ?? []
-);
+    card?.evidence.map((item) => ({
+      id: item.id,
+      fileName: item.fileName,
+      downloadUrl: `/api/evidence/${item.id}/download`,
+      fileSize: item.fileSize,
+      fileType: item.fileType,
+      status: "uploaded",
+      progress: 100,
+    })) ?? []
+  );
   const [alternativeSourcingEnabled, setAlternativeSourcingEnabled] = useState(
     Boolean(card?.alternativeSupplierId || card?.alternativeSupplierManualName || card?.alternativeMaterialId || card?.alternativeMaterialManualName)
   );
@@ -236,13 +237,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       cancellationReason: form.cancellationReason,
       stakeholderIds: selectedStakeholders,
       evidence: evidence
-  .filter((item) => item.status !== "error" && item.id)
-  .map((item) => ({
-    id: item.id,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    fileType: item.fileType,
-  }))
+        .filter((item) => item.status !== "error" && item.id)
+        .map((item) => ({
+          id: item.id,
+          fileName: item.fileName,
+          fileSize: item.fileSize,
+          fileType: item.fileType,
+        }))
     };
 
     const endpoint = mode === "create" ? "/api/saving-cards" : `/api/saving-cards/${card?.id}`;
@@ -266,18 +267,23 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-      <div className="space-y-6">
+    <form onSubmit={handleSubmit} className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_360px] xl:items-start">
+      <div className="space-y-8">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>{mode === "create" ? "Create Saving Card" : "Edit Saving Card"}</CardTitle>
-            <CardDescription>
-              Create the sourcing case, resolve missing master data inline, and attach the supporting financial evidence before approval.
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+              Saving Card
+            </p>
+            <CardTitle className="text-[1.65rem] tracking-[-0.03em]">
+              {mode === "create" ? "Create Saving Card" : "Edit Saving Card"}
+            </CardTitle>
+            <CardDescription className="max-w-3xl text-[14px] leading-6">
+              Capture the sourcing case, assign ownership, and keep the commercial assumptions easy to review before workflow approval.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-8">
-            <SectionBlock title="Card Basics" description="Define the initiative and choose the phase and value realization pattern.">
-              <div className="grid gap-4 md:grid-cols-2">
+          <CardContent className="space-y-10">
+            <SectionBlock title="Card Basics" description="Start with the core narrative and workflow shape of the initiative.">
+              <div className="grid gap-5 lg:grid-cols-2">
                 <Field label="Title">
                   <Input placeholder="Enter initiative title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
                 </Field>
@@ -311,10 +317,10 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
               </div>
             </SectionBlock>
 
-            <SectionBlock title="Ownership & Scope" description="Pick an existing master-data record or create one inline without leaving the form.">
-              <div className="space-y-5">
+            <SectionBlock title="Ownership & Scope" description="Map the card to the shared master data and enable inline creation only where needed.">
+              <div className="space-y-6">
                 {showSetupCallout ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
                     <p className="font-semibold">Shared setup is still in progress</p>
                     <p className="mt-1">
                       Missing today: {missingCoreSetup.join(", ")}. This form stays usable, so choose existing records where available and create the missing ones inline from this section.
@@ -322,7 +328,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 ) : null}
 
-                <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 px-4 py-4">
+                <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-4">
                   <div>
                     <p className="text-sm font-semibold">Alternative sourcing involved</p>
                     <p className="mt-1 text-sm text-[var(--muted-foreground)]">
@@ -356,70 +362,70 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </button>
                 </label>
 
-                <div className="grid gap-5 md:grid-cols-2">
-                <CreatableMasterDataField
-                  label="Current Supplier"
-                  items={referenceData.suppliers}
-                  value={form.supplier}
-                  onChange={(supplier) => setForm({ ...form, supplier })}
-                  helper={supplierHelper}
-                />
-                <CreatableMasterDataField
-                  label="Current Material"
-                  items={referenceData.materials}
-                  value={form.material}
-                  onChange={(material) => setForm({ ...form, material })}
-                  helper={materialHelper}
-                />
-                {alternativeSourcingEnabled ? (
+                <div className="grid gap-6 lg:grid-cols-2">
                   <CreatableMasterDataField
-                    label="Alternative Supplier"
+                    label="Current Supplier"
                     items={referenceData.suppliers}
-                    value={form.alternativeSupplier}
-                    onChange={(alternativeSupplier) => setForm({ ...form, alternativeSupplier })}
-                    helper={alternativeSupplierHelper}
+                    value={form.supplier}
+                    onChange={(supplier) => setForm({ ...form, supplier })}
+                    helper={supplierHelper}
                   />
-                ) : null}
-                {alternativeSourcingEnabled ? (
                   <CreatableMasterDataField
-                    label="Alternative Material"
+                    label="Current Material"
                     items={referenceData.materials}
-                    value={form.alternativeMaterial}
-                    onChange={(alternativeMaterial) => setForm({ ...form, alternativeMaterial })}
-                    helper={alternativeMaterialHelper}
+                    value={form.material}
+                    onChange={(material) => setForm({ ...form, material })}
+                    helper={materialHelper}
                   />
-                ) : null}
-                <CreatableMasterDataField
-                  label="Category"
-                  items={referenceData.categories}
-                  value={form.category}
-                  onChange={(category) => setForm({ ...form, category })}
-                  helper={categoryHelper}
-                />
-                <CreatableMasterDataField
-                  label="Plant"
-                  items={referenceData.plants}
-                  value={form.plant}
-                  onChange={(plant) => setForm({ ...form, plant })}
-                  helper={plantHelper}
-                />
-                <CreatableMasterDataField
-                  label="Business Unit"
-                  items={referenceData.businessUnits}
-                  value={form.businessUnit}
-                  onChange={(businessUnit) => setForm({ ...form, businessUnit })}
-                  helper={businessUnitHelper}
-                />
-                <CreatableMasterDataField
-                  label="Buyer"
-                  items={referenceData.buyers}
-                  value={form.buyer}
-                  onChange={(buyer) => setForm({ ...form, buyer })}
-                  helper={buyerHelper}
-                />
+                  {alternativeSourcingEnabled ? (
+                    <CreatableMasterDataField
+                      label="Alternative Supplier"
+                      items={referenceData.suppliers}
+                      value={form.alternativeSupplier}
+                      onChange={(alternativeSupplier) => setForm({ ...form, alternativeSupplier })}
+                      helper={alternativeSupplierHelper}
+                    />
+                  ) : null}
+                  {alternativeSourcingEnabled ? (
+                    <CreatableMasterDataField
+                      label="Alternative Material"
+                      items={referenceData.materials}
+                      value={form.alternativeMaterial}
+                      onChange={(alternativeMaterial) => setForm({ ...form, alternativeMaterial })}
+                      helper={alternativeMaterialHelper}
+                    />
+                  ) : null}
+                  <CreatableMasterDataField
+                    label="Category"
+                    items={referenceData.categories}
+                    value={form.category}
+                    onChange={(category) => setForm({ ...form, category })}
+                    helper={categoryHelper}
+                  />
+                  <CreatableMasterDataField
+                    label="Plant"
+                    items={referenceData.plants}
+                    value={form.plant}
+                    onChange={(plant) => setForm({ ...form, plant })}
+                    helper={plantHelper}
+                  />
+                  <CreatableMasterDataField
+                    label="Business Unit"
+                    items={referenceData.businessUnits}
+                    value={form.businessUnit}
+                    onChange={(businessUnit) => setForm({ ...form, businessUnit })}
+                    helper={businessUnitHelper}
+                  />
+                  <CreatableMasterDataField
+                    label="Buyer"
+                    items={referenceData.buyers}
+                    value={form.buyer}
+                    onChange={(buyer) => setForm({ ...form, buyer })}
+                    helper={buyerHelper}
+                  />
                 </div>
                 {(form.savingType.toLowerCase().includes("supplier") || form.savingType.toLowerCase().includes("material")) && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
                     {form.savingType.toLowerCase().includes("supplier")
                       ? "Alternative supplier is recommended for supplier change savings types."
                       : null}
@@ -432,83 +438,91 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
               </div>
             </SectionBlock>
 
-            <SectionBlock title="Financials" description="Live savings are calculated as soon as the pricing inputs change.">
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field
-                  label="Baseline Price"
-                  tooltip="Last purchase order price used as the starting commercial baseline."
-                  helper="Use the latest purchase order price before the initiative starts."
-                >
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={form.baselinePrice}
-                    onChange={(event) => setForm({ ...form, baselinePrice: event.target.value })}
-                    required
-                  />
-                </Field>
-                <Field
-                  label="New Price"
-                  tooltip="Expected or negotiated future price after the initiative is implemented."
-                  helper="Enter the expected negotiated or scenario price."
-                >
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={form.newPrice}
-                    onChange={(event) => setForm({ ...form, newPrice: event.target.value })}
-                    required
-                  />
-                </Field>
-                <Field
-                  label="Annual Volume"
-                  tooltip="Expected yearly purchased volume affected by the saving case."
-                  helper="Used directly in the savings formula."
-                >
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0"
-                    value={form.annualVolume}
-                    onChange={(event) => setForm({ ...form, annualVolume: event.target.value })}
-                    required
-                  />
-                </Field>
-                <Field label="Currency">
-                  <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}>
-                    {currencies.map((currency) => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="FX Rate">
-                  <Input
-                    type="number"
-                    step="0.0001"
-                    placeholder="1.0000"
-                    value={form.fxRate}
-                    onChange={(event) => setForm({ ...form, fxRate: event.target.value })}
-                    required
-                  />
-                </Field>
-                <Field label="Cancellation Reason">
-                  <Input placeholder="Only required if cancelled" value={form.cancellationReason} onChange={(event) => setForm({ ...form, cancellationReason: event.target.value })} />
-                </Field>
-              </div>
+            <SectionBlock title="Financials" description="Enter the commercial assumptions first, then review the live savings output underneath.">
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <SectionLabel title="Commercial Inputs" description="These values drive the live savings calculation immediately." />
+                  <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+                    <Field
+                      label="Baseline Price"
+                      tooltip="Last purchase order price used as the starting commercial baseline."
+                      helper="Use the latest purchase order price before the initiative starts."
+                    >
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={form.baselinePrice}
+                        onChange={(event) => setForm({ ...form, baselinePrice: event.target.value })}
+                        required
+                      />
+                    </Field>
+                    <Field
+                      label="New Price"
+                      tooltip="Expected or negotiated future price after the initiative is implemented."
+                      helper="Enter the expected negotiated or scenario price."
+                    >
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={form.newPrice}
+                        onChange={(event) => setForm({ ...form, newPrice: event.target.value })}
+                        required
+                      />
+                    </Field>
+                    <Field
+                      label="Annual Volume"
+                      tooltip="Expected yearly purchased volume affected by the saving case."
+                      helper="Used directly in the savings formula."
+                    >
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        value={form.annualVolume}
+                        onChange={(event) => setForm({ ...form, annualVolume: event.target.value })}
+                        required
+                      />
+                    </Field>
+                    <Field label="Currency">
+                      <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}>
+                        {currencies.map((currency) => (
+                          <option key={currency} value={currency}>
+                            {currency}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="FX Rate">
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="1.0000"
+                        value={form.fxRate}
+                        onChange={(event) => setForm({ ...form, fxRate: event.target.value })}
+                        required
+                      />
+                    </Field>
+                    <Field label="Cancellation Reason">
+                      <Input placeholder="Only required if cancelled" value={form.cancellationReason} onChange={(event) => setForm({ ...form, cancellationReason: event.target.value })} />
+                    </Field>
+                  </div>
+                </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
-                <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-                <SummaryMetric label="Savings Formula" value="(Baseline - New) x Annual Volume" muted />
+                <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 md:p-5">
+                  <SectionLabel title="Calculated View" description="Use this as a quick cross-check before submitting the card." />
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
+                    <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
+                    <SummaryMetric label="Savings Formula" value="(Baseline - New) x Annual Volume" muted />
+                  </div>
+                </div>
               </div>
             </SectionBlock>
 
             <SectionBlock title="Project Attributes" description="Capture the nature of the saving initiative, delivery effort, and validation maturity.">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-5 lg:grid-cols-3">
                 <Field label="Saving Driver" tooltip="Root cause of the saving initiative.">
                   <Select value={form.savingDriver} onChange={(event) => setForm({ ...form, savingDriver: event.target.value })}>
                     <option value="">Select saving driver</option>
@@ -554,39 +568,43 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
               </div>
             </SectionBlock>
 
-            <SectionBlock title="Timing" description="Separate project execution dates from value-recognition dates for finance reporting.">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Start Date">
-                  <Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} required />
-                </Field>
-                <Field label="End Date">
-                  <Input type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} required />
-                </Field>
-                <Field label="Impact Start Date">
-                  <Input
-                    type="date"
-                    value={form.impactStartDate}
-                    onChange={(event) => setForm({ ...form, impactStartDate: event.target.value })}
-                    required
-                  />
-                </Field>
-                <Field label="Impact End Date">
-                  <Input
-                    type="date"
-                    value={form.impactEndDate}
-                    onChange={(event) => setForm({ ...form, impactEndDate: event.target.value })}
-                    required
-                  />
-                </Field>
+            <SectionBlock title="Timing" description="Keep project delivery dates separate from the dates used for value recognition and reporting.">
+              <div className="grid gap-5 lg:grid-cols-2">
+                <SubsectionPanel title="Execution Timeline" description="When the initiative work starts and ends.">
+                  <div className="grid gap-5">
+                    <Field label="Start Date">
+                      <Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} required />
+                    </Field>
+                    <Field label="End Date">
+                      <Input type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} required />
+                    </Field>
+                  </div>
+                </SubsectionPanel>
+                <SubsectionPanel title="Value Recognition" description="When finance should recognize the commercial impact.">
+                  <div className="grid gap-5">
+                    <Field label="Impact Start Date">
+                      <Input
+                        type="date"
+                        value={form.impactStartDate}
+                        onChange={(event) => setForm({ ...form, impactStartDate: event.target.value })}
+                        required
+                      />
+                    </Field>
+                    <Field label="Impact End Date">
+                      <Input
+                        type="date"
+                        value={form.impactEndDate}
+                        onChange={(event) => setForm({ ...form, impactEndDate: event.target.value })}
+                        required
+                      />
+                    </Field>
+                  </div>
+                </SubsectionPanel>
               </div>
             </SectionBlock>
 
-            <Card className="border-dashed">
-              <CardHeader>
-                <CardTitle className="text-base">Stakeholders</CardTitle>
-                <CardDescription>Select the people who should be visible on the card and involved in the workflow.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <SectionBlock title="Stakeholders" description="Select the people who should see the card and contribute to the workflow.">
+              <div className="space-y-4">
                 <SearchableUserMultiSelect
                   users={referenceData.users}
                   selectedUserIds={selectedStakeholders}
@@ -596,33 +614,37 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                 <p className="text-[12px] leading-5 text-[var(--muted-foreground)]">
                   Search by name, email, or role to assign procurement, finance, sales, production, and development stakeholders consistently.
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </SectionBlock>
 
-            {card?.id ? (
-  <EvidenceUploader
-    savingCardId={card.id}
-    files={evidence}
-    onChange={setEvidence}
-    onError={setUploadError}
-  />
-) : (
-  <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 px-4 py-4 text-sm text-[var(--muted-foreground)]">
-    Save the card first, then upload supporting evidence.
-  </div>
-)}
+            <SectionBlock title="Evidence & Attachments" description="Keep supporting documents with the card once the base record exists.">
+              {card?.id ? (
+                <EvidenceUploader
+                  savingCardId={card.id}
+                  files={evidence}
+                  onChange={setEvidence}
+                  onError={setUploadError}
+                />
+              ) : (
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 px-4 py-4 text-sm text-[var(--muted-foreground)]">
+                  Save the card first, then upload supporting evidence.
+                </div>
+              )}
+            </SectionBlock>
 
-{uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
-{error ? <p className="text-sm text-red-600">{error}</p> : null}
+            <div className="space-y-3 border-t border-[var(--border)] pt-6">
+              {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-<div className="flex justify-end gap-3">
-  <Button type="button" variant="ghost" onClick={() => router.back()}>
-    Cancel
-  </Button>
-  <Button type="submit" disabled={loading}>
-    {loading ? "Saving..." : mode === "create" ? "Create Card" : "Update Card"}
-  </Button>
-</div>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" onClick={() => router.back()}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Saving..." : mode === "create" ? "Create Card" : "Update Card"}
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -630,27 +652,39 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       <div className="space-y-6">
         <Card className="sticky top-6 overflow-hidden">
           <CardHeader>
-            <CardTitle>Decision Summary</CardTitle>
-            <CardDescription>Approvers can verify scope, financial assumptions, and evidence readiness at a glance.</CardDescription>
+            <CardTitle>Review</CardTitle>
+            <CardDescription>Keep the most decision-relevant details visible while you complete the form.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <InfoRow label="Indicative Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
-            <InfoRow label="Current Phase" value={phaseLabels[form.phase]} />
-            <InfoRow label="Alternative Sourcing" value={alternativeSourcingEnabled ? "Enabled" : "Not involved"} />
-            <InfoRow label="Saving Driver" value={form.savingDriver || "Not set"} />
-            <InfoRow label="Implementation Complexity" value={form.implementationComplexity || "Not set"} />
-            <InfoRow label="Qualification Status" value={form.qualificationStatus || "Not set"} />
-            <InfoRow label="Stakeholders" value={selectedStakeholders.length ? String(selectedStakeholders.length) : "None"} />
-            <InfoRow
-  label="Evidence Files"
-  value={String(evidence.filter((item) => item.status !== "error" && item.id).length)}
-/>
-            {alternativeSourcingEnabled ? (
-              <>
-                <InfoRow label="Alternative Supplier" value={form.alternativeSupplier.name || "Not specified"} />
-                <InfoRow label="Alternative Material" value={form.alternativeMaterial.name || "Not specified"} />
-              </>
-            ) : null}
+          <CardContent className="space-y-5">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-4">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Indicative Savings</p>
+              <p className="mt-2 text-[1.4rem] font-semibold tracking-[-0.03em]">
+                {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
+              </p>
+            </div>
+
+            <SummaryGroup title="Workflow">
+              <InfoRow label="Current Phase" value={phaseLabels[form.phase]} />
+              <InfoRow label="Alternative Sourcing" value={alternativeSourcingEnabled ? "Enabled" : "Not involved"} />
+              <InfoRow label="Stakeholders" value={selectedStakeholders.length ? String(selectedStakeholders.length) : "None"} />
+              <InfoRow
+                label="Evidence Files"
+                value={String(evidence.filter((item) => item.status !== "error" && item.id).length)}
+              />
+            </SummaryGroup>
+
+            <SummaryGroup title="Delivery Profile">
+              <InfoRow label="Saving Driver" value={form.savingDriver || "Not set"} />
+              <InfoRow label="Implementation Complexity" value={form.implementationComplexity || "Not set"} />
+              <InfoRow label="Qualification Status" value={form.qualificationStatus || "Not set"} />
+              {alternativeSourcingEnabled ? (
+                <>
+                  <InfoRow label="Alternative Supplier" value={form.alternativeSupplier.name || "Not specified"} />
+                  <InfoRow label="Alternative Material" value={form.alternativeMaterial.name || "Not specified"} />
+                </>
+              ) : null}
+            </SummaryGroup>
+
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
               Savings calculation:
               <span className="font-semibold text-[var(--foreground)]"> (Baseline price - New price) x Annual volume</span>
@@ -728,9 +762,9 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <div className={className}>
-      <div className="mb-2 flex items-center gap-2">
-        <Label>{label}</Label>
+    <div className={cn("space-y-2.5", className)}>
+      <div className="flex items-center gap-2">
+        <Label className="text-[13px] font-medium text-[var(--foreground)]">{label}</Label>
         {tooltip ? (
           <span title={tooltip}>
             <Info className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
@@ -738,7 +772,7 @@ function Field({
         ) : null}
       </div>
       {children}
-      {helper ? <p className="mt-2 text-[12px] leading-5 text-[var(--muted-foreground)]">{helper}</p> : null}
+      {helper ? <p className="text-[12px] leading-5 text-[var(--muted-foreground)]">{helper}</p> : null}
     </div>
   );
 }
@@ -753,13 +787,39 @@ function SectionBlock({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-5 rounded-3xl border border-[var(--border)] bg-white p-5">
-      <div className="border-b border-[var(--border)] pb-4">
-        <h3 className="text-base font-semibold text-[var(--foreground)]">{title}</h3>
-        <p className="mt-1 text-[13px] leading-6 text-[var(--muted-foreground)]">{description}</p>
+    <section className="space-y-6 rounded-[28px] border border-[var(--border)] bg-[linear-gradient(180deg,rgba(248,250,252,0.7),#ffffff)] p-6 md:p-7">
+      <div className="border-b border-[var(--border)] pb-5">
+        <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--foreground)]">{title}</h3>
+        <p className="mt-1 max-w-3xl text-[13px] leading-6 text-[var(--muted-foreground)]">{description}</p>
       </div>
       {children}
     </section>
+  );
+}
+
+function SectionLabel({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{title}</p>
+      <p className="text-[13px] leading-6 text-[var(--muted-foreground)]">{description}</p>
+    </div>
+  );
+}
+
+function SubsectionPanel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 md:p-5">
+      <SectionLabel title={title} description={description} />
+      {children}
+    </div>
   );
 }
 
@@ -768,6 +828,15 @@ function SummaryMetric({ label, value, muted }: { label: string; value: string; 
     <div className={`rounded-2xl border border-[var(--border)] p-4 ${muted ? "bg-[var(--muted)]/35" : "bg-[var(--muted)]/45"}`}>
       <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-[1.15rem] font-semibold tracking-[-0.02em]">{value}</p>
+    </div>
+  );
+}
+
+function SummaryGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{title}</p>
+      <div className="space-y-2.5">{children}</div>
     </div>
   );
 }

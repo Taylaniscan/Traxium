@@ -20,6 +20,54 @@ function readRequiredEnv(name: string) {
   return value;
 }
 
+type SupabaseJwtClaims = {
+  role?: string;
+  ref?: string;
+};
+
+function decodeJwtPayload(token: string) {
+  const [_, payload = ""] = token.split(".");
+
+  return JSON.parse(
+    Buffer.from(
+      payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "="),
+      "base64"
+    ).toString()
+  ) as SupabaseJwtClaims;
+}
+
+function validateSupabaseJwtRole({
+  name,
+  token,
+  expectedRole,
+  expectedUrl,
+}: {
+  name: string;
+  token: string;
+  expectedRole: "anon" | "service_role";
+  expectedUrl?: string;
+}) {
+  let claims: SupabaseJwtClaims;
+
+  try {
+    claims = decodeJwtPayload(token);
+  } catch {
+    throw new Error(`${name} is not a valid JWT`);
+  }
+
+  if (claims.role !== expectedRole) {
+    throw new Error(`${name} has role "${claims.role || "unknown"}", but "${expectedRole}" is required.`);
+  }
+
+  if (expectedUrl && claims.ref) {
+    const urlHost = new URL(expectedUrl).hostname;
+    const urlProjectRef = urlHost.split(".")[0];
+    if (claims.ref !== urlProjectRef) {
+      throw new Error(`${name} project mismatch: URL is ${urlHost}, key is for project ${claims.ref}.`);
+    }
+  }
+}
+
 function getSupabaseUrl() {
   const url = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
 
@@ -33,11 +81,29 @@ function getSupabaseUrl() {
 }
 
 function getSupabaseAnonKey() {
-  return readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const url = getSupabaseUrl();
+  const key = readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+  validateSupabaseJwtRole({
+    name: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    token: key,
+    expectedRole: "anon",
+    expectedUrl: url,
+  });
+
+  return key;
 }
 
 function getSupabaseServiceRoleKey() {
-  return readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const key = readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  validateSupabaseJwtRole({
+    name: "SUPABASE_SERVICE_ROLE_KEY",
+    token: key,
+    expectedRole: "service_role",
+  });
+
+  return key;
 }
 
 export async function createSupabaseServerClient() {
