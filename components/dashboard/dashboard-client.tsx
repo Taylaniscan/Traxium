@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import type { OrganizationRole } from "@prisma/client";
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowUpRight, CircleDollarSign, Filter, Settings, Target, TrendingUp } from "lucide-react";
+import { FirstValueLaunchpad } from "@/components/onboarding/first-value-launchpad";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -16,9 +18,13 @@ import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 export function DashboardClient({
   data,
   readiness,
+  viewer,
 }: {
   data: DashboardData;
   readiness?: WorkspaceReadiness | null;
+  viewer: {
+    organizationMembershipRole: OrganizationRole;
+  };
 }) {
   const [filters, setFilters] = useState({
     savingDriver: "",
@@ -60,6 +66,7 @@ export function DashboardClient({
         readiness={readiness}
         configuredCollections={configuredCollections}
         nextActions={nextActions}
+        viewer={viewer}
       />
     );
   }
@@ -193,10 +200,14 @@ function DashboardZeroState({
   readiness,
   configuredCollections,
   nextActions,
+  viewer,
 }: {
   readiness?: WorkspaceReadiness | null;
   configuredCollections: number;
   nextActions: string[];
+  viewer: {
+    organizationMembershipRole: OrganizationRole;
+  };
 }) {
   const totalCollections = readiness?.masterData.length ?? 0;
   const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
@@ -258,30 +269,13 @@ function DashboardZeroState({
               <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
                 {item}
               </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>What Appears Here Next</CardTitle>
-            <CardDescription>The dashboard becomes operational as soon as the first cards are live.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <PromiseCard
-              title="Portfolio KPIs"
-              description="Pipeline, realised, achieved, and forecast savings will use live card values instead of placeholders."
-            />
-            <PromiseCard
-              title="Trend Views"
-              description="Category, driver, and forecast charts will populate as impact dates and savings data accumulate."
-            />
-            <PromiseCard
-              title="Operational Priorities"
-              description="Top-project views will highlight where commercial value is concentrated."
-            />
-          </CardContent>
-        </Card>
+        <FirstValueLaunchpad
+          viewerMembershipRole={viewer.organizationMembershipRole}
+        />
       </div>
     </div>
   );
@@ -364,21 +358,6 @@ function LaunchMetric({
       <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
-    </div>
-  );
-}
-
-function PromiseCard({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4">
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
   );
 }

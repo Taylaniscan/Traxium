@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { getCurrentUser } from "@/lib/auth";
+import { getWorkspaceOnboardingState } from "@/lib/auth";
 
 export default async function HomePage() {
-  const user = await getCurrentUser();
+  const state = await getWorkspaceOnboardingState();
 
-  if (user) {
+  if (state.ok) {
+    if (state.needsWorkspace) {
+      redirect("/onboarding");
+    }
+
     redirect("/dashboard");
   }
 

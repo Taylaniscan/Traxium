@@ -12,8 +12,10 @@ describe("login page auth routing", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the login form", () => {
-    const page = LoginPage();
+  it("renders the login form", async () => {
+    const page = await LoginPage({
+      searchParams: Promise.resolve({}),
+    });
 
     expect(page).toMatchObject({
       type: LoginFormMock,

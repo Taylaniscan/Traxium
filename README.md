@@ -119,3 +119,72 @@ This improves privacy and makes the product more suitable for real customer use.
 
 ```bash
 npm install
+```
+
+### 2. Configure Prisma for Supabase
+
+Use the Supabase session pooler on port `5432` for local Prisma development.
+
+- `DATABASE_URL`: application/runtime Prisma URL
+- `DIRECT_URL`: migration URL; for local development keep it the same as `DATABASE_URL`
+- Do not set `NODE_ENV` in `.env`; Next.js manages it automatically for `dev`, `build`, and `start`
+- Optional direct host: only use `db.[PROJECT-REF].supabase.co:5432` if your local network can reliably reach it
+- If you intentionally use the transaction pooler on `6543`, add `pgbouncer=true&connection_limit=1`
+- Always include `sslmode=require&connect_timeout=30`
+
+Local default:
+
+```env
+DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-1-[REGION].pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
+DIRECT_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-1-[REGION].pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
+```
+
+### 3. Validate and run Prisma
+
+```bash
+npm run db:check
+npx prisma generate
+npx prisma migrate dev
+```
+
+### 4. Baseline an existing database
+
+If the Supabase database already contains the current schema and data, do not run the baseline SQL again. Mark the committed init migration as already applied:
+
+```bash
+npm run db:check
+npx prisma generate
+npm run db:baseline
+npx prisma migrate status
+npx prisma migrate dev
+```
+
+This repo now uses:
+
+- baseline migration: `20260323200000_init`
+- first incremental migration after the baseline: `20260324204000_add_invitations`
+
+The committed baseline intentionally matches the live pre-invitation schema. That lets an existing database baseline safely first, then apply the invitation migration normally.
+
+Generic Prisma baseline command for a full current-schema snapshot:
+
+```bash
+npx prisma migrate diff \
+  --from-empty \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+For this repo, do not replace the committed `20260323200000_init` with that full-schema snapshot unless you intentionally want to squash `20260324204000_add_invitations` into a new baseline.
+
+To mark that baseline as applied on an existing database:
+
+```bash
+npx prisma migrate resolve --applied 20260323200000_init
+```
+
+After the baseline is resolved, new migrations should be created normally:
+
+```bash
+npx prisma migrate dev --name your_migration_name
+```

@@ -27,6 +27,7 @@ describe("auth bootstrap route", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
       error: "Authenticated session is required.",
+      code: "UNAUTHENTICATED",
     });
   });
 
@@ -44,6 +45,23 @@ describe("auth bootstrap route", () => {
     await expect(response.json()).resolves.toEqual({
       error:
         "Your account is authenticated, but no Traxium workspace user is provisioned for this email.",
+      code: "USER_NOT_PROVISIONED",
+    });
+  });
+
+  it("returns 403 when the account is authenticated but has no active organization membership", async () => {
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: false,
+      code: "ORGANIZATION_ACCESS_REQUIRED",
+      message: "Your account is not an active member of any Traxium organization.",
+    });
+
+    const response = await POST();
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Your account is not an active member of any Traxium organization.",
+      code: "ORGANIZATION_ACCESS_REQUIRED",
     });
   });
 

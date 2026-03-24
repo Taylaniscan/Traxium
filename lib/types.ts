@@ -1,5 +1,6 @@
 import type {
   ForecastSource,
+  InvitationStatus,
   MembershipStatus,
   OrganizationRole,
   Prisma,
@@ -91,6 +92,50 @@ export const organizationMembershipSelect = {
 
 export type OrganizationMembershipRecord = Prisma.OrganizationMembershipGetPayload<{
   select: typeof organizationMembershipSelect;
+}>;
+
+export type OrganizationInvitationSummary = {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: OrganizationRole;
+  token: string;
+  status: InvitationStatus;
+  expiresAt: Date;
+  invitedByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const organizationInvitationSelect = {
+  id: true,
+  organizationId: true,
+  email: true,
+  role: true,
+  token: true,
+  status: true,
+  expiresAt: true,
+  invitedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+  organization: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+    },
+  },
+  invitedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.InvitationSelect;
+
+export type OrganizationInvitationRecord = Prisma.InvitationGetPayload<{
+  select: typeof organizationInvitationSelect;
 }>;
 
 export type AuthGuardOptions = {

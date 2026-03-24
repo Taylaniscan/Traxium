@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,22 @@ import {
 import { Label } from "@/components/ui/label";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+function resolveInviteNextPath(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized || normalized.startsWith("//") || !normalized.startsWith("/invite/")) {
+    return null;
+  }
+
+  return normalized;
+}
+
 export function LoginForm() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +39,7 @@ export function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    const nextPath = resolveInviteNextPath(searchParams.get("next"));
 
     try {
       const supabase = createSupabaseBrowserClient();
@@ -44,8 +61,13 @@ export function LoginForm() {
 
       if (!bootstrapResponse.ok) {
         const bootstrapPayload = (await bootstrapResponse.json().catch(() => null)) as
-          | { error?: string }
+          | { error?: string; code?: string }
           | null;
+
+        if (bootstrapPayload?.code === "ORGANIZATION_ACCESS_REQUIRED") {
+          window.location.assign(nextPath ?? "/onboarding");
+          return;
+        }
 
         await supabase.auth.signOut();
         setError(
@@ -56,7 +78,7 @@ export function LoginForm() {
         return;
       }
 
-      window.location.assign("/dashboard");
+      window.location.assign(nextPath ?? "/dashboard");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Login failed");
       setLoading(false);

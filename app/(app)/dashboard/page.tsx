@@ -44,7 +44,13 @@ export default async function DashboardPage() {
             Export workbook
           </a>
       </div>
-      <DashboardClient data={data} readiness={workspaceReadiness} />
+      <DashboardClient
+        data={data}
+        readiness={workspaceReadiness}
+        viewer={{
+          organizationMembershipRole: user.activeOrganization.membershipRole,
+        }}
+      />
     </div>
   );
 }

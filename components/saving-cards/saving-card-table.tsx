@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Search } from "lucide-react";
+import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,6 +85,11 @@ export function SavingCardTable({
                 <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
                   Create first saving card
                 </Link>
+                <LoadSampleDataButton
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20"
+                >
+                  Load sample data
+                </LoadSampleDataButton>
                 <Link
                   href="/admin"
                   className={cn(

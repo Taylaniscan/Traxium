@@ -10,6 +10,7 @@ export async function POST() {
       return NextResponse.json(
         {
           error: result.message,
+          code: result.code,
         },
         {
           status: result.code === "UNAUTHENTICATED" ? 401 : 403,

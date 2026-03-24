@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { MembershipStatus } from "@prisma/client";
+import type { MembershipStatus, OrganizationRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
   ActiveOrganizationContext,
@@ -16,6 +16,8 @@ const activeMembershipSelect = {
 } satisfies Prisma.OrganizationMembershipSelect;
 
 const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
+const ADMIN_ORGANIZATION_ROLE: OrganizationRole = "ADMIN";
+const OWNER_ORGANIZATION_ROLE: OrganizationRole = "OWNER";
 
 const activeOrganizationContextUserSelect = {
   activeOrganizationId: true,
@@ -33,6 +35,56 @@ type ActiveOrganizationContextUser = Prisma.UserGetPayload<{
 }>;
 
 type ActiveMembershipRecord = ActiveOrganizationContextUser["memberships"][number];
+
+type OrganizationWriteClient = Prisma.TransactionClient;
+
+export class WorkspaceOnboardingError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400
+  ) {
+    super(message);
+    this.name = "WorkspaceOnboardingError";
+  }
+}
+
+export type InitialWorkspaceResult = {
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  membership: {
+    id: string;
+    organizationId: string;
+    role: OrganizationRole;
+    status: MembershipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  activeOrganizationId: string;
+};
+
+export function canManageOrganizationMembers(role: OrganizationRole) {
+  return role === OWNER_ORGANIZATION_ROLE || role === ADMIN_ORGANIZATION_ROLE;
+}
+
+export function canAssignOrganizationRole(
+  actorRole: OrganizationRole,
+  targetRole: OrganizationRole
+) {
+  if (!canManageOrganizationMembers(actorRole)) {
+    return false;
+  }
+
+  if (targetRole === OWNER_ORGANIZATION_ROLE) {
+    return actorRole === OWNER_ORGANIZATION_ROLE;
+  }
+
+  return true;
+}
 
 function normalizeOrganizationId(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -74,6 +126,135 @@ function getActiveMembership(
       (membership) => membership.organizationId === activeOrganizationId
     ) ?? null
   );
+}
+
+function normalizeWorkspaceName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function slugifyWorkspaceName(value: string) {
+  const slug = normalizeWorkspaceName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return slug || "workspace";
+}
+
+async function createUniqueOrganizationSlug(
+  tx: OrganizationWriteClient,
+  workspaceName: string
+) {
+  const baseSlug = slugifyWorkspaceName(workspaceName);
+  const existingOrganizations = await tx.organization.findMany({
+    where: {
+      slug: {
+        startsWith: baseSlug,
+      },
+    },
+    select: {
+      slug: true,
+    },
+  });
+
+  const existingSlugs = new Set(existingOrganizations.map((organization) => organization.slug));
+
+  if (!existingSlugs.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let suffix = 2;
+
+  while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseSlug}-${suffix}`;
+}
+
+export async function createInitialWorkspaceForUser(
+  userId: string,
+  workspaceName: string
+): Promise<InitialWorkspaceResult> {
+  const normalizedWorkspaceName = normalizeWorkspaceName(workspaceName);
+
+  if (!normalizedWorkspaceName) {
+    throw new WorkspaceOnboardingError("Workspace name is required.", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        memberships: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (!user) {
+      throw new WorkspaceOnboardingError("User not found.", 404);
+    }
+
+    if (user.memberships.length > 0) {
+      throw new WorkspaceOnboardingError(
+        "Initial workspace onboarding is already complete for this account.",
+        409
+      );
+    }
+
+    const slug = await createUniqueOrganizationSlug(tx, normalizedWorkspaceName);
+
+    const organization = await tx.organization.create({
+      data: {
+        name: normalizedWorkspaceName,
+        slug,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const membership = await tx.organizationMembership.create({
+      data: {
+        userId,
+        organizationId: organization.id,
+        role: OWNER_ORGANIZATION_ROLE,
+        status: ACTIVE_MEMBERSHIP_STATUS,
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        organizationId: organization.id,
+        activeOrganizationId: organization.id,
+      },
+    });
+
+    return {
+      organization,
+      membership,
+      activeOrganizationId: organization.id,
+    };
+  });
 }
 
 export function resolveTenantContext(

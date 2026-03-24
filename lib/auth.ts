@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import type { MembershipStatus } from "@prisma/client";
 
+import {
+  acceptOrganizationInvitation,
+  type InvitationAcceptanceResult,
+} from "@/lib/invitations";
 import { prisma } from "@/lib/prisma";
+import { createInitialWorkspaceForUser, WorkspaceOnboardingError } from "@/lib/organizations";
 import { hasAnyRole, hasPermission } from "@/lib/permissions";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
@@ -80,6 +85,42 @@ export type SessionBootstrapResult =
         | "SESSION_REPAIR_FAILED";
       message: string;
     };
+
+export type WorkspaceOnboardingStateResult =
+  | {
+      ok: true;
+      needsWorkspace: boolean;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+      };
+    }
+  | {
+      ok: false;
+      code: "UNAUTHENTICATED" | "AMBIGUOUS_USER" | "USER_NOT_PROVISIONED";
+      message: string;
+    };
+
+export type WorkspaceOnboardingResult = {
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  membership: {
+    id: string;
+    organizationId: string;
+    role: SessionUser["activeOrganization"]["membershipRole"];
+    status: SessionUser["activeOrganization"]["membershipStatus"];
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  activeOrganizationId: string;
+  user: SessionUser;
+};
 
 export class AuthGuardError extends Error {
   constructor(
@@ -447,6 +488,101 @@ export async function bootstrapCurrentUser(): Promise<SessionBootstrapResult> {
     repaired,
     user: mapSessionUser(user, activeMembership),
   };
+}
+
+export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboardingStateResult> {
+  const resolved = await resolveAuthenticatedAppUser();
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return {
+    ok: true,
+    needsWorkspace: resolved.user.memberships.length === 0,
+    user: {
+      id: resolved.user.id,
+      name: resolved.user.name,
+      email: resolved.user.email,
+    },
+  };
+}
+
+export async function createInitialWorkspaceOnboarding(
+  workspaceName: string
+): Promise<WorkspaceOnboardingResult> {
+  const resolved = await resolveAuthenticatedAppUser();
+
+  if (!resolved.ok) {
+    throw new AuthGuardError(
+      resolved.message,
+      resolved.code === "UNAUTHENTICATED" ? 401 : 403,
+      resolved.code === "UNAUTHENTICATED" ? "UNAUTHENTICATED" : "FORBIDDEN"
+    );
+  }
+
+  if (resolved.user.memberships.length > 0) {
+    throw new WorkspaceOnboardingError(
+      "Initial workspace onboarding is already complete for this account.",
+      409
+    );
+  }
+
+  const result = await createInitialWorkspaceForUser(resolved.user.id, workspaceName);
+
+  await updateAuthSessionContext(resolved.authUser, {
+    userId: resolved.user.id,
+    activeOrganizationId: result.activeOrganizationId,
+  });
+
+  const refreshedUser = await findSessionUserById(resolved.user.id);
+
+  if (!refreshedUser) {
+    throw new Error("Workspace user could not be reloaded after onboarding.");
+  }
+
+  const activeMembership =
+    getActiveMembership(refreshedUser) ??
+    getMembershipByOrganizationId(refreshedUser, result.activeOrganizationId);
+
+  if (!activeMembership) {
+    throw new Error("Workspace onboarding completed without an active organization membership.");
+  }
+
+  return {
+    organization: result.organization,
+    membership: result.membership,
+    activeOrganizationId: result.activeOrganizationId,
+    user: mapSessionUser(refreshedUser, activeMembership),
+  };
+}
+
+export async function acceptInvitationForCurrentUser(
+  token: string
+): Promise<InvitationAcceptanceResult> {
+  const resolved = await resolveAuthenticatedAppUser();
+
+  if (!resolved.ok) {
+    throw new AuthGuardError(
+      resolved.message,
+      resolved.code === "UNAUTHENTICATED" ? 401 : 403,
+      resolved.code === "UNAUTHENTICATED" ? "UNAUTHENTICATED" : "FORBIDDEN"
+    );
+  }
+
+  const result = await acceptOrganizationInvitation({
+    token,
+    userId: resolved.user.id,
+    userEmail: resolved.user.email,
+    activeOrganizationId: getPreferredActiveOrganizationId(resolved.user),
+  });
+
+  await updateAuthSessionContext(resolved.authUser, {
+    userId: resolved.user.id,
+    activeOrganizationId: result.activeOrganizationId,
+  });
+
+  return result;
 }
 
 export async function switchCurrentOrganization(

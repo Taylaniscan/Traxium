@@ -3,6 +3,9 @@ generator client {
 }
 
 datasource db {
+  // Local Supabase development defaults both URLs to the session pooler on :5432.
+  // That avoids Prisma Migrate depending on the direct db.<project-ref>.supabase.co host,
+  // which often fails on local IPv6-restricted networks.
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
@@ -26,6 +29,13 @@ enum MembershipStatus {
   ACTIVE
   INVITED
   SUSPENDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }
 
 enum Phase {
@@ -77,6 +87,7 @@ model Organization {
   annualTargets AnnualTarget[]
   activeUsers   User[]                   @relation("ActiveOrganization")
   memberships   OrganizationMembership[]
+  invitations   Invitation[]
 }
 
 model User {
@@ -106,6 +117,7 @@ model User {
   createdForecasts      MaterialConsumptionForecast[]
   confirmedActuals      MaterialConsumptionActual[]
   memberships           OrganizationMembership[]
+  sentInvitations       Invitation[]                  @relation("OrganizationInvitations")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -129,6 +141,27 @@ model OrganizationMembership {
   @@index([organizationId])
   @@index([organizationId, role])
   @@index([organizationId, status])
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  email           String
+  role            OrganizationRole @default(MEMBER)
+  token           String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  invitedByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("OrganizationInvitations", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, email])
+  @@index([organizationId, status])
+  @@index([invitedByUserId])
 }
 
 model Buyer {
