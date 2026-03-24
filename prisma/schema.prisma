@@ -16,6 +16,18 @@ enum Role {
   FINANCIAL_CONTROLLER
 }
 
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
 enum Phase {
   IDEA
   VALIDATED
@@ -53,7 +65,8 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
+  /// @deprecated Transitional legacy relation kept only for membership backfill compatibility.
+  users         User[]                   @relation("LegacyOrganizationUsers")
   suppliers     Supplier[]
   materials     Material[]
   categories    Category[]
@@ -62,18 +75,24 @@ model Organization {
   businessUnits BusinessUnit[]
   savingCards   SavingCard[]
   annualTargets AnnualTarget[]
+  activeUsers   User[]                   @relation("ActiveOrganization")
+  memberships   OrganizationMembership[]
 }
 
 model User {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  email          String
-  role           Role
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  /// @deprecated Legacy single-organization backfill source. Do not use for auth or tenant resolution.
+  organizationId       String
+  activeOrganizationId String?
+  name                 String
+  email                String
+  role                 Role
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  /// @deprecated Transitional legacy relation kept only for membership backfill compatibility.
+  organization       Organization  @relation("LegacyOrganizationUsers", fields: [organizationId], references: [id])
+  activeOrganization Organization? @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id])
 
   stakeholderCards      SavingCardStakeholder[]
   approvals             Approval[]
@@ -86,9 +105,30 @@ model User {
   phaseHistoryEntries   PhaseHistory[]                @relation("PhaseHistoryChangedBy")
   createdForecasts      MaterialConsumptionForecast[]
   confirmedActuals      MaterialConsumptionActual[]
+  memberships           OrganizationMembership[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
+  @@index([activeOrganizationId])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrganizationRole @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, status])
 }
 
 model Buyer {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { deleteAlternativeSupplier, updateAlternativeSupplier } from "@/lib/data";
 
 export async function PUT(
@@ -7,12 +7,23 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; alternativeId: string }> }
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireUser({ redirectTo: null });
     const { alternativeId } = await params;
     const payload = await request.json();
-    const result = await updateAlternativeSupplier(alternativeId, payload, user.id);
+    const result = await updateAlternativeSupplier(
+      alternativeId,
+      payload,
+      user.id,
+      user.organizationId
+    );
     return NextResponse.json(result);
   } catch (error) {
+    const response = createAuthGuardErrorResponse(error);
+
+    if (response) {
+      return response;
+    }
+
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to update alternative supplier." }, { status: 400 });
   }
 }
@@ -22,10 +33,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; alternativeId: string }> }
 ) {
   try {
+    const user = await requireUser({ redirectTo: null });
     const { alternativeId } = await params;
-    await deleteAlternativeSupplier(alternativeId);
+    await deleteAlternativeSupplier(alternativeId, user.organizationId);
     return NextResponse.json({ success: true });
   } catch (error) {
+    const response = createAuthGuardErrorResponse(error);
+
+    if (response) {
+      return response;
+    }
+
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete alternative supplier." }, { status: 400 });
   }
 }

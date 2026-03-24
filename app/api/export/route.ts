@@ -16,8 +16,8 @@ export async function GET() {
 
   try {
     const [cards, workspaceReadiness] = await Promise.all([
-      getSavingCards(user.organizationId),
-      getWorkspaceReadiness(user.organizationId),
+      getSavingCards(user),
+      getWorkspaceReadiness(user),
     ]);
     const rows = mapSavingCardsForExport(cards);
     const generatedAt = new Date();

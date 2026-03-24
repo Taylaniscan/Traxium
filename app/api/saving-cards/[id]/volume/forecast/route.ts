@@ -53,13 +53,12 @@ export async function POST(
 
     const result = await upsertForecast({
       savingCardId: card.id,
-      materialId: card.materialId,
-      supplierId: card.supplierId,
       period,
       forecastQty: payload.forecastQty,
       unit: payload.unit,
       notes: payload.notes,
       createdById: user.id,
+      context: user.organizationId,
     });
 
     return Response.json(result, { status: 201 });
@@ -102,7 +101,7 @@ export async function DELETE(
     const payload = deleteBodySchema.parse(body.data);
     const period = parsePeriodInput(payload.period);
 
-    await deleteForecast(card.id, card.materialId, period);
+    await deleteForecast(card.id, period, user.organizationId);
 
     return Response.json({ success: true });
   } catch (error) {

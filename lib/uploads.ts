@@ -51,8 +51,86 @@ function buildTenantEvidencePrefix(organizationId: string, savingCardId: string)
   )}/evidence`;
 }
 
+function sanitizeObjectNameSegment(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function normalizeStoragePath(storagePath: string) {
-  return storagePath.trim().replace(/^\/+/, "");
+  return storagePath.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+function parseManagedEvidenceStoragePath(storagePath: string) {
+  const normalizedStoragePath = normalizeStoragePath(storagePath);
+
+  if (
+    !normalizedStoragePath ||
+    normalizedStoragePath.includes("\0") ||
+    normalizedStoragePath.includes("\\") ||
+    normalizedStoragePath.includes("//")
+  ) {
+    return null;
+  }
+
+  const segments = normalizedStoragePath.split("/");
+
+  if (
+    segments.length !== 6 ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+
+  const [
+    organizationsSegment,
+    organizationSegment,
+    savingCardsSegment,
+    savingCardSegment,
+    evidenceSegment,
+    objectName,
+  ] = segments;
+
+  if (
+    organizationsSegment !== "organizations" ||
+    savingCardsSegment !== "saving-cards" ||
+    evidenceSegment !== "evidence"
+  ) {
+    return null;
+  }
+
+  if (sanitizePathSegment(organizationSegment, "") !== organizationSegment) {
+    return null;
+  }
+
+  if (sanitizePathSegment(savingCardSegment, "") !== savingCardSegment) {
+    return null;
+  }
+
+  if (sanitizeObjectNameSegment(objectName) !== objectName) {
+    return null;
+  }
+
+  return {
+    normalizedStoragePath,
+    organizationSegment,
+    savingCardSegment,
+  };
+}
+
+function isOwnedManagedEvidenceStorageLocation(location: EvidenceStorageLocation) {
+  const parsedPath = parseManagedEvidenceStoragePath(location.storagePath);
+
+  if (!parsedPath) {
+    return false;
+  }
+
+  return (
+    parsedPath.organizationSegment === sanitizePathSegment(location.organizationId, "org") &&
+    parsedPath.savingCardSegment === sanitizePathSegment(location.savingCardId, "card")
+  );
 }
 
 export function isManagedEvidenceStorageLocation({
@@ -65,16 +143,12 @@ export function isManagedEvidenceStorageLocation({
     return false;
   }
 
-  const normalizedStoragePath = normalizeStoragePath(storagePath);
-  if (!normalizedStoragePath) {
-    return false;
-  }
-
-  if (normalizedStoragePath.startsWith(`${buildTenantEvidencePrefix(organizationId, savingCardId)}/`)) {
-    return true;
-  }
-
-  return false;
+  return isOwnedManagedEvidenceStorageLocation({
+    storageBucket,
+    storagePath,
+    organizationId,
+    savingCardId,
+  });
 }
 
 export async function storeEvidenceFile(
@@ -129,8 +203,8 @@ export async function createEvidenceSignedUrl(
     throw new EvidenceStorageNotFoundError("Evidence storage bucket mismatch.");
   }
 
-  const normalizedStoragePath = normalizeStoragePath(storagePath);
-  if (!normalizedStoragePath) {
+  const parsedPath = parseManagedEvidenceStoragePath(storagePath);
+  if (!parsedPath) {
     throw new EvidenceStorageNotFoundError("Evidence storage path is invalid.");
   }
 
@@ -138,7 +212,7 @@ export async function createEvidenceSignedUrl(
 
   const { data, error } = await supabase.storage
     .from(storageBucket)
-    .createSignedUrl(normalizedStoragePath, expiresInSeconds);
+    .createSignedUrl(parsedPath.normalizedStoragePath, expiresInSeconds);
 
   if (error || !data?.signedUrl) {
     const message = error?.message || "Unknown error";

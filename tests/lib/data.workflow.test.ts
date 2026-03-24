@@ -1,4 +1,4 @@
-import { ApprovalStatus, Phase, Role } from "@prisma/client";
+import { ApprovalStatus, MembershipStatus, Phase, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = vi.hoisted(() => ({
@@ -121,8 +121,13 @@ describe("lib/data workflow flows", () => {
 
     expect(tx.user.findMany).toHaveBeenCalledWith({
       where: {
-        organizationId: "org-1",
         role: { in: [Role.GLOBAL_CATEGORY_LEADER] },
+        memberships: {
+          some: {
+            organizationId: "org-1",
+            status: MembershipStatus.ACTIVE,
+          },
+        },
       },
       orderBy: { name: "asc" },
     });

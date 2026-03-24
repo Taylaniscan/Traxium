@@ -2,7 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const LOGIN_PATH = "/login";
-const AUTHENTICATED_HOME_PATH = "/dashboard";
 const PROTECTED_ROUTE_PREFIXES = [
   "/admin",
   "/command-center",
@@ -98,10 +97,6 @@ export async function middleware(request: NextRequest) {
       data: { user },
       error,
     } = await supabase.auth.getUser();
-
-    if (!error && user && request.nextUrl.pathname === LOGIN_PATH) {
-      return redirectWithCookies(request, response, AUTHENTICATED_HOME_PATH);
-    }
 
     if ((error || !user) && isProtectedRoute(request.nextUrl.pathname)) {
       return redirectWithCookies(request, response, LOGIN_PATH);

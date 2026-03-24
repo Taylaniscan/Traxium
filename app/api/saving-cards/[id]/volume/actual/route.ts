@@ -62,13 +62,12 @@ export async function POST(
 
     const result = await upsertActual({
       savingCardId: card.id,
-      materialId: card.materialId,
-      supplierId: card.supplierId,
       period,
       actualQty: payload.actualQty,
       unit: payload.unit,
       invoiceRef: payload.invoiceRef,
       confirmedById: user.id,
+      context: user.organizationId,
     });
 
     return Response.json(result, { status: 201 });
@@ -111,7 +110,7 @@ export async function DELETE(
     const payload = deleteBodySchema.parse(body.data);
     const period = parsePeriodInput(payload.period);
 
-    await deleteActual(card.id, card.materialId, period);
+    await deleteActual(card.id, period, user.organizationId);
 
     return Response.json({ success: true });
   } catch (error) {

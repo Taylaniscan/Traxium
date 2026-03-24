@@ -21,11 +21,7 @@ export async function GET(
       return jsonError("Saving card not found.", 404);
     }
 
-    const result = await getVolumeTimeline(
-      card.id,
-      card.baselinePrice,
-      card.newPrice
-    );
+    const result = await getVolumeTimeline(card.id, user.organizationId);
 
     return Response.json(result);
   } catch (error) {

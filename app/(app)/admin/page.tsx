@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { requireUser } from "@/lib/auth";
+import { isAuthGuardError, requirePermission } from "@/lib/auth";
 import { getWorkspaceReadiness } from "@/lib/data";
 import type { WorkspaceReadiness } from "@/lib/types";
 
@@ -111,7 +112,17 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
 };
 
 export default async function AdminPage() {
-  const user = await requireUser();
+  let user: Awaited<ReturnType<typeof requirePermission>>;
+
+  try {
+    user = await requirePermission("manageWorkspace");
+  } catch (error) {
+    if (isAuthGuardError(error) && error.code === "FORBIDDEN") {
+      redirect("/dashboard");
+    }
+
+    throw error;
+  }
 
   let readiness: WorkspaceReadiness = EMPTY_WORKSPACE_READINESS;
 

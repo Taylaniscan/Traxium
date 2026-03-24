@@ -167,7 +167,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!canLockFinance(user.role)) {
         return jsonError("Only finance can lock savings.", 403);
       }
-      const result = await setFinanceLock(card.id, user.id, payload.data.locked);
+      const result = await setFinanceLock(card.id, user.id, payload.data.locked, user.organizationId);
       return NextResponse.json(result);
     }
 

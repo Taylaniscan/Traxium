@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { buildTenantScopeWhere } from "@/lib/tenant-scope";
+import type { TenantContextSource } from "@/lib/types";
 
 export const volumeCardParamsSchema = z.object({
   id: z.string().trim().min(1, "Saving card id is required."),
@@ -25,12 +27,12 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function resolveVolumeCardContext(id: string, organizationId: string) {
+export async function resolveVolumeCardContext(
+  id: string,
+  context: TenantContextSource
+) {
   return prisma.savingCard.findFirst({
-    where: {
-      id,
-      organizationId,
-    },
+    where: buildTenantScopeWhere(context, { id }),
     select: {
       id: true,
       materialId: true,

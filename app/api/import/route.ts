@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requirePermission } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
 import { savingCardSchema } from "@/lib/validation";
 
@@ -42,10 +42,18 @@ function normalizeRow(
 }
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
+  let user: Awaited<ReturnType<typeof requirePermission>>;
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  try {
+    user = await requirePermission("manageWorkspace", { redirectTo: null });
+  } catch (error) {
+    const response = createAuthGuardErrorResponse(error);
+
+    if (response) {
+      return response;
+    }
+
+    throw error;
   }
 
   try {

@@ -2,6 +2,7 @@ import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requirePermissionMock = vi.hoisted(() => vi.fn());
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
@@ -33,6 +34,18 @@ const EvidenceStorageNotFoundErrorMock = vi.hoisted(
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: getCurrentUserMock,
+  requirePermission: requirePermissionMock,
+  createAuthGuardErrorResponse: (error: unknown) => {
+    if (error && typeof error === "object" && "status" in error && "code" in error) {
+      const authError = error as { status: number; code: string };
+      return Response.json(
+        { error: authError.code === "FORBIDDEN" ? "Forbidden." : "Unauthorized." },
+        { status: authError.status }
+      );
+    }
+
+    return null;
+  },
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -123,6 +136,13 @@ describe("import and evidence API routes", () => {
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    requirePermissionMock.mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+      email: "user@example.com",
+      role: Role.GLOBAL_CATEGORY_LEADER,
+      organizationId: "org-1",
+    });
     getReferenceDataMock.mockResolvedValue(buildReferenceData());
     importSavingCardsMock.mockResolvedValue(undefined);
     xlsxReadMock.mockReset();
@@ -138,7 +158,11 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/import/route.ts", () => {
     it("returns 401 JSON for unauthenticated import requests", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      requirePermissionMock.mockRejectedValueOnce({
+        name: "AuthGuardError",
+        status: 401,
+        code: "UNAUTHENTICATED",
+      });
 
       const response = await postImportRoute(createFormDataRequest(createImportForm(createWorkbookFile())));
 

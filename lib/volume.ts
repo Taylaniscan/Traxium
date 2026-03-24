@@ -1,6 +1,12 @@
 import { ForecastSource } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  buildTenantOwnedRelationWhere,
+  buildTenantScopeWhere,
+} from "@/lib/tenant-scope";
 import type {
+  TenantContextSource,
   VolumeImportResult,
   VolumeTimelineResult,
   VolumeTimelineRow,
@@ -46,26 +52,24 @@ export function parsePeriodInput(value: string): Date {
 
 export type ForecastUpsertInput = {
   savingCardId: string;
-  materialId: string;
-  supplierId?: string | null;
   period: Date;
   forecastQty: number;
   unit: string;
   source?: ForecastSource;
   notes?: string | null;
   createdById: string;
+  context: TenantContextSource;
 };
 
 export type ActualUpsertInput = {
   savingCardId: string;
-  materialId: string;
-  supplierId?: string | null;
   period: Date;
   actualQty: number;
   unit: string;
   source?: ForecastSource;
   invoiceRef?: string | null;
   confirmedById: string;
+  context: TenantContextSource;
 };
 
 type CsvHeaderMap = {
@@ -89,19 +93,121 @@ const FORECAST_ALIASES = new Set(["forecast", "forecast_qty", "tahmin"]);
 const ACTUAL_ALIASES = new Set(["actual", "actual_qty", "gerceklesen"]);
 const UNIT_ALIASES = new Set(["unit", "uom", "birim"]);
 
+const scopedVolumeCardSelect = {
+  id: true,
+  organizationId: true,
+  materialId: true,
+  supplierId: true,
+  volumeUnit: true,
+  baselinePrice: true,
+  newPrice: true,
+} satisfies Prisma.SavingCardSelect;
+
+type ScopedVolumeCard = Prisma.SavingCardGetPayload<{
+  select: typeof scopedVolumeCardSelect;
+}>;
+
+async function getScopedVolumeCard(
+  savingCardId: string,
+  context: TenantContextSource
+): Promise<ScopedVolumeCard> {
+  const card = await prisma.savingCard.findFirst({
+    where: buildTenantScopeWhere(context, { id: savingCardId }),
+    select: scopedVolumeCardSelect,
+  });
+
+  if (!card) {
+    throw new Error("Saving card not found.");
+  }
+
+  return card;
+}
+
+async function upsertForecastForCard(
+  card: ScopedVolumeCard,
+  input: Omit<ForecastUpsertInput, "context">
+) {
+  const period = normalizePeriod(input.period);
+
+  return prisma.materialConsumptionForecast.upsert({
+    where: {
+      savingCardId_materialId_period: {
+        savingCardId: card.id,
+        materialId: card.materialId,
+        period,
+      },
+    },
+    update: {
+      supplierId: card.supplierId ?? null,
+      forecastQty: input.forecastQty,
+      unit: input.unit,
+      source: input.source ?? ForecastSource.MANUAL_ENTRY,
+      notes: normalizeNullableText(input.notes),
+      createdById: input.createdById,
+    },
+    create: {
+      savingCardId: card.id,
+      materialId: card.materialId,
+      supplierId: card.supplierId ?? null,
+      period,
+      forecastQty: input.forecastQty,
+      unit: input.unit,
+      source: input.source ?? ForecastSource.MANUAL_ENTRY,
+      notes: normalizeNullableText(input.notes),
+      createdById: input.createdById,
+    },
+  });
+}
+
+async function upsertActualForCard(
+  card: ScopedVolumeCard,
+  input: Omit<ActualUpsertInput, "context">
+) {
+  const period = normalizePeriod(input.period);
+
+  if (period.getTime() >= getCurrentMonthStartUtc().getTime()) {
+    throw new Error("Actuals can only be entered for past months.");
+  }
+
+  return prisma.materialConsumptionActual.upsert({
+    where: {
+      savingCardId_materialId_period: {
+        savingCardId: card.id,
+        materialId: card.materialId,
+        period,
+      },
+    },
+    update: {
+      supplierId: card.supplierId ?? null,
+      actualQty: input.actualQty,
+      unit: input.unit,
+      source: input.source ?? ForecastSource.MANUAL_ENTRY,
+      invoiceRef: normalizeNullableText(input.invoiceRef),
+      confirmedById: input.confirmedById,
+    },
+    create: {
+      savingCardId: card.id,
+      materialId: card.materialId,
+      supplierId: card.supplierId ?? null,
+      period,
+      actualQty: input.actualQty,
+      unit: input.unit,
+      source: input.source ?? ForecastSource.MANUAL_ENTRY,
+      invoiceRef: normalizeNullableText(input.invoiceRef),
+      confirmedById: input.confirmedById,
+    },
+  });
+}
+
 export async function getVolumeTimeline(
   savingCardId: string,
-  baselinePrice: number,
-  newPrice: number
+  context: TenantContextSource
 ): Promise<VolumeTimelineResult> {
-  const priceDelta = baselinePrice - newPrice;
-  const [card, forecasts, actuals] = await Promise.all([
-    prisma.savingCard.findUnique({
-      where: { id: savingCardId },
-      select: { volumeUnit: true },
-    }),
+  const card = await getScopedVolumeCard(savingCardId, context);
+  const priceDelta = card.baselinePrice - card.newPrice;
+  const [forecasts, actuals] = await Promise.all([
     prisma.materialConsumptionForecast.findMany({
-      where: { savingCardId },
+      where: buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
       orderBy: { period: "asc" },
       select: {
         period: true,
@@ -111,7 +217,7 @@ export async function getVolumeTimeline(
       },
     }),
     prisma.materialConsumptionActual.findMany({
-      where: { savingCardId },
+      where: buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
       orderBy: { period: "asc" },
       select: {
         period: true,
@@ -228,99 +334,61 @@ export async function getVolumeTimeline(
 }
 
 export async function upsertForecast(input: ForecastUpsertInput) {
-  const period = normalizePeriod(input.period);
+  const card = await getScopedVolumeCard(input.savingCardId, input.context);
 
-  return prisma.materialConsumptionForecast.upsert({
-    where: {
-      savingCardId_materialId_period: {
-        savingCardId: input.savingCardId,
-        materialId: input.materialId,
-        period,
-      },
-    },
-    update: {
-      supplierId: input.supplierId ?? null,
-      forecastQty: input.forecastQty,
-      unit: input.unit,
-      source: input.source ?? ForecastSource.MANUAL_ENTRY,
-      notes: normalizeNullableText(input.notes),
-      createdById: input.createdById,
-    },
-    create: {
-      savingCardId: input.savingCardId,
-      materialId: input.materialId,
-      supplierId: input.supplierId ?? null,
-      period,
-      forecastQty: input.forecastQty,
-      unit: input.unit,
-      source: input.source ?? ForecastSource.MANUAL_ENTRY,
-      notes: normalizeNullableText(input.notes),
-      createdById: input.createdById,
-    },
+  return upsertForecastForCard(card, {
+    savingCardId: input.savingCardId,
+    period: input.period,
+    forecastQty: input.forecastQty,
+    unit: input.unit,
+    source: input.source,
+    notes: input.notes,
+    createdById: input.createdById,
   });
 }
 
 export async function upsertActual(input: ActualUpsertInput) {
-  const period = normalizePeriod(input.period);
+  const card = await getScopedVolumeCard(input.savingCardId, input.context);
 
-  if (period.getTime() >= getCurrentMonthStartUtc().getTime()) {
-    throw new Error("Actuals can only be entered for past months.");
-  }
-
-  return prisma.materialConsumptionActual.upsert({
-    where: {
-      savingCardId_materialId_period: {
-        savingCardId: input.savingCardId,
-        materialId: input.materialId,
-        period,
-      },
-    },
-    update: {
-      supplierId: input.supplierId ?? null,
-      actualQty: input.actualQty,
-      unit: input.unit,
-      source: input.source ?? ForecastSource.MANUAL_ENTRY,
-      invoiceRef: normalizeNullableText(input.invoiceRef),
-      confirmedById: input.confirmedById,
-    },
-    create: {
-      savingCardId: input.savingCardId,
-      materialId: input.materialId,
-      supplierId: input.supplierId ?? null,
-      period,
-      actualQty: input.actualQty,
-      unit: input.unit,
-      source: input.source ?? ForecastSource.MANUAL_ENTRY,
-      invoiceRef: normalizeNullableText(input.invoiceRef),
-      confirmedById: input.confirmedById,
-    },
+  return upsertActualForCard(card, {
+    savingCardId: input.savingCardId,
+    period: input.period,
+    actualQty: input.actualQty,
+    unit: input.unit,
+    source: input.source,
+    invoiceRef: input.invoiceRef,
+    confirmedById: input.confirmedById,
   });
 }
 
 export async function deleteForecast(
   savingCardId: string,
-  materialId: string,
-  period: Date
+  period: Date,
+  context: TenantContextSource
 ) {
+  const card = await getScopedVolumeCard(savingCardId, context);
+
   return prisma.materialConsumptionForecast.deleteMany({
     where: {
-      savingCardId,
-      materialId,
+      materialId: card.materialId,
       period: normalizePeriod(period),
+      ...buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
     },
   });
 }
 
 export async function deleteActual(
   savingCardId: string,
-  materialId: string,
-  period: Date
+  period: Date,
+  context: TenantContextSource
 ) {
+  const card = await getScopedVolumeCard(savingCardId, context);
+
   return prisma.materialConsumptionActual.deleteMany({
     where: {
-      savingCardId,
-      materialId,
+      materialId: card.materialId,
       period: normalizePeriod(period),
+      ...buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
     },
   });
 }
@@ -328,21 +396,10 @@ export async function deleteActual(
 export async function importFromCsv(
   savingCardId: string,
   csvContent: string,
-  userId: string
+  userId: string,
+  context: TenantContextSource
 ): Promise<VolumeImportResult> {
-  const card = await prisma.savingCard.findUnique({
-    where: { id: savingCardId },
-    select: {
-      id: true,
-      materialId: true,
-      supplierId: true,
-      volumeUnit: true,
-    },
-  });
-
-  if (!card) {
-    throw new Error("Saving card not found.");
-  }
+  const card = await getScopedVolumeCard(savingCardId, context);
 
   const lines = csvContent
     .replace(/^\uFEFF/, "")
@@ -392,10 +449,8 @@ export async function importFromCsv(
       let wroteRow = false;
 
       if (forecastValue.trim()) {
-        await upsertForecast({
+        await upsertForecastForCard(card, {
           savingCardId: card.id,
-          materialId: card.materialId,
-          supplierId: card.supplierId,
           period,
           forecastQty: parseQuantity(forecastValue, "forecast quantity"),
           unit,
@@ -406,10 +461,8 @@ export async function importFromCsv(
       }
 
       if (actualValue.trim() && normalizePeriod(period).getTime() < getCurrentMonthStartUtc().getTime()) {
-        await upsertActual({
+        await upsertActualForCard(card, {
           savingCardId: card.id,
-          materialId: card.materialId,
-          supplierId: card.supplierId,
           period,
           actualQty: parseQuantity(actualValue, "actual quantity"),
           unit,

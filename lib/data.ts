@@ -1,8 +1,15 @@
 import { ApprovalStatus, Currency, Phase, Prisma, Role } from "@prisma/client";
 import { calculateSavings, getForecastMultiplier } from "@/lib/calculations";
 import { phaseLabels } from "@/lib/constants";
+import { buildOrganizationUserWhere } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { requiredRolesForPhase } from "@/lib/permissions";
+import {
+  buildTenantOwnedRelationWhere,
+  buildTenantScopeWhere,
+  hasTenantOwnership,
+  resolveTenantScope,
+} from "@/lib/tenant-scope";
 import {
   dashboardCardSelect,
   savingCardPortfolioSelect,
@@ -11,6 +18,7 @@ import {
   type CommandCenterFilters,
   type DashboardData,
   type SavingCardPortfolio,
+  type TenantContextSource,
   type WorkspaceReadiness,
 } from "@/lib/types";
 import { alternativeMaterialSchema, alternativeSupplierSchema, savingCardSchema } from "@/lib/validation";
@@ -151,34 +159,35 @@ function buildSavingCardPayload(input: Prisma.JsonObject | Record<string, unknow
   };
 }
 
-export async function getReferenceData(organizationId: string) {
+export async function getReferenceData(context: TenantContextSource) {
+  const scope = resolveTenantScope(context);
   const [users, buyers, suppliers, materials, categories, plants, businessUnits, fxRates] = await Promise.all([
     prisma.user.findMany({
-      where: { organizationId },
+      where: buildOrganizationUserWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.buyer.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.supplier.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.material.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.category.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.plant.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.businessUnit.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       orderBy: { name: "asc" },
     }),
     prisma.fxRate.findMany({
@@ -198,7 +207,11 @@ export async function getReferenceData(organizationId: string) {
   };
 }
 
-export async function getWorkspaceReadiness(organizationId: string): Promise<WorkspaceReadiness> {
+export async function getWorkspaceReadiness(
+  context: TenantContextSource
+): Promise<WorkspaceReadiness> {
+  const scope = resolveTenantScope(context);
+  const { organizationId } = scope;
   const [
     organization,
     userCount,
@@ -225,39 +238,36 @@ export async function getWorkspaceReadiness(organizationId: string): Promise<Wor
         updatedAt: true,
       },
     }),
-    prisma.user.count({ where: { organizationId } }),
-    prisma.buyer.count({ where: { organizationId } }),
-    prisma.supplier.count({ where: { organizationId } }),
-    prisma.material.count({ where: { organizationId } }),
-    prisma.category.count({ where: { organizationId } }),
-    prisma.plant.count({ where: { organizationId } }),
-    prisma.businessUnit.count({ where: { organizationId } }),
-    prisma.savingCard.count({ where: { organizationId } }),
+    prisma.user.count({ where: buildOrganizationUserWhere(scope) }),
+    prisma.buyer.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.supplier.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.material.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.category.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.plant.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.businessUnit.count({ where: buildTenantScopeWhere(scope) }),
+    prisma.savingCard.count({ where: buildTenantScopeWhere(scope) }),
     prisma.user.count({
-      where: {
-        organizationId,
+      where: buildOrganizationUserWhere(scope, {
         role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
-      },
+      }),
     }),
     prisma.user.count({
-      where: {
-        organizationId,
+      where: buildOrganizationUserWhere(scope, {
         role: Role.GLOBAL_CATEGORY_LEADER,
-      },
+      }),
     }),
     prisma.user.count({
-      where: {
-        organizationId,
+      where: buildOrganizationUserWhere(scope, {
         role: Role.FINANCIAL_CONTROLLER,
-      },
+      }),
     }),
     prisma.savingCard.findFirst({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       select: { createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.savingCard.findFirst({
-      where: { organizationId },
+      where: buildTenantScopeWhere(scope),
       select: { updatedAt: true },
       orderBy: { updatedAt: "desc" },
     }),
@@ -376,7 +386,7 @@ export async function getWorkspaceReadiness(organizationId: string): Promise<Wor
 }
 
 export async function getSavingCards(
-  organizationId: string,
+  context: TenantContextSource,
   filters?: {
     categoryId?: string;
     businessUnitId?: string;
@@ -386,25 +396,23 @@ export async function getSavingCards(
   }
 ): Promise<SavingCardPortfolio[]> {
   return prisma.savingCard.findMany({
-    where: {
-      organizationId,
+    where: buildTenantScopeWhere(context, {
       ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
       ...(filters?.businessUnitId ? { businessUnitId: filters.businessUnitId } : {}),
       ...(filters?.buyerId ? { buyerId: filters.buyerId } : {}),
       ...(filters?.plantId ? { plantId: filters.plantId } : {}),
       ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
-    },
+    }),
     select: savingCardPortfolioSelect,
     orderBy: { updatedAt: "desc" },
   });
 }
 
-export async function getSavingCard(id: string, organizationId: string) {
+export async function getSavingCard(id: string, context: TenantContextSource) {
   return prisma.savingCard.findFirst({
-    where: {
+    where: buildTenantScopeWhere(context, {
       id,
-      organizationId,
-    },
+    }),
     include: savingCardDetailInclude,
   });
 }
@@ -667,8 +675,9 @@ async function resolveMasterData(
 export async function createSavingCard(
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  organizationId: string
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = buildSavingCardPayload(input);
 
   return prisma.$transaction(async (tx) => {
@@ -744,8 +753,9 @@ export async function updateSavingCard(
   id: string,
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  organizationId: string
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = buildSavingCardPayload(input);
 
   return prisma.$transaction(async (tx) => {
@@ -840,31 +850,73 @@ export async function updateSavingCard(
   });
 }
 
-async function getOrganizationIdForSavingCard(
+async function getScopedSavingCard(
   tx: Prisma.TransactionClient,
-  savingCardId: string
+  savingCardId: string,
+  organizationId: string
 ) {
-  const card = await tx.savingCard.findUnique({
-    where: { id: savingCardId },
-    select: { organizationId: true },
+  const card = await tx.savingCard.findFirst({
+    where: buildTenantScopeWhere(organizationId, {
+      id: savingCardId,
+    }),
   });
 
   if (!card) {
     throw new Error("Saving card not found.");
   }
 
-  return card.organizationId;
+  return card;
+}
+
+async function getScopedAlternativeSupplier(
+  tx: Prisma.TransactionClient,
+  alternativeId: string,
+  organizationId: string
+) {
+  const alternative = await tx.savingCardAlternativeSupplier.findFirst({
+    where: {
+      id: alternativeId,
+      ...buildTenantOwnedRelationWhere("savingCard", organizationId),
+    },
+  });
+
+  if (!alternative) {
+    throw new Error("Alternative supplier not found.");
+  }
+
+  return alternative;
+}
+
+async function getScopedAlternativeMaterial(
+  tx: Prisma.TransactionClient,
+  alternativeId: string,
+  organizationId: string
+) {
+  const alternative = await tx.savingCardAlternativeMaterial.findFirst({
+    where: {
+      id: alternativeId,
+      ...buildTenantOwnedRelationWhere("savingCard", organizationId),
+    },
+  });
+
+  if (!alternative) {
+    throw new Error("Alternative material not found.");
+  }
+
+  return alternative;
 }
 
 export async function createAlternativeSupplier(
   savingCardId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = alternativeSupplierSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const organizationId = await getOrganizationIdForSavingCard(tx, savingCardId);
+    await getScopedSavingCard(tx, savingCardId, organizationId);
 
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
@@ -897,7 +949,13 @@ export async function createAlternativeSupplier(
     });
 
     if (payload.isSelected) {
-      await applySelectedAlternativeSupplier(tx, savingCardId, alternative.id, actorId);
+      await applySelectedAlternativeSupplier(
+        tx,
+        savingCardId,
+        alternative.id,
+        actorId,
+        organizationId
+      );
     }
 
     return alternative;
@@ -907,20 +965,14 @@ export async function createAlternativeSupplier(
 export async function updateAlternativeSupplier(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = alternativeSupplierSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.savingCardAlternativeSupplier.findUnique({
-      where: { id: alternativeId },
-    });
-
-    if (!existing) {
-      throw new Error("Alternative supplier not found.");
-    }
-
-    const organizationId = await getOrganizationIdForSavingCard(tx, existing.savingCardId);
+    const existing = await getScopedAlternativeSupplier(tx, alternativeId, organizationId);
 
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
@@ -953,28 +1005,45 @@ export async function updateAlternativeSupplier(
     });
 
     if (payload.isSelected) {
-      await applySelectedAlternativeSupplier(tx, existing.savingCardId, alternative.id, actorId);
+      await applySelectedAlternativeSupplier(
+        tx,
+        existing.savingCardId,
+        alternative.id,
+        actorId,
+        organizationId
+      );
     }
 
     return alternative;
   });
 }
 
-export async function deleteAlternativeSupplier(alternativeId: string) {
-  return prisma.savingCardAlternativeSupplier.delete({
-    where: { id: alternativeId },
+export async function deleteAlternativeSupplier(
+  alternativeId: string,
+  context: TenantContextSource
+) {
+  const { organizationId } = resolveTenantScope(context);
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await getScopedAlternativeSupplier(tx, alternativeId, organizationId);
+
+    return tx.savingCardAlternativeSupplier.delete({
+      where: { id: existing.id },
+    });
   });
 }
 
 export async function createAlternativeMaterial(
   savingCardId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = alternativeMaterialSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const organizationId = await getOrganizationIdForSavingCard(tx, savingCardId);
+    await getScopedSavingCard(tx, savingCardId, organizationId);
 
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
@@ -1011,7 +1080,13 @@ export async function createAlternativeMaterial(
     });
 
     if (payload.isSelected) {
-      await applySelectedAlternativeMaterial(tx, savingCardId, alternative.id, actorId);
+      await applySelectedAlternativeMaterial(
+        tx,
+        savingCardId,
+        alternative.id,
+        actorId,
+        organizationId
+      );
     }
 
     return alternative;
@@ -1021,20 +1096,14 @@ export async function createAlternativeMaterial(
 export async function updateAlternativeMaterial(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
-  actorId: string
+  actorId: string,
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const payload = alternativeMaterialSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.savingCardAlternativeMaterial.findUnique({
-      where: { id: alternativeId },
-    });
-
-    if (!existing) {
-      throw new Error("Alternative material not found.");
-    }
-
-    const organizationId = await getOrganizationIdForSavingCard(tx, existing.savingCardId);
+    const existing = await getScopedAlternativeMaterial(tx, alternativeId, organizationId);
 
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
@@ -1071,16 +1140,31 @@ export async function updateAlternativeMaterial(
     });
 
     if (payload.isSelected) {
-      await applySelectedAlternativeMaterial(tx, existing.savingCardId, alternative.id, actorId);
+      await applySelectedAlternativeMaterial(
+        tx,
+        existing.savingCardId,
+        alternative.id,
+        actorId,
+        organizationId
+      );
     }
 
     return alternative;
   });
 }
 
-export async function deleteAlternativeMaterial(alternativeId: string) {
-  return prisma.savingCardAlternativeMaterial.delete({
-    where: { id: alternativeId },
+export async function deleteAlternativeMaterial(
+  alternativeId: string,
+  context: TenantContextSource
+) {
+  const { organizationId } = resolveTenantScope(context);
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await getScopedAlternativeMaterial(tx, alternativeId, organizationId);
+
+    return tx.savingCardAlternativeMaterial.delete({
+      where: { id: existing.id },
+    });
   });
 }
 
@@ -1088,11 +1172,19 @@ async function applySelectedAlternativeSupplier(
   tx: Prisma.TransactionClient,
   savingCardId: string,
   alternativeId: string,
-  actorId: string
+  actorId: string,
+  organizationId: string
 ) {
   const [card, alternative] = await Promise.all([
-    tx.savingCard.findUnique({ where: { id: savingCardId } }),
-    tx.savingCardAlternativeSupplier.findUnique({ where: { id: alternativeId } }),
+    getScopedSavingCard(tx, savingCardId, organizationId),
+    tx.savingCardAlternativeSupplier.findFirst({
+      where: {
+        id: alternativeId,
+        ...buildTenantOwnedRelationWhere("savingCard", organizationId, {
+          id: savingCardId,
+        }),
+      },
+    }),
   ]);
 
   if (!card || !alternative) {
@@ -1136,11 +1228,19 @@ async function applySelectedAlternativeMaterial(
   tx: Prisma.TransactionClient,
   savingCardId: string,
   alternativeId: string,
-  actorId: string
+  actorId: string,
+  organizationId: string
 ) {
   const [card, alternative] = await Promise.all([
-    tx.savingCard.findUnique({ where: { id: savingCardId } }),
-    tx.savingCardAlternativeMaterial.findUnique({ where: { id: alternativeId } }),
+    getScopedSavingCard(tx, savingCardId, organizationId),
+    tx.savingCardAlternativeMaterial.findFirst({
+      where: {
+        id: alternativeId,
+        ...buildTenantOwnedRelationWhere("savingCard", organizationId, {
+          id: savingCardId,
+        }),
+      },
+    }),
   ]);
 
   if (!card || !alternative) {
@@ -1263,18 +1363,19 @@ export async function createPhaseChangeRequest(
   savingCardId: string,
   requestedPhase: Phase,
   requestedById: string,
-  organizationId: string,
+  context: TenantContextSource,
   comment?: string,
   cancellationReason?: string
 ) {
+  const { organizationId } = resolveTenantScope(context);
+
   return prisma.$transaction(async (tx) => {
     await lockSavingCardForWorkflow(tx, savingCardId, organizationId);
 
     const card = await tx.savingCard.findFirst({
-      where: {
+      where: buildTenantScopeWhere(organizationId, {
         id: savingCardId,
-        organizationId,
-      },
+      }),
       include: {
         phaseChangeRequests: {
           where: { approvalStatus: ApprovalStatus.PENDING },
@@ -1296,10 +1397,9 @@ export async function createPhaseChangeRequest(
 
     const approvers = requiredRoles.length
       ? await tx.user.findMany({
-          where: {
-            organizationId,
+          where: buildOrganizationUserWhere(organizationId, {
             role: { in: requiredRoles },
-          },
+          }),
           orderBy: { name: "asc" },
         })
       : [];
@@ -1382,17 +1482,21 @@ export async function createPhaseChangeRequest(
 export async function approvePhaseChangeRequest(
   requestId: string,
   approverId: string,
-  organizationId: string,
+  context: TenantContextSource,
   approved: boolean,
   comment?: string
 ) {
+  const { organizationId } = resolveTenantScope(context);
+
   return prisma.$transaction(async (tx) => {
     await lockPhaseChangeRequestForWorkflow(tx, requestId);
 
     const request = await getPhaseChangeRequestWithRelations(tx, requestId);
 
     if (!request) throw new WorkflowError("Phase change request not found.", 404);
-    if (request.savingCard.organizationId !== organizationId) throw new WorkflowError("Phase change request not found.", 404);
+    if (!hasTenantOwnership(request.savingCard, organizationId)) {
+      throw new WorkflowError("Phase change request not found.", 404);
+    }
     if (request.approvalStatus !== ApprovalStatus.PENDING) {
       throw new WorkflowError("This phase change request is already closed.", 409);
     }
@@ -1536,7 +1640,12 @@ async function finalizePhaseChangeRequest(
   });
 }
 
-export async function getPendingApprovals(userId: string, organizationId?: string) {
+export async function getPendingApprovals(
+  userId: string,
+  context?: TenantContextSource
+) {
+  const organizationId = context ? resolveTenantScope(context).organizationId : null;
+
   return prisma.phaseChangeRequestApproval.findMany({
     where: {
       approverId: userId,
@@ -1544,9 +1653,7 @@ export async function getPendingApprovals(userId: string, organizationId?: strin
       phaseChangeRequest: {
         approvalStatus: ApprovalStatus.PENDING,
         savingCard: organizationId
-          ? {
-              organizationId,
-            }
+          ? buildTenantScopeWhere(organizationId)
           : undefined,
       },
     },
@@ -1564,8 +1671,17 @@ export async function getPendingApprovals(userId: string, organizationId?: strin
   });
 }
 
-export async function setFinanceLock(savingCardId: string, actorId: string, locked: boolean) {
+export async function setFinanceLock(
+  savingCardId: string,
+  actorId: string,
+  locked: boolean,
+  context: TenantContextSource
+) {
+  const { organizationId } = resolveTenantScope(context);
+
   return prisma.$transaction(async (tx) => {
+    await getScopedSavingCard(tx, savingCardId, organizationId);
+
     const card = await tx.savingCard.update({
       where: { id: savingCardId },
       data: { financeLocked: locked },
@@ -1588,16 +1704,16 @@ async function createWorkflowNotifications(
   tx: Prisma.TransactionClient,
   savingCardId: string,
   phase: Phase,
-  organizationId: string
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
   const roles = requiredRolesForPhase(phase);
   if (!roles.length) return;
 
   const users = await tx.user.findMany({
-    where: {
-      organizationId,
+    where: buildOrganizationUserWhere(organizationId, {
       role: { in: roles },
-    },
+    }),
   });
 
   if (!users.length) return;
@@ -1611,9 +1727,11 @@ async function createWorkflowNotifications(
   });
 }
 
-export async function getDashboardData(organizationId: string): Promise<DashboardData> {
+export async function getDashboardData(
+  context: TenantContextSource
+): Promise<DashboardData> {
   const cards = await prisma.savingCard.findMany({
-    where: { organizationId },
+    where: buildTenantScopeWhere(context),
     select: dashboardCardSelect,
   });
 
@@ -1621,45 +1739,44 @@ export async function getDashboardData(organizationId: string): Promise<Dashboar
 }
 
 function buildCommandCenterWhere(
-  organizationId: string,
+  context: TenantContextSource,
   filters?: CommandCenterFilters
 ): Prisma.SavingCardWhereInput {
-  return {
-    organizationId,
+  return buildTenantScopeWhere(context, {
     categoryId: filters?.categoryId || undefined,
     businessUnitId: filters?.businessUnitId || undefined,
     buyerId: filters?.buyerId || undefined,
     plantId: filters?.plantId || undefined,
     supplierId: filters?.supplierId || undefined,
-  };
+  });
 }
 
 export async function getCommandCenterFilterOptions(
-  organizationId: string
+  context: TenantContextSource
 ): Promise<CommandCenterFilterOptions> {
   const [categories, businessUnits, buyers, plants, suppliers] = await Promise.all([
     prisma.category.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(context),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.businessUnit.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(context),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.buyer.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(context),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.plant.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(context),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.supplier.findMany({
-      where: { organizationId },
+      where: buildTenantScopeWhere(context),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -1669,10 +1786,10 @@ export async function getCommandCenterFilterOptions(
 }
 
 export async function getCommandCenterData(
-  organizationId: string,
+  context: TenantContextSource,
   filters?: CommandCenterFilters
 ): Promise<CommandCenterData> {
-  const where = buildCommandCenterWhere(organizationId, filters);
+  const where = buildCommandCenterWhere(context, filters);
 
   const [
     phaseSavings,
@@ -1779,10 +1896,9 @@ export async function getCommandCenterData(
   const supplierIds = supplierSavings.map((item) => item.supplierId);
   const suppliers = supplierIds.length
     ? await prisma.supplier.findMany({
-        where: {
-          organizationId,
+        where: buildTenantScopeWhere(context, {
           id: { in: supplierIds },
-        },
+        }),
         select: { id: true, name: true },
       })
     : [];
@@ -1883,8 +1999,10 @@ export async function getNotificationsForUser(userId: string) {
 export async function importSavingCards(
   rows: Record<string, unknown>[],
   actorId: string,
-  organizationId: string
+  context: TenantContextSource
 ) {
+  const { organizationId } = resolveTenantScope(context);
+
   for (const row of rows) {
     await createSavingCard(row, actorId, organizationId);
   }

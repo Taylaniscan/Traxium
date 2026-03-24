@@ -1,4 +1,101 @@
-import type { ForecastSource, Prisma } from "@prisma/client";
+import type {
+  ForecastSource,
+  MembershipStatus,
+  OrganizationRole,
+  Prisma,
+  Role,
+} from "@prisma/client";
+
+export const appPermissions = [
+  "viewWorkspace",
+  "manageWorkspace",
+  "viewReports",
+  "exportWorkbook",
+  "manageSavingCards",
+  "approvePhaseChanges",
+  "lockFinance",
+] as const;
+
+export type AppPermission = (typeof appPermissions)[number];
+
+export type AuthFailureCode = "UNAUTHENTICATED" | "ORGANIZATION_REQUIRED" | "FORBIDDEN";
+
+export type ActiveOrganizationContext = {
+  membershipId: string;
+  organizationId: string;
+  membershipRole: OrganizationRole;
+  membershipStatus: MembershipStatus;
+};
+
+export type TenantScope = {
+  organizationId: string;
+};
+
+export type TenantContext = TenantScope;
+
+export type ActiveTenantContext = TenantScope & {
+  activeOrganizationId: string;
+  activeOrganization: ActiveOrganizationContext;
+};
+
+export type AuthenticatedUser = ActiveTenantContext & {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+};
+
+export type TenantContextSource = string | TenantContext | ActiveTenantContext;
+
+export type TenantScopedWhereInput<
+  TWhere extends Record<string, unknown> = Record<string, never>,
+> = TWhere & TenantScope;
+
+export type TenantOwnershipRecord = {
+  organizationId: string | null | undefined;
+};
+
+export type TenantOwnedRelationWhere<
+  TRelationName extends string = string,
+  TWhere extends Record<string, unknown> = Record<string, never>,
+> = Record<TRelationName, { is: TenantScopedWhereInput<TWhere> }>;
+
+export type OrganizationMembershipSummary = {
+  id: string;
+  userId: string;
+  organizationId: string;
+  role: OrganizationRole;
+  status: MembershipStatus;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const organizationMembershipSelect = {
+  id: true,
+  userId: true,
+  organizationId: true,
+  role: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  organization: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+} satisfies Prisma.OrganizationMembershipSelect;
+
+export type OrganizationMembershipRecord = Prisma.OrganizationMembershipGetPayload<{
+  select: typeof organizationMembershipSelect;
+}>;
+
+export type AuthGuardOptions = {
+  redirectTo?: string | null;
+};
 
 export const savingCardPortfolioSelect = {
   id: true,

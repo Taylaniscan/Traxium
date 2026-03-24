@@ -75,7 +75,12 @@ export async function POST(
       csvContent = XLSX.utils.sheet_to_csv(worksheet);
     }
 
-    const result = await importFromCsv(card.id, csvContent, user.id);
+    const result = await importFromCsv(
+      card.id,
+      csvContent,
+      user.id,
+      user.organizationId
+    );
     return Response.json(result);
   } catch (error) {
     if (error instanceof ZodError) {
