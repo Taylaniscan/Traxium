@@ -18,6 +18,7 @@ const redirectMock = vi.hoisted(() =>
 const bootstrapCurrentUserMock = vi.hoisted(() => vi.fn());
 const getCurrentUserMock = vi.hoisted(() => vi.fn());
 const loadFirstValueSampleDataMock = vi.hoisted(() => vi.fn());
+const trackEventMock = vi.hoisted(() => vi.fn());
 const appShellMock = vi.hoisted(() =>
   vi.fn(({ children }: { children: React.ReactNode }) =>
     React.createElement("div", { "data-shell": "app" }, children)
@@ -52,6 +53,13 @@ vi.mock("@/components/layout/app-shell", () => ({
 vi.mock("@/lib/first-value", () => ({
   FirstValueError: mockFirstValueError,
   loadFirstValueSampleData: loadFirstValueSampleDataMock,
+}));
+
+vi.mock("@/lib/analytics", () => ({
+  analyticsEventNames: {
+    WORKSPACE_SAMPLE_DATA_LOADED: "workspace.sample_data_loaded",
+  },
+  trackEvent: trackEventMock,
 }));
 
 import AppLayout from "@/app/(app)/layout";
@@ -278,6 +286,14 @@ describe("first-value onboarding", () => {
       DEFAULT_USER_ID,
       DEFAULT_ORGANIZATION_ID
     );
+    expect(trackEventMock).toHaveBeenCalledWith({
+      event: "workspace.sample_data_loaded",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      userId: DEFAULT_USER_ID,
+      properties: {
+        createdCardsCount: 2,
+      },
+    });
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
       success: true,

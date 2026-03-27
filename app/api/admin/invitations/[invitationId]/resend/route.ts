@@ -23,6 +23,14 @@ function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
 }
 
+function buildResendSuccessMessage(transport: string) {
+  if (transport === "queue-unavailable") {
+    return "Invitation updated, but background email delivery is temporarily unavailable. Try resending again shortly.";
+  }
+
+  return "Invitation delivery queued. The teammate will receive a fresh email shortly.";
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ invitationId: string }> }
@@ -45,6 +53,8 @@ export async function POST(
     const result = await resendOrganizationInvitation({
       actor: user,
       invitationId,
+    }, {
+      deliveryMode: "async",
     });
 
     trackServerEvent({
@@ -55,17 +65,17 @@ export async function POST(
       payload: {
         invitationId,
         transport: result.delivery.transport,
-        channel: result.delivery.channel,
-        requiresManualDelivery: result.delivery.requiresManualDelivery ?? false,
+        channel: "channel" in result.delivery ? result.delivery.channel : null,
+        requiresManualDelivery:
+          "requiresManualDelivery" in result.delivery
+            ? result.delivery.requiresManualDelivery ?? false
+            : false,
       },
     });
 
     return NextResponse.json({
       success: true,
-      message:
-        result.delivery.transport === "generated-link"
-          ? "Invitation link regenerated. Deliver the secure link manually."
-          : "Invitation email sent again.",
+      message: buildResendSuccessMessage(result.delivery.transport),
       invitation: {
         id: result.invitation.id,
         organizationId: result.invitation.organizationId,

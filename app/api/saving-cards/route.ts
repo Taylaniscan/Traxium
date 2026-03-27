@@ -1,8 +1,21 @@
+import { UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { createSavingCard, getSavingCards } from "@/lib/data";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
+import {
+  enforceUsageQuota,
+  recordUsageEvent,
+  UsageQuotaExceededError,
+} from "@/lib/usage";
 import { savingCardSchema } from "@/lib/validation";
+
+const SAVING_CARD_QUOTA_WINDOW = UsageWindow.MONTH;
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -49,6 +62,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    await enforceRateLimit({
+      policy: "savingCardMutation",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+    });
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -65,11 +85,41 @@ export async function POST(request: Request) {
       return jsonError(payload.error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
     }
 
+    await enforceUsageQuota({
+      organizationId: user.organizationId,
+      feature: UsageFeature.SAVING_CARDS,
+      window: SAVING_CARD_QUOTA_WINDOW,
+      requestedQuantity: 1,
+      message: "Saving card quota exceeded for the current period.",
+    });
+
     const card = await createSavingCard(payload.data, user.id, user.organizationId);
+
+    await recordUsageEvent({
+      organizationId: user.organizationId,
+      feature: UsageFeature.SAVING_CARDS,
+      quantity: 1,
+      window: SAVING_CARD_QUOTA_WINDOW,
+      source: "api.saving_cards.create",
+      reason: "manual_create",
+      metadata: {
+        savingCardId: card.id,
+        actorUserId: user.id,
+      },
+    });
+
     return NextResponse.json(card, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
+    if (error instanceof UsageQuotaExceededError) {
+      return jsonError(error.message, error.status);
     }
 
     return jsonError(

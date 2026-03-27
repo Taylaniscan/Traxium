@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { Role, UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
@@ -7,6 +7,16 @@ import {
   isAllowedEvidenceFileName,
 } from "@/lib/evidence-config";
 import { prisma } from "@/lib/prisma";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
+import {
+  enforceUsageQuota,
+  recordUsageEvent,
+  UsageQuotaExceededError,
+} from "@/lib/usage";
 import { storeEvidenceFile } from "@/lib/uploads";
 
 const GLOBAL_ACCESS_ROLES = new Set<Role>([
@@ -16,6 +26,7 @@ const GLOBAL_ACCESS_ROLES = new Set<Role>([
 ]);
 const ALLOWED_FORM_FIELDS = new Set(["savingCardId", "files"]);
 const MAX_FILES_PER_UPLOAD = 10;
+const EVIDENCE_UPLOAD_QUOTA_WINDOW = UsageWindow.MONTH;
 const ALLOWED_CONTENT_TYPES_BY_EXTENSION: Record<string, readonly string[]> = {
   ".pdf": ["application/pdf"],
   ".jpg": ["image/jpeg"],
@@ -136,6 +147,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    await enforceRateLimit({
+      policy: "evidenceUpload",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+    });
+
     let formData: FormData;
 
     try {
@@ -210,6 +228,15 @@ export async function POST(request: Request) {
       return errorResponse("Saving card not found.", 404);
     }
 
+    await enforceUsageQuota({
+      organizationId: savingCard.organizationId,
+      feature: UsageFeature.EVIDENCE_UPLOADS,
+      window: EVIDENCE_UPLOAD_QUOTA_WINDOW,
+      requestedQuantity: files.length,
+      message:
+        "This upload would exceed the evidence upload quota for the current period.",
+    });
+
     const uploaded = [];
 
     for (const file of files) {
@@ -252,11 +279,33 @@ export async function POST(request: Request) {
       });
     }
 
+    await recordUsageEvent({
+      organizationId: savingCard.organizationId,
+      feature: UsageFeature.EVIDENCE_UPLOADS,
+      quantity: files.length,
+      window: EVIDENCE_UPLOAD_QUOTA_WINDOW,
+      source: "api.evidence.upload",
+      reason: "attachment_upload",
+      metadata: {
+        savingCardId: savingCard.id,
+        uploadedByUserId: user.id,
+        fileCount: files.length,
+      },
+    });
+
     return NextResponse.json(
       { success: true, files: uploaded },
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
+    if (error instanceof UsageQuotaExceededError) {
+      return errorResponse(error.message, error.status);
+    }
+
     return errorResponse(
       error instanceof Error ? error.message : "Upload failed.",
       500

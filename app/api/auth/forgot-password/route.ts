@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
 
 import {
-  canExposeDevelopmentAuthLinks,
-  generateRecoveryActionLink,
-  isAuthEmailFallbackEligibleError,
+  queuePasswordRecoveryEmailJobSafely,
 } from "@/lib/auth-email";
 import { buildAppUrl } from "@/lib/app-url";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const forgotPasswordSchema = z.object({
   email: z
@@ -34,6 +36,11 @@ async function readJsonBody(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await enforceRateLimit({
+      policy: "forgotPassword",
+      request,
+    });
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -41,40 +48,15 @@ export async function POST(request: Request) {
     }
 
     const payload = forgotPasswordSchema.parse(body.data);
-    const supabase = createSupabasePublicClient();
     const redirectTo = buildAppUrl("/reset-password");
-    const { error } = await supabase.auth.resetPasswordForEmail(payload.email, {
+    const delivery = await queuePasswordRecoveryEmailJobSafely({
+      email: payload.email,
       redirectTo,
     });
 
-    if (error) {
-      if (
-        isAuthEmailFallbackEligibleError(error.message) &&
-        canExposeDevelopmentAuthLinks()
-      ) {
-        const generatedLink = await generateRecoveryActionLink({
-          email: payload.email,
-          redirectTo,
-        });
-
-        return NextResponse.json({
-          success: true,
-          delivery: {
-            transport: "generated-link",
-            requiresManualDelivery: true,
-          },
-          developmentRecoveryLink: generatedLink.actionLink,
-        });
-      }
-
-      return jsonError(error.message, 422);
-    }
-
     return NextResponse.json({
       success: true,
-      delivery: {
-        transport: "supabase-auth",
-      },
+      delivery,
     });
   } catch (error) {
     if (error instanceof ZodError) {
@@ -84,10 +66,12 @@ export async function POST(request: Request) {
       );
     }
 
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
     return jsonError(
-      error instanceof Error
-        ? error.message
-        : "Password reset email could not be sent.",
+      "Password recovery request could not be accepted.",
       500
     );
   }

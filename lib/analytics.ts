@@ -1,9 +1,14 @@
 import {
+  getAnalyticsRuntimeConfig,
+  isJobWorkerProcess,
+} from "@/lib/env";
+import {
   resolveObservabilityRuntime,
   sanitizeForLog,
   writeStructuredLog,
   type ObservabilityRuntime,
 } from "@/lib/logger";
+import { enqueueJob, jobTypes } from "@/lib/jobs";
 
 export const analyticsEventNames = {
   AUTH_LOGIN_SUCCEEDED: "auth.login.succeeded",
@@ -39,6 +44,7 @@ export type AnalyticsTrackInput = {
   organizationId?: string | null;
   userId?: string | null;
   properties?: Record<string, unknown> | null;
+  idempotencyKey?: string | null;
 };
 
 export type AnalyticsIdentifyInput = {
@@ -46,6 +52,7 @@ export type AnalyticsIdentifyInput = {
   runtime?: ObservabilityRuntime;
   organizationId?: string | null;
   traits?: Record<string, unknown> | null;
+  idempotencyKey?: string | null;
 };
 
 export type AnalyticsTrackPayload = {
@@ -98,18 +105,8 @@ export type SuccessfulLoginAnalyticsInput = {
   runtime?: ObservabilityRuntime;
 };
 
-function trimSlashes(value: string) {
-  return value.replace(/\/+$/u, "");
-}
-
-function normalizeEnvValue(value: string | undefined) {
-  const normalized = value?.trim() ?? "";
-
-  if (!normalized || normalized === "undefined" || normalized === "null") {
-    return "";
-  }
-
-  return normalized;
+function shouldQueueAnalytics(runtime: ObservabilityRuntime) {
+  return runtime === "server" && !isJobWorkerProcess();
 }
 
 function normalizePath(value: string, fallback: string) {
@@ -236,48 +233,19 @@ export function getAnalyticsInsightCutoffs(
 function getAnalyticsConfig(
   runtime: ObservabilityRuntime
 ): AnalyticsHttpConfig | null {
-  const runtimeIsClient = runtime === "client";
-  const host = runtimeIsClient
-    ? normalizeEnvValue(process.env.NEXT_PUBLIC_ANALYTICS_HOST)
-    : normalizeEnvValue(process.env.ANALYTICS_HOST) ||
-      normalizeEnvValue(process.env.NEXT_PUBLIC_ANALYTICS_HOST);
-  const key = runtimeIsClient
-    ? normalizeEnvValue(process.env.NEXT_PUBLIC_ANALYTICS_KEY)
-    : normalizeEnvValue(process.env.ANALYTICS_KEY) ||
-      normalizeEnvValue(process.env.NEXT_PUBLIC_ANALYTICS_KEY);
+  const config = getAnalyticsRuntimeConfig(runtime);
+  const host = config.host;
+  const key = config.key;
 
   if (!host || !key) {
     return null;
   }
 
-  const capturePath = runtimeIsClient
-    ? normalizePath(
-        process.env.NEXT_PUBLIC_ANALYTICS_CAPTURE_PATH ?? "",
-        "/capture"
-      )
-    : normalizePath(
-        process.env.ANALYTICS_CAPTURE_PATH ??
-          process.env.NEXT_PUBLIC_ANALYTICS_CAPTURE_PATH ??
-          "",
-        "/capture"
-      );
-  const identifyPath = runtimeIsClient
-    ? normalizePath(
-        process.env.NEXT_PUBLIC_ANALYTICS_IDENTIFY_PATH ?? "",
-        "/identify"
-      )
-    : normalizePath(
-        process.env.ANALYTICS_IDENTIFY_PATH ??
-          process.env.NEXT_PUBLIC_ANALYTICS_IDENTIFY_PATH ??
-          "",
-        "/identify"
-      );
-
   return {
-    host: trimSlashes(host),
+    host,
     key,
-    capturePath,
-    identifyPath,
+    capturePath: normalizePath(config.capturePath, "/capture"),
+    identifyPath: normalizePath(config.identifyPath, "/identify"),
     runtime,
   };
 }
@@ -409,12 +377,30 @@ export function buildAnalyticsIdentifyPayload(
   };
 }
 
+async function dispatchAnalyticsTrackPayload(payload: AnalyticsTrackPayload) {
+  const provider = initializeAnalytics(payload.runtime);
+  await provider.track(payload);
+}
+
+async function dispatchAnalyticsIdentifyPayload(payload: AnalyticsIdentifyPayload) {
+  const provider = initializeAnalytics(payload.runtime);
+  await provider.identify(payload);
+}
+
 export async function trackEvent(input: AnalyticsTrackInput) {
   const payload = buildAnalyticsTrackPayload(input);
-  const provider = initializeAnalytics(payload.runtime);
 
   try {
-    await provider.track(payload);
+    if (shouldQueueAnalytics(payload.runtime)) {
+      await enqueueJob({
+        type: jobTypes.ANALYTICS_TRACK,
+        organizationId: payload.organizationId,
+        payload,
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+    } else {
+      await dispatchAnalyticsTrackPayload(payload);
+    }
   } catch (error) {
     writeStructuredLog("warn", {
       event: "analytics.track.failed",
@@ -433,10 +419,18 @@ export async function trackEvent(input: AnalyticsTrackInput) {
 
 export async function identifyUser(input: AnalyticsIdentifyInput) {
   const payload = buildAnalyticsIdentifyPayload(input);
-  const provider = initializeAnalytics(payload.runtime);
 
   try {
-    await provider.identify(payload);
+    if (shouldQueueAnalytics(payload.runtime)) {
+      await enqueueJob({
+        type: jobTypes.ANALYTICS_IDENTIFY,
+        organizationId: payload.organizationId,
+        payload,
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+    } else {
+      await dispatchAnalyticsIdentifyPayload(payload);
+    }
   } catch (error) {
     writeStructuredLog("warn", {
       event: "analytics.identify.failed",
@@ -477,6 +471,26 @@ export async function trackSuccessfulLogin(
       },
     }),
   ]);
+}
+
+export async function processAnalyticsTrackJob({
+  job,
+}: {
+  job: {
+    payload: unknown;
+  };
+}) {
+  await dispatchAnalyticsTrackPayload(job.payload as AnalyticsTrackPayload);
+}
+
+export async function processAnalyticsIdentifyJob({
+  job,
+}: {
+  job: {
+    payload: unknown;
+  };
+}) {
+  await dispatchAnalyticsIdentifyPayload(job.payload as AnalyticsIdentifyPayload);
 }
 
 export function resetAnalyticsProviderForTests() {

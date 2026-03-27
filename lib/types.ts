@@ -1,10 +1,15 @@
 import type {
+  BillingInterval,
   ForecastSource,
   InvitationStatus,
   MembershipStatus,
   OrganizationRole,
+  PriceType,
   Prisma,
   Role,
+  SubscriptionStatus,
+  UsageFeature,
+  UsageWindow,
 } from "@prisma/client";
 
 export const appPermissions = [
@@ -136,6 +141,277 @@ export const organizationInvitationSelect = {
 
 export type OrganizationInvitationRecord = Prisma.InvitationGetPayload<{
   select: typeof organizationInvitationSelect;
+}>;
+
+export type ProductPlanSummary = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  stripeProductId: string | null;
+  isActive: boolean;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const productPlanSelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  stripeProductId: true,
+  isActive: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.ProductPlanSelect;
+
+export type ProductPlanRecord = Prisma.ProductPlanGetPayload<{
+  select: typeof productPlanSelect;
+}>;
+
+export type PlanPriceSummary = {
+  id: string;
+  productPlanId: string;
+  stripePriceId: string | null;
+  type: PriceType;
+  interval: BillingInterval;
+  intervalCount: number;
+  currencyCode: string;
+  unitAmount: number;
+  usageFeature: UsageFeature | null;
+  isActive: boolean;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const planPriceSelect = {
+  id: true,
+  productPlanId: true,
+  stripePriceId: true,
+  type: true,
+  interval: true,
+  intervalCount: true,
+  currencyCode: true,
+  unitAmount: true,
+  usageFeature: true,
+  isActive: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.PlanPriceSelect;
+
+export type PlanPriceRecord = Prisma.PlanPriceGetPayload<{
+  select: typeof planPriceSelect;
+}>;
+
+export type BillingCustomerSummary = {
+  id: string;
+  organizationId: string;
+  stripeCustomerId: string;
+  email: string | null;
+  name: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const billingCustomerSelect = {
+  id: true,
+  organizationId: true,
+  stripeCustomerId: true,
+  email: true,
+  name: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.BillingCustomerSelect;
+
+export type BillingCustomerRecord = Prisma.BillingCustomerGetPayload<{
+  select: typeof billingCustomerSelect;
+}>;
+
+export type OrganizationSubscriptionSummary = {
+  id: string;
+  organizationId: string;
+  billingCustomerId: string;
+  productPlanId: string | null;
+  planPriceId: string | null;
+  stripeSubscriptionId: string;
+  status: SubscriptionStatus;
+  currencyCode: string | null;
+  quantity: number;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  trialStart: Date | null;
+  trialEnd: Date | null;
+  canceledAt: Date | null;
+  endedAt: Date | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const organizationSubscriptionSelect = {
+  id: true,
+  organizationId: true,
+  billingCustomerId: true,
+  productPlanId: true,
+  planPriceId: true,
+  stripeSubscriptionId: true,
+  status: true,
+  currencyCode: true,
+  quantity: true,
+  cancelAtPeriodEnd: true,
+  currentPeriodStart: true,
+  currentPeriodEnd: true,
+  trialStart: true,
+  trialEnd: true,
+  canceledAt: true,
+  endedAt: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.SubscriptionSelect;
+
+export type OrganizationSubscriptionRecord = Prisma.SubscriptionGetPayload<{
+  select: typeof organizationSubscriptionSelect;
+}>;
+
+export type WebhookEventSummary = {
+  id: string;
+  organizationId: string | null;
+  stripeEventId: string;
+  source: string;
+  eventType: string;
+  apiVersion: string | null;
+  livemode: boolean;
+  payload: Prisma.JsonValue;
+  receivedAt: Date;
+  processedAt: Date | null;
+  processingError: string | null;
+  updatedAt: Date;
+};
+
+export const webhookEventSelect = {
+  id: true,
+  organizationId: true,
+  stripeEventId: true,
+  source: true,
+  eventType: true,
+  apiVersion: true,
+  livemode: true,
+  payload: true,
+  receivedAt: true,
+  processedAt: true,
+  processingError: true,
+  updatedAt: true,
+} satisfies Prisma.WebhookEventSelect;
+
+export type WebhookEventRecord = Prisma.WebhookEventGetPayload<{
+  select: typeof webhookEventSelect;
+}>;
+
+export type UsagePeriod = {
+  window: UsageWindow;
+  periodStart: Date;
+  periodEnd: Date;
+};
+
+export type OrganizationUsageEventSummary = UsagePeriod & {
+  id: string;
+  organizationId: string;
+  feature: UsageFeature;
+  quantity: number;
+  source: string;
+  reason: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+};
+
+export const organizationUsageEventSelect = {
+  id: true,
+  organizationId: true,
+  feature: true,
+  quantity: true,
+  window: true,
+  periodStart: true,
+  periodEnd: true,
+  source: true,
+  reason: true,
+  metadata: true,
+  createdAt: true,
+} satisfies Prisma.UsageEventSelect;
+
+export type OrganizationUsageEventRecord = Prisma.UsageEventGetPayload<{
+  select: typeof organizationUsageEventSelect;
+}>;
+
+export type OrganizationUsageCounterSummary = UsagePeriod & {
+  id: string;
+  organizationId: string;
+  feature: UsageFeature;
+  quantity: number;
+  source: string;
+  reason: string | null;
+  metadata: Prisma.JsonValue | null;
+  lastEventAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const organizationUsageCounterSelect = {
+  id: true,
+  organizationId: true,
+  feature: true,
+  window: true,
+  periodStart: true,
+  periodEnd: true,
+  quantity: true,
+  source: true,
+  reason: true,
+  metadata: true,
+  lastEventAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UsageCounterSelect;
+
+export type OrganizationUsageCounterRecord = Prisma.UsageCounterGetPayload<{
+  select: typeof organizationUsageCounterSelect;
+}>;
+
+export type OrganizationQuotaSnapshotSummary = UsagePeriod & {
+  id: string;
+  organizationId: string;
+  feature: UsageFeature;
+  limitQuantity: number | null;
+  source: string;
+  reason: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const organizationQuotaSnapshotSelect = {
+  id: true,
+  organizationId: true,
+  feature: true,
+  window: true,
+  periodStart: true,
+  periodEnd: true,
+  limitQuantity: true,
+  source: true,
+  reason: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.QuotaSnapshotSelect;
+
+export type OrganizationQuotaSnapshotRecord = Prisma.QuotaSnapshotGetPayload<{
+  select: typeof organizationQuotaSnapshotSelect;
 }>;
 
 export type AuthGuardOptions = {

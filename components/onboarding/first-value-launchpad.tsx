@@ -34,13 +34,23 @@ type InvitationCreateResponse = {
   invitation: {
     token: string;
   };
-  delivery: {
-    channel: "invite" | "magic_link";
-    redirectTo: string;
-    transport: "supabase-auth" | "generated-link";
-    actionLink?: string;
-    requiresManualDelivery?: boolean;
-  };
+  delivery:
+    | {
+        channel: "invite" | "magic_link";
+        redirectTo: string;
+        transport: "supabase-auth" | "generated-link";
+        actionLink?: string;
+        requiresManualDelivery?: boolean;
+      }
+    | {
+        transport: "job-queued";
+        state: "queued";
+        jobId: string;
+      }
+    | {
+        transport: "queue-unavailable";
+        state: "unavailable";
+      };
 };
 
 type InvitationCreateError = {
@@ -92,15 +102,22 @@ export function FirstValueLaunchpad({
       }
 
       const payload = (await response.json()) as InvitationCreateResponse;
-      const nextInviteLink = payload.delivery.actionLink ?? payload.delivery.redirectTo;
+      const nextInviteLink =
+        "actionLink" in payload.delivery
+          ? payload.delivery.actionLink ?? payload.delivery.redirectTo
+          : null;
 
       setInviteLink(nextInviteLink);
       setInviteSuccess(
-        payload.delivery.transport === "generated-link"
-          ? "Supabase email delivery is unavailable right now. Share this secure invite link directly."
-          : payload.delivery.channel === "invite"
-          ? "Invitation email sent. The teammate can complete account setup from the email."
-          : "Invitation sign-in email sent. The teammate can open the email to join this workspace."
+        payload.delivery.transport === "job-queued"
+          ? "Invitation queued. The teammate will receive an email shortly."
+          : payload.delivery.transport === "queue-unavailable"
+            ? "Invitation created, but background email delivery is temporarily unavailable. Retry from Members shortly."
+          : payload.delivery.transport === "generated-link"
+            ? "Supabase email delivery is unavailable right now. Share this secure invite link directly."
+            : payload.delivery.channel === "invite"
+              ? "Invitation email sent. The teammate can complete account setup from the email."
+              : "Invitation sign-in email sent. The teammate can open the email to join this workspace."
       );
       setEmail("");
       setRole(viewerMembershipRole === "OWNER" ? "ADMIN" : "MEMBER");
@@ -155,7 +172,7 @@ export function FirstValueLaunchpad({
                 Invite teammate
               </h3>
               <p className="text-sm text-[var(--muted-foreground)]">
-                Traxium now sends the invitation email directly. The secure invite link remains available as a manual fallback.
+                Traxium queues invitation delivery in the background so workspace setup stays responsive.
               </p>
             </div>
 

@@ -38,6 +38,53 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+enum PriceType {
+  LICENSED
+  METERED
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+}
+
+enum UsageFeature {
+  SAVING_CARDS
+  ACTIVE_MEMBERS
+  INVITATIONS_SENT
+  EVIDENCE_UPLOADS
+  API_REQUESTS
+  JOB_EXECUTIONS
+}
+
+enum UsageWindow {
+  LIFETIME
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
 enum Phase {
   IDEA
   VALIDATED
@@ -90,6 +137,13 @@ model Organization {
   memberships   OrganizationMembership[]
   invitations   Invitation[]
   auditLogs     AuditLog[]
+  jobs          Job[]
+  billingCustomer BillingCustomer?
+  subscriptions Subscription[]
+  webhookEvents WebhookEvent[]
+  usageEvents   UsageEvent[]
+  usageCounters UsageCounter[]
+  quotaSnapshots QuotaSnapshot[]
 }
 
 model User {
@@ -164,6 +218,116 @@ model Invitation {
   @@index([organizationId, email])
   @@index([organizationId, status])
   @@index([invitedByUserId])
+}
+
+model ProductPlan {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  stripeProductId String?  @unique
+  isActive        Boolean  @default(true)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  prices        PlanPrice[]
+  subscriptions Subscription[]
+
+  @@index([isActive, code])
+}
+
+model PlanPrice {
+  id            String          @id @default(cuid())
+  productPlanId String
+  stripePriceId String?         @unique
+  type          PriceType
+  interval      BillingInterval
+  intervalCount Int             @default(1)
+  currencyCode  String
+  unitAmount    Int
+  usageFeature  UsageFeature?
+  isActive      Boolean         @default(true)
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  productPlan   ProductPlan    @relation(fields: [productPlanId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@index([productPlanId])
+  @@index([productPlanId, isActive])
+  @@index([type, interval, currencyCode])
+  @@index([usageFeature])
+}
+
+model BillingCustomer {
+  id               String   @id @default(cuid())
+  organizationId   String   @unique
+  stripeCustomerId String   @unique
+  email            String?
+  name             String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String
+  billingCustomerId    String
+  productPlanId        String?
+  planPriceId          String?
+  stripeSubscriptionId String             @unique
+  status               SubscriptionStatus
+  currencyCode         String?
+  quantity             Int                @default(1)
+  cancelAtPeriodEnd    Boolean            @default(false)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id], onDelete: Cascade)
+  productPlan     ProductPlan?    @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
+  planPrice       PlanPrice?      @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([billingCustomerId, status])
+  @@index([productPlanId])
+  @@index([planPriceId])
+}
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  stripeEventId   String   @unique
+  source          String   @default("stripe")
+  eventType       String
+  apiVersion      String?
+  livemode        Boolean
+  payload         Json
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  processingError String?
+  updatedAt       DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, receivedAt])
+  @@index([source, eventType, receivedAt])
+  @@index([processedAt])
 }
 
 model Buyer {
@@ -550,6 +714,93 @@ model AuditLog {
   @@index([organizationId, actorUserId])
   @@index([organizationId, targetUserId])
   @@index([organizationId, targetEntityId])
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  type           String
+  idempotencyKey String?
+  organizationId String?
+  payload        Json
+  status         JobStatus @default(QUEUED)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  scheduledAt    DateTime  @default(now())
+  reservedAt     DateTime?
+  processedAt    DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([type, idempotencyKey])
+  @@index([status, scheduledAt, createdAt])
+  @@index([organizationId, status, scheduledAt])
+  @@index([reservedAt])
+}
+
+model UsageEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  quantity       Int
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  source         String
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, feature, createdAt])
+  @@index([organizationId, feature, window, periodStart, periodEnd])
+}
+
+model UsageCounter {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  quantity       Int          @default(0)
+  source         String
+  reason         String?
+  metadata       Json?
+  lastEventAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, feature, window, periodStart, periodEnd])
+  @@index([organizationId, feature, window, periodStart])
+  @@index([organizationId, updatedAt])
+}
+
+model QuotaSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  limitQuantity  Int?
+  source         String       @default("manual")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, feature, window, periodStart, periodEnd])
+  @@index([organizationId, feature, window, periodStart])
+  @@index([organizationId, updatedAt])
 }
 
 model FxRate {

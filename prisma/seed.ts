@@ -120,8 +120,6 @@ const businessUnitSeeds = {
   additives: { name: "Additives" },
 } as const;
 
-const DEFAULT_EVIDENCE_BUCKET = "evidence-private";
-
 type UserKey = keyof typeof userSeeds;
 type BuyerKey = keyof typeof buyerSeeds;
 type SupplierKey = keyof typeof supplierSeeds;
@@ -1276,3 +1274,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+const DEFAULT_EVIDENCE_BUCKET = "evidence-private";

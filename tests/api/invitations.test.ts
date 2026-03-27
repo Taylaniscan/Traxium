@@ -15,6 +15,34 @@ const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const createSupabasePublicClientMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
+const enforceUsageQuotaMock = vi.hoisted(() => vi.fn());
+const recordUsageEventMock = vi.hoisted(() => vi.fn());
+const UsageQuotaExceededErrorMock = vi.hoisted(
+  () =>
+    class UsageQuotaExceededError extends Error {
+      constructor(
+        message: string,
+        readonly feature = "INVITATIONS_SENT",
+        readonly remaining = 0,
+        readonly requestedQuantity = 1,
+        readonly status = 429
+      ) {
+        super(message);
+        this.name = "UsageQuotaExceededError";
+      }
+    }
+);
 const inviteUserByEmailMock = vi.hoisted(() => vi.fn());
 const generateLinkMock = vi.hoisted(() => vi.fn());
 const signInWithOtpMock = vi.hoisted(() => vi.fn());
@@ -27,6 +55,10 @@ const mockPrisma = vi.hoisted(() => ({
   invitation: {
     findUnique: vi.fn(),
     update: vi.fn(),
+  },
+  job: {
+    create: vi.fn(),
+    upsert: vi.fn(),
   },
 }));
 
@@ -42,6 +74,18 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock,
   createSupabasePublicClient: createSupabasePublicClientMock,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
+}));
+
+vi.mock("@/lib/usage", () => ({
+  enforceUsageQuota: enforceUsageQuotaMock,
+  recordUsageEvent: recordUsageEventMock,
+  UsageQuotaExceededError: UsageQuotaExceededErrorMock,
 }));
 
 import { GET as getInvitationByTokenRoute } from "@/app/api/invitations/[token]/route";
@@ -120,6 +164,15 @@ describe("invitations routes", () => {
         },
       })
     );
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation((error: { message: string; status?: number }) =>
+      Response.json(
+        { error: error.message, code: "RATE_LIMITED" },
+        { status: error.status ?? 429 }
+      )
+    );
+    enforceUsageQuotaMock.mockResolvedValue(undefined);
+    recordUsageEventMock.mockResolvedValue(undefined);
     createAuthGuardErrorResponseMock.mockReturnValue(null);
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (typeof callback !== "function") {
@@ -129,13 +182,8 @@ describe("invitations routes", () => {
       const transactionCallback = callback as (client: typeof tx) => Promise<unknown>;
       return transactionCallback(tx);
     });
-    inviteUserByEmailMock.mockResolvedValue({
-      data: { user: { id: "auth-user-1" } },
-      error: null,
-    });
-    signInWithOtpMock.mockResolvedValue({
-      data: { user: null, session: null },
-      error: null,
+    mockPrisma.job.upsert.mockResolvedValue({
+      id: "job-invite-delivery-1",
     });
     createSupabaseAdminClientMock.mockReturnValue({
       auth: {
@@ -150,28 +198,13 @@ describe("invitations routes", () => {
         signInWithOtp: signInWithOtpMock,
       },
     });
-    generateLinkMock.mockResolvedValue({
-      data: {
-        properties: {
-          action_link: "https://kdsfmmwmpdhtezwdqbnk.supabase.co/auth/v1/verify?type=invite&token=generated",
-          email_otp: "123456",
-          hashed_token: "hashed-token",
-          redirect_to: "http://localhost:3000/invite/token-123?mode=setup",
-          verification_type: "invite",
-        },
-        user: {
-          id: "auth-user-1",
-        },
-      },
-      error: null,
-    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("creates an invitation and sends a real invite email through Supabase Auth", async () => {
+  it("creates an invitation and queues email delivery instead of calling Supabase inline", async () => {
     const createdInvitation = createInvitationRecord();
 
     tx.invitation.updateMany
@@ -218,24 +251,35 @@ describe("invitations routes", () => {
         },
       },
       delivery: {
-        channel: "invite",
-        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-        transport: "supabase-auth",
+        transport: "job-queued",
+        state: "queued",
+        jobId: "job-invite-delivery-1",
       },
     });
-    expect(inviteUserByEmailMock).toHaveBeenCalledWith("new.user@example.com", {
-      redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-      data: {
-        invitation_email: "new.user@example.com",
-        invitation_role: OrganizationRole.MEMBER,
-        invitation_role_label: "Member",
-        invitation_expires_at: "2026-03-31T12:00:00.000Z",
-        invitation_workspace_name: "Atlas Procurement",
-        invitation_workspace_slug: "atlas-procurement",
-        invitation_token: "token-123",
+    expect(mockPrisma.job.upsert).toHaveBeenCalledWith({
+      where: {
+        type_idempotencyKey: {
+          type: "auth_email.invitation_delivery",
+          idempotencyKey:
+            "invitation-delivery:invite-1:created:2026-03-24T12:00:00.000Z",
+        },
+      },
+      update: {},
+      create: {
+        type: "auth_email.invitation_delivery",
+        idempotencyKey:
+          "invitation-delivery:invite-1:created:2026-03-24T12:00:00.000Z",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        payload: {
+          invitationId: "invite-1",
+        },
+        scheduledAt: expect.any(Date),
+        maxAttempts: 3,
       },
     });
+    expect(inviteUserByEmailMock).not.toHaveBeenCalled();
     expect(signInWithOtpMock).not.toHaveBeenCalled();
+    expect(generateLinkMock).not.toHaveBeenCalled();
     expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
       data: {
         organizationId: DEFAULT_ORGANIZATION_ID,
@@ -248,15 +292,15 @@ describe("invitations routes", () => {
         detail: "Created a Member invitation.",
         payload: {
           invitationRole: OrganizationRole.MEMBER,
-          deliveryChannel: "invite",
-          deliveryTransport: "supabase-auth",
+          deliveryChannel: null,
+          deliveryTransport: "job-queued",
           requiresManualDelivery: false,
         },
       },
     });
   });
 
-  it("falls back to an invite acceptance magic link when the invited email already has an auth account", async () => {
+  it("keeps invitation creation successful when job scheduling is unavailable", async () => {
     const createdInvitation = createInvitationRecord();
 
     tx.invitation.updateMany
@@ -264,12 +308,7 @@ describe("invitations routes", () => {
       .mockResolvedValueOnce({ count: 0 });
     tx.user.findFirst.mockResolvedValueOnce(null);
     tx.invitation.create.mockResolvedValueOnce(createdInvitation);
-    inviteUserByEmailMock.mockResolvedValueOnce({
-      data: { user: null },
-      error: {
-        message: "A user has already been registered with this email address.",
-      },
-    });
+    mockPrisma.job.upsert.mockRejectedValueOnce(new Error("Queue storage is unavailable."));
 
     const response = await createInvitationRoute(
       new Request("http://localhost/api/invitations", {
@@ -285,78 +324,55 @@ describe("invitations routes", () => {
     );
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
-      delivery: {
-        channel: "magic_link",
-        redirectTo: "http://localhost:3000/invite/token-123?mode=accept",
-        transport: "supabase-auth",
-      },
-    });
-    expect(signInWithOtpMock).toHaveBeenCalledWith({
-      email: "new.user@example.com",
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: "http://localhost:3000/invite/token-123?mode=accept",
-      },
-    });
-  });
-
-  it("falls back to a generated invite action link when Supabase hosted email delivery is rate limited", async () => {
-    const createdInvitation = createInvitationRecord();
-
-    tx.invitation.updateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 0 });
-    tx.user.findFirst.mockResolvedValueOnce(null);
-    tx.invitation.create.mockResolvedValueOnce(createdInvitation);
-    inviteUserByEmailMock.mockResolvedValueOnce({
-      data: { user: null },
-      error: {
-        message: "Email rate limit exceeded",
-      },
-    });
-
-    const response = await createInvitationRoute(
-      new Request("http://localhost/api/invitations", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
+    await expect(response.json()).resolves.toEqual({
+      invitation: {
+        id: "invite-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        email: "new.user@example.com",
+        role: OrganizationRole.MEMBER,
+        token: "token-123",
+        status: InvitationStatus.PENDING,
+        expiresAt: "2026-03-31T12:00:00.000Z",
+        invitedByUserId: DEFAULT_USER_ID,
+        createdAt: "2026-03-24T12:00:00.000Z",
+        updatedAt: "2026-03-24T12:00:00.000Z",
+        organization: {
+          id: DEFAULT_ORGANIZATION_ID,
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
         },
-        body: JSON.stringify({
-          email: "new.user@example.com",
-          role: "MEMBER",
-        }),
-      })
-    );
-
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
-      delivery: {
-        channel: "invite",
-        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-        transport: "generated-link",
-        actionLink:
-          "https://kdsfmmwmpdhtezwdqbnk.supabase.co/auth/v1/verify?type=invite&token=generated",
-        requiresManualDelivery: true,
-      },
-    });
-    expect(generateLinkMock).toHaveBeenCalledWith({
-      type: "invite",
-      email: "new.user@example.com",
-      options: {
-        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-        data: {
-          invitation_email: "new.user@example.com",
-          invitation_role: OrganizationRole.MEMBER,
-          invitation_role_label: "Member",
-          invitation_expires_at: "2026-03-31T12:00:00.000Z",
-          invitation_workspace_name: "Atlas Procurement",
-          invitation_workspace_slug: "atlas-procurement",
-          invitation_token: "token-123",
+        invitedBy: {
+          id: DEFAULT_USER_ID,
+          name: "Admin User",
+          email: "admin@example.com",
         },
       },
+      delivery: {
+        transport: "queue-unavailable",
+        state: "unavailable",
+      },
     });
+    expect(inviteUserByEmailMock).not.toHaveBeenCalled();
     expect(signInWithOtpMock).not.toHaveBeenCalled();
+    expect(generateLinkMock).not.toHaveBeenCalled();
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+        actorUserId: DEFAULT_USER_ID,
+        targetUserId: null,
+        targetEntityId: "invite-1",
+        eventType: "invite.created",
+        action: "invite.created",
+        detail: "Created a Member invitation.",
+        payload: {
+          invitationRole: OrganizationRole.MEMBER,
+          deliveryChannel: null,
+          deliveryTransport: "queue-unavailable",
+          requiresManualDelivery: false,
+        },
+      },
+    });
   });
 
   it("prevents a normal member from creating an invitation", async () => {

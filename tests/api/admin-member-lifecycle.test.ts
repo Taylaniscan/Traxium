@@ -25,6 +25,10 @@ const mockPrisma = vi.hoisted(() => ({
   auditLog: {
     create: vi.fn(),
   },
+  job: {
+    create: vi.fn(),
+    upsert: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -204,6 +208,9 @@ describe("admin member lifecycle routes", () => {
         signInWithOtp: signInWithOtpMock,
       },
     });
+    mockPrisma.job.upsert.mockResolvedValue({
+      id: "job-invite-delivery-1",
+    });
   });
 
   it("allows an admin to remove a member from the active organization", async () => {
@@ -366,7 +373,7 @@ describe("admin member lifecycle routes", () => {
     });
   });
 
-  it("resends a pending invite with the existing email delivery flow", async () => {
+  it("resends a pending invite by queueing async email delivery", async () => {
     tx.invitation.findUnique.mockResolvedValueOnce(createInvitationRecord());
     tx.user.findFirst.mockResolvedValueOnce(null);
     tx.invitation.update.mockResolvedValueOnce(
@@ -383,7 +390,7 @@ describe("admin member lifecycle routes", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      message: "Invitation email sent again.",
+      message: "Invitation delivery queued. The teammate will receive a fresh email shortly.",
       invitation: {
         id: "invite-1",
         organizationId: DEFAULT_ORGANIZATION_ID,
@@ -400,23 +407,33 @@ describe("admin member lifecycle routes", () => {
         },
       },
       delivery: {
-        channel: "invite",
-        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-        transport: "supabase-auth",
+        transport: "job-queued",
+        state: "queued",
+        jobId: "job-invite-delivery-1",
       },
     });
-    expect(inviteUserByEmailMock).toHaveBeenCalledWith("new.member@example.com", {
-      redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
-      data: {
-        invitation_email: "new.member@example.com",
-        invitation_role: OrganizationRole.MEMBER,
-        invitation_role_label: "Member",
-        invitation_expires_at: "2026-04-05T12:00:00.000Z",
-        invitation_workspace_name: "Atlas Procurement",
-        invitation_workspace_slug: "atlas-procurement",
-        invitation_token: "token-123",
+    expect(mockPrisma.job.upsert).toHaveBeenCalledWith({
+      where: {
+        type_idempotencyKey: {
+          type: "auth_email.invitation_delivery",
+          idempotencyKey:
+            "invitation-delivery:invite-1:resent:2026-03-26T12:45:00.000Z",
+        },
+      },
+      update: {},
+      create: {
+        type: "auth_email.invitation_delivery",
+        idempotencyKey:
+          "invitation-delivery:invite-1:resent:2026-03-26T12:45:00.000Z",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        payload: {
+          invitationId: "invite-1",
+        },
+        scheduledAt: expect.any(Date),
+        maxAttempts: 3,
       },
     });
+    expect(inviteUserByEmailMock).not.toHaveBeenCalled();
     expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
       data: {
         organizationId: DEFAULT_ORGANIZATION_ID,
@@ -429,8 +446,71 @@ describe("admin member lifecycle routes", () => {
         detail: "Resent a workspace invitation.",
         payload: {
           invitationRole: OrganizationRole.MEMBER,
-          deliveryChannel: "invite",
-          deliveryTransport: "supabase-auth",
+          deliveryChannel: null,
+          deliveryTransport: "job-queued",
+          requiresManualDelivery: false,
+        },
+      },
+    });
+  });
+
+  it("keeps invitation resend successful when queue scheduling is unavailable", async () => {
+    tx.invitation.findUnique.mockResolvedValueOnce(createInvitationRecord());
+    tx.user.findFirst.mockResolvedValueOnce(null);
+    tx.invitation.update.mockResolvedValueOnce(
+      createInvitationRecord({
+        expiresAt: new Date("2026-04-05T12:00:00.000Z"),
+        updatedAt: new Date("2026-03-26T12:45:00.000Z"),
+      })
+    );
+    mockPrisma.job.upsert.mockRejectedValueOnce(
+      new Error("Queue storage is unavailable.")
+    );
+
+    const response = await resendInvitationRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ invitationId: "invite-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      message:
+        "Invitation updated, but background email delivery is temporarily unavailable. Try resending again shortly.",
+      invitation: {
+        id: "invite-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        email: "new.member@example.com",
+        role: OrganizationRole.MEMBER,
+        status: InvitationStatus.PENDING,
+        expiresAt: "2026-04-05T12:00:00.000Z",
+        createdAt: "2026-03-26T12:00:00.000Z",
+        updatedAt: "2026-03-26T12:45:00.000Z",
+        invitedBy: {
+          id: DEFAULT_USER_ID,
+          name: "Admin User",
+          email: "admin@example.com",
+        },
+      },
+      delivery: {
+        transport: "queue-unavailable",
+        state: "unavailable",
+      },
+    });
+    expect(inviteUserByEmailMock).not.toHaveBeenCalled();
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+        actorUserId: DEFAULT_USER_ID,
+        targetUserId: null,
+        targetEntityId: "invite-1",
+        eventType: "invite.resent",
+        action: "invite.resent",
+        detail: "Resent a workspace invitation.",
+        payload: {
+          invitationRole: OrganizationRole.MEMBER,
+          deliveryChannel: null,
+          deliveryTransport: "queue-unavailable",
           requiresManualDelivery: false,
         },
       },

@@ -1,4 +1,5 @@
 import { ApprovalStatus, Currency, Phase, Prisma, Role } from "@prisma/client";
+import { getScopedCachedValue } from "@/lib/cache";
 import { calculateSavings, getForecastMultiplier } from "@/lib/calculations";
 import { phaseLabels } from "@/lib/constants";
 import { buildOrganizationUserWhere } from "@/lib/organizations";
@@ -28,6 +29,14 @@ const GLOBAL_ACCESS_ROLES = new Set<Role>([
   Role.GLOBAL_CATEGORY_LEADER,
   Role.FINANCIAL_CONTROLLER,
 ]);
+
+const WORKSPACE_READINESS_CACHE_TTL_MS = 1_500;
+const DASHBOARD_DATA_CACHE_TTL_MS = 1_000;
+const WORKSPACE_READINESS_WORKFLOW_ROLES = [
+  Role.HEAD_OF_GLOBAL_PROCUREMENT,
+  Role.GLOBAL_CATEGORY_LEADER,
+  Role.FINANCIAL_CONTROLLER,
+] as const;
 
 function hasGlobalAccess(role: Role) {
   return GLOBAL_ACCESS_ROLES.has(role);
@@ -212,6 +221,7 @@ export async function getWorkspaceReadiness(
 ): Promise<WorkspaceReadiness> {
   const scope = resolveTenantScope(context);
   const { organizationId } = scope;
+  const tenantWhere = buildTenantScopeWhere(scope);
   const [
     organization,
     userCount,
@@ -221,61 +231,73 @@ export async function getWorkspaceReadiness(
     categoryCount,
     plantCount,
     businessUnitCount,
-    savingCardCount,
-    headOfGlobalProcurementCount,
-    globalCategoryLeaderCount,
-    financialControllerCount,
-    firstSavingCard,
-    latestSavingCard,
-  ] = await prisma.$transaction([
-    prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.user.count({ where: buildOrganizationUserWhere(scope) }),
-    prisma.buyer.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.supplier.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.material.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.category.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.plant.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.businessUnit.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.savingCard.count({ where: buildTenantScopeWhere(scope) }),
-    prisma.user.count({
-      where: buildOrganizationUserWhere(scope, {
-        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
-      }),
-    }),
-    prisma.user.count({
-      where: buildOrganizationUserWhere(scope, {
-        role: Role.GLOBAL_CATEGORY_LEADER,
-      }),
-    }),
-    prisma.user.count({
-      where: buildOrganizationUserWhere(scope, {
-        role: Role.FINANCIAL_CONTROLLER,
-      }),
-    }),
-    prisma.savingCard.findFirst({
-      where: buildTenantScopeWhere(scope),
-      select: { createdAt: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.savingCard.findFirst({
-      where: buildTenantScopeWhere(scope),
-      select: { updatedAt: true },
-      orderBy: { updatedAt: "desc" },
-    }),
-  ]);
+    workflowRoleCounts,
+    savingCardMetrics,
+  ] = await getScopedCachedValue(
+    {
+      namespace: "workspace-readiness",
+      organizationId,
+      ttlMs: WORKSPACE_READINESS_CACHE_TTL_MS,
+    },
+    () =>
+      prisma.$transaction([
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.user.count({ where: buildOrganizationUserWhere(scope) }),
+        prisma.buyer.count({ where: tenantWhere }),
+        prisma.supplier.count({ where: tenantWhere }),
+        prisma.material.count({ where: tenantWhere }),
+        prisma.category.count({ where: tenantWhere }),
+        prisma.plant.count({ where: tenantWhere }),
+        prisma.businessUnit.count({ where: tenantWhere }),
+        prisma.user.groupBy({
+          by: ["role"],
+          where: buildOrganizationUserWhere(scope, {
+            role: {
+              in: [...WORKSPACE_READINESS_WORKFLOW_ROLES],
+            },
+          }),
+          _count: {
+            _all: true,
+          },
+        }),
+        prisma.savingCard.aggregate({
+          where: tenantWhere,
+          _count: {
+            _all: true,
+          },
+          _min: {
+            createdAt: true,
+          },
+          _max: {
+            updatedAt: true,
+          },
+        }),
+      ])
+  );
 
   if (!organization) {
     throw new Error("Organization not found.");
   }
+
+  const workflowRoleCountsMap = new Map(
+    workflowRoleCounts.map((record) => [record.role, record._count._all])
+  );
+  const savingCardCount = savingCardMetrics._count._all ?? 0;
+  const headOfGlobalProcurementCount =
+    workflowRoleCountsMap.get(Role.HEAD_OF_GLOBAL_PROCUREMENT) ?? 0;
+  const globalCategoryLeaderCount =
+    workflowRoleCountsMap.get(Role.GLOBAL_CATEGORY_LEADER) ?? 0;
+  const financialControllerCount =
+    workflowRoleCountsMap.get(Role.FINANCIAL_CONTROLLER) ?? 0;
 
   const masterData = [
     {
@@ -374,8 +396,8 @@ export async function getWorkspaceReadiness(
       overallPercent,
     },
     activity: {
-      firstSavingCardCreatedAt: firstSavingCard?.createdAt ?? null,
-      lastPortfolioUpdateAt: latestSavingCard?.updatedAt ?? null,
+      firstSavingCardCreatedAt: savingCardMetrics._min.createdAt ?? null,
+      lastPortfolioUpdateAt: savingCardMetrics._max.updatedAt ?? null,
     },
     isMasterDataReady,
     isWorkflowReady,
@@ -1730,12 +1752,23 @@ async function createWorkflowNotifications(
 export async function getDashboardData(
   context: TenantContextSource
 ): Promise<DashboardData> {
-  const cards = await prisma.savingCard.findMany({
-    where: buildTenantScopeWhere(context),
-    select: dashboardCardSelect,
-  });
+  const scope = resolveTenantScope(context);
 
-  return { cards };
+  return getScopedCachedValue(
+    {
+      namespace: "dashboard-data",
+      organizationId: scope.organizationId,
+      ttlMs: DASHBOARD_DATA_CACHE_TTL_MS,
+    },
+    async () => {
+      const cards = await prisma.savingCard.findMany({
+        where: buildTenantScopeWhere(scope),
+        select: dashboardCardSelect,
+      });
+
+      return { cards };
+    }
+  );
 }
 
 function buildCommandCenterWhere(

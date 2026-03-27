@@ -1,3 +1,4 @@
+import { UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
 
@@ -14,8 +15,19 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
+import {
+  enforceUsageQuota,
+  recordUsageEvent,
+  UsageQuotaExceededError,
+} from "@/lib/usage";
 
 const invitationRoleSchema = z.enum(["OWNER", "ADMIN", "MEMBER"]);
+const INVITATION_QUOTA_WINDOW = UsageWindow.MONTH;
 
 const invitationCreateSchema = z.object({
   email: z
@@ -56,6 +68,14 @@ export async function POST(request: Request) {
       organizationId: user.activeOrganization.organizationId,
       userId: user.id,
     };
+
+    await enforceRateLimit({
+      policy: "invitationCreate",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+    });
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -72,8 +92,34 @@ export async function POST(request: Request) {
     }
 
     const payload = invitationCreateSchema.parse(body.data);
-    const result = await createOrganizationInvitation(user, payload);
+    const organizationId = user.activeOrganization.organizationId;
+
+    await enforceUsageQuota({
+      organizationId,
+      feature: UsageFeature.INVITATIONS_SENT,
+      window: INVITATION_QUOTA_WINDOW,
+      requestedQuantity: 1,
+      message: "Invitation quota exceeded for the current period.",
+    });
+
+    const result = await createOrganizationInvitation(user, payload, {
+      deliveryMode: "async",
+    });
     const { invitation, delivery } = result;
+
+    await recordUsageEvent({
+      organizationId,
+      feature: UsageFeature.INVITATIONS_SENT,
+      quantity: 1,
+      window: INVITATION_QUOTA_WINDOW,
+      source: "api.invitations.create",
+      reason: "member_invitation",
+      metadata: {
+        invitationId: invitation.id,
+        invitedByUserId: user.id,
+        role: invitation.role,
+      },
+    });
 
     trackServerEvent({
       ...requestContext,
@@ -83,8 +129,11 @@ export async function POST(request: Request) {
       payload: {
         role: invitation.role,
         transport: delivery.transport,
-        channel: delivery.channel,
-        requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+        channel: "channel" in delivery ? delivery.channel : null,
+        requiresManualDelivery:
+          "requiresManualDelivery" in delivery
+            ? delivery.requiresManualDelivery ?? false
+            : false,
       },
     });
 
@@ -125,6 +174,34 @@ export async function POST(request: Request) {
         error.issues[0]?.message ?? "Invitation payload is invalid.",
         422
       );
+    }
+
+    if (error instanceof UsageQuotaExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "invitation.create.quota_exceeded",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return jsonError(error.message, error.status);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "invitation.create.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

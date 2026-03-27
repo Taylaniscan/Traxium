@@ -7,11 +7,38 @@ const resetPasswordForEmailMock = vi.hoisted(() => vi.fn());
 const getUserMock = vi.hoisted(() => vi.fn());
 const updateUserMock = vi.hoisted(() => vi.fn());
 const generateLinkMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
+const mockPrisma = vi.hoisted(() => ({
+  job: {
+    create: vi.fn(),
+    upsert: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock,
   createSupabasePublicClient: createSupabasePublicClientMock,
   createSupabaseServerClient: createSupabaseServerClientMock,
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
 import { POST as forgotPasswordRoute } from "@/app/api/auth/forgot-password/route";
@@ -21,6 +48,13 @@ describe("password recovery routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation((error: { message: string; status?: number }) =>
+      Response.json(
+        { error: error.message, code: "RATE_LIMITED" },
+        { status: error.status ?? 429 }
+      )
+    );
     resetPasswordForEmailMock.mockResolvedValue({
       data: {},
       error: null,
@@ -70,9 +104,12 @@ describe("password recovery routes", () => {
       },
       error: null,
     });
+    mockPrisma.job.upsert.mockResolvedValue({
+      id: "job-password-recovery-1",
+    });
   });
 
-  it("sends a forgot-password email through Supabase Auth", async () => {
+  it("queues a forgot-password delivery job without waiting for Supabase Auth", async () => {
     const response = await forgotPasswordRoute(
       new Request("http://localhost/api/auth/forgot-password", {
         method: "POST",
@@ -89,21 +126,43 @@ describe("password recovery routes", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       delivery: {
-        transport: "supabase-auth",
+        transport: "job-queued",
+        state: "queued",
+        jobId: "job-password-recovery-1",
       },
     });
-    expect(resetPasswordForEmailMock).toHaveBeenCalledWith("user@example.com", {
-      redirectTo: "http://localhost:3000/reset-password",
+    expect(mockPrisma.job.upsert).toHaveBeenCalledWith({
+      where: {
+        type_idempotencyKey: {
+          type: "auth_email.password_recovery_delivery",
+          idempotencyKey: expect.stringMatching(
+            /^password-recovery:user@example\.com:http:\/\/localhost:3000\/reset-password:\d+$/
+          ),
+        },
+      },
+      update: {},
+      create: {
+        type: "auth_email.password_recovery_delivery",
+        idempotencyKey: expect.stringMatching(
+          /^password-recovery:user@example\.com:http:\/\/localhost:3000\/reset-password:\d+$/
+        ),
+        organizationId: null,
+        payload: {
+          email: "user@example.com",
+          redirectTo: "http://localhost:3000/reset-password",
+        },
+        scheduledAt: expect.any(Date),
+        maxAttempts: 3,
+      },
     });
+    expect(resetPasswordForEmailMock).not.toHaveBeenCalled();
+    expect(generateLinkMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to a generated recovery link in local development when hosted email is rate limited", async () => {
-    resetPasswordForEmailMock.mockResolvedValueOnce({
-      data: {},
-      error: {
-        message: "Email rate limit exceeded",
-      },
-    });
+  it("accepts forgot-password requests even when job scheduling is unavailable", async () => {
+    mockPrisma.job.upsert.mockRejectedValueOnce(
+      new Error("Queue storage is unavailable.")
+    );
 
     const response = await forgotPasswordRoute(
       new Request("http://localhost/api/auth/forgot-password", {
@@ -121,19 +180,12 @@ describe("password recovery routes", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       delivery: {
-        transport: "generated-link",
-        requiresManualDelivery: true,
-      },
-      developmentRecoveryLink:
-        "https://kdsfmmwmpdhtezwdqbnk.supabase.co/auth/v1/verify?type=recovery&token=generated",
-    });
-    expect(generateLinkMock).toHaveBeenCalledWith({
-      type: "recovery",
-      email: "user@example.com",
-      options: {
-        redirectTo: "http://localhost:3000/reset-password",
+        transport: "queue-unavailable",
+        state: "unavailable",
       },
     });
+    expect(resetPasswordForEmailMock).not.toHaveBeenCalled();
+    expect(generateLinkMock).not.toHaveBeenCalled();
   });
 
   it("updates the password for a valid recovery session", async () => {

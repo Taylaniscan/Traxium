@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  readOptionalClientEnv,
+  readOptionalClientUrlEnv,
+} from "@/lib/env";
+
 type CookieToSet = {
   name: string;
   value: string;
@@ -20,16 +25,17 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  let supabaseUrl: string | null;
+  let supabaseAnonKey: string | null;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  try {
+    supabaseUrl = readOptionalClientUrlEnv("NEXT_PUBLIC_SUPABASE_URL");
+    supabaseAnonKey = readOptionalClientEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  } catch {
     return response;
   }
 
-  try {
-    new URL(supabaseUrl);
-  } catch {
+  if (!supabaseUrl || !supabaseAnonKey) {
     return response;
   }
 

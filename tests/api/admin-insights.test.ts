@@ -12,6 +12,7 @@ import {
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
+  $transaction: vi.fn(),
   organization: {
     findUnique: vi.fn(),
   },
@@ -20,11 +21,11 @@ const mockPrisma = vi.hoisted(() => ({
   },
   invitation: {
     count: vi.fn(),
-    findFirst: vi.fn(),
+    groupBy: vi.fn(),
+    aggregate: vi.fn(),
   },
   savingCard: {
-    count: vi.fn(),
-    findFirst: vi.fn(),
+    aggregate: vi.fn(),
   },
   auditLog: {
     findMany: vi.fn(),
@@ -122,46 +123,69 @@ function queueDefaultInsightsResults(organizationId = DEFAULT_ORGANIZATION_ID) {
   mockPrisma.organizationMembership.count.mockResolvedValueOnce(
     organizationId === OTHER_ORGANIZATION_ID ? 1 : 3
   );
-  mockPrisma.invitation.count
-    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 0 : 2)
-    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 1 : 2)
-    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 1 : 4)
-    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 0 : 3);
-  mockPrisma.savingCard.count.mockResolvedValueOnce(
-    organizationId === OTHER_ORGANIZATION_ID ? 0 : 2
+  mockPrisma.invitation.groupBy.mockResolvedValueOnce(
+    organizationId === OTHER_ORGANIZATION_ID
+      ? []
+      : [
+          {
+            status: "PENDING",
+            _count: {
+              _all: 2,
+            },
+          },
+          {
+            status: "ACCEPTED",
+            _count: {
+              _all: 3,
+            },
+          },
+        ]
   );
-  mockPrisma.savingCard.findFirst
-    .mockResolvedValueOnce(
-      organizationId === OTHER_ORGANIZATION_ID
-        ? null
-        : {
+  mockPrisma.invitation.count
+    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 1 : 2)
+    .mockResolvedValueOnce(organizationId === OTHER_ORGANIZATION_ID ? 1 : 4);
+  mockPrisma.invitation.aggregate
+    .mockResolvedValueOnce({
+      _max: {
+        createdAt:
+          organizationId === OTHER_ORGANIZATION_ID
+            ? new Date("2026-03-25T10:00:00.000Z")
+            : new Date("2026-03-26T08:30:00.000Z"),
+      },
+    })
+    .mockResolvedValueOnce({
+      _max: {
+        updatedAt:
+          organizationId === OTHER_ORGANIZATION_ID
+            ? null
+            : new Date("2026-03-26T09:15:00.000Z"),
+      },
+    });
+  mockPrisma.savingCard.aggregate.mockResolvedValueOnce(
+    organizationId === OTHER_ORGANIZATION_ID
+      ? {
+          _count: {
+            _all: 0,
+          },
+          _min: {
+            createdAt: null,
+          },
+          _max: {
+            updatedAt: null,
+          },
+        }
+      : {
+          _count: {
+            _all: 2,
+          },
+          _min: {
             createdAt: new Date("2026-03-22T08:00:00.000Z"),
-          }
-    )
-    .mockResolvedValueOnce(
-      organizationId === OTHER_ORGANIZATION_ID
-        ? null
-        : {
+          },
+          _max: {
             updatedAt: new Date("2026-03-26T10:15:00.000Z"),
-          }
-    );
-  mockPrisma.invitation.findFirst
-    .mockResolvedValueOnce(
-      organizationId === OTHER_ORGANIZATION_ID
-        ? {
-            createdAt: new Date("2026-03-25T10:00:00.000Z"),
-          }
-        : {
-            createdAt: new Date("2026-03-26T08:30:00.000Z"),
-          }
-    )
-    .mockResolvedValueOnce(
-      organizationId === OTHER_ORGANIZATION_ID
-        ? null
-        : {
-            updatedAt: new Date("2026-03-26T09:15:00.000Z"),
-          }
-    );
+          },
+        }
+  );
   mockPrisma.auditLog.findMany
     .mockResolvedValueOnce([
       createAuditEventRecord({
@@ -214,6 +238,9 @@ describe("admin insights route", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-26T15:00:00.000Z"));
+    mockPrisma.$transaction.mockImplementation(
+      (operations: Array<Promise<unknown>>) => Promise.all(operations)
+    );
 
     requireOrganizationMock.mockResolvedValue(
       createSessionUser({
@@ -375,6 +402,13 @@ describe("admin insights route", () => {
         organizationId: OTHER_ORGANIZATION_ID,
       },
     });
+    expect(mockPrisma.invitation.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: OTHER_ORGANIZATION_ID,
+        }),
+      })
+    );
     expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

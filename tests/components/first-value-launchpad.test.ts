@@ -125,7 +125,7 @@ describe("first value launchpad", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("uses the delivery redirect as the fallback invite URL", async () => {
+  it("shows a queued delivery confirmation without exposing an unusable fallback link", async () => {
     const setEmail = vi.fn();
     const setRole = vi.fn();
     const setInviteError = vi.fn();
@@ -141,8 +141,9 @@ describe("first value launchpad", () => {
           token: "token-123",
         },
         delivery: {
-          channel: "invite",
-          redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
+          transport: "job-queued",
+          state: "queued",
+          jobId: "job-1",
         },
       }),
     } as unknown as Response);
@@ -178,11 +179,9 @@ describe("first value launchpad", () => {
         role: "ADMIN",
       }),
     });
-    expect(setInviteLink).toHaveBeenCalledWith(
-      "http://localhost:3000/invite/token-123?mode=setup"
-    );
+    expect(setInviteLink).toHaveBeenCalledWith(null);
     expect(setInviteSuccess).toHaveBeenCalledWith(
-      "Invitation email sent. The teammate can complete account setup from the email."
+      "Invitation queued. The teammate will receive an email shortly."
     );
   });
 });

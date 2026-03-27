@@ -18,6 +18,13 @@ type InvitationActionsProps = {
 };
 
 type InvitationDelivery = {
+  transport: "job-queued";
+  state: "queued";
+  jobId: string;
+} | {
+  transport: "queue-unavailable";
+  state: "unavailable";
+} | {
   channel: "invite" | "magic_link";
   redirectTo: string;
   transport: "supabase-auth" | "generated-link";
@@ -152,7 +159,11 @@ export function InvitationActions({
 
       const payload = (await response.json()) as InvitationActionSuccessPayload;
       setNotice(payload.message ?? "Invitation sent again.");
-      setManualActionLink(payload.delivery?.actionLink ?? null);
+      setManualActionLink(
+        payload.delivery && "actionLink" in payload.delivery
+          ? payload.delivery.actionLink ?? null
+          : null
+      );
       inFlightRef.current = false;
       setLoadingAction(null);
       router.refresh();

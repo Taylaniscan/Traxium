@@ -3,6 +3,34 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getCurrentUserMock = vi.hoisted(() => vi.fn());
 const requirePermissionMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
+const enforceUsageQuotaMock = vi.hoisted(() => vi.fn());
+const recordUsageEventMock = vi.hoisted(() => vi.fn());
+const UsageQuotaExceededErrorMock = vi.hoisted(
+  () =>
+    class UsageQuotaExceededError extends Error {
+      constructor(
+        message: string,
+        readonly feature = "SAVING_CARDS",
+        readonly remaining = 0,
+        readonly requestedQuantity = 1,
+        readonly status = 429
+      ) {
+        super(message);
+        this.name = "UsageQuotaExceededError";
+      }
+    }
+);
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
@@ -69,6 +97,18 @@ vi.mock("xlsx", () => ({
   utils: {
     sheet_to_json: sheetToJsonMock,
   },
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
+}));
+
+vi.mock("@/lib/usage", () => ({
+  enforceUsageQuota: enforceUsageQuotaMock,
+  recordUsageEvent: recordUsageEventMock,
+  UsageQuotaExceededError: UsageQuotaExceededErrorMock,
 }));
 
 import { POST as postImportRoute } from "@/app/api/import/route";
@@ -143,6 +183,15 @@ describe("import and evidence API routes", () => {
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation((error: { message: string; status?: number }) =>
+      Response.json(
+        { error: error.message, code: "RATE_LIMITED" },
+        { status: error.status ?? 429 }
+      )
+    );
+    enforceUsageQuotaMock.mockResolvedValue(undefined);
+    recordUsageEventMock.mockResolvedValue(undefined);
     getReferenceDataMock.mockResolvedValue(buildReferenceData());
     importSavingCardsMock.mockResolvedValue(undefined);
     xlsxReadMock.mockReset();

@@ -11,6 +11,7 @@ import {
   writeAuditEvent,
 } from "@/lib/audit";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
+import { getScopedCachedValue } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import type {
   ActiveOrganizationContext,
@@ -72,7 +73,7 @@ const initialWorkspaceUserSelect = {
   },
 } satisfies Prisma.UserSelect;
 
-const organizationMembersDirectorySelect = {
+const organizationMembershipMutationSelect = {
   id: true,
   userId: true,
   organizationId: true,
@@ -86,14 +87,28 @@ const organizationMembersDirectorySelect = {
       name: true,
       email: true,
       createdAt: true,
-      updatedAt: true,
+    },
+  },
+} satisfies Prisma.OrganizationMembershipSelect;
+
+const organizationMembersDirectorySelect = {
+  id: true,
+  userId: true,
+  role: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  user: {
+    select: {
+      name: true,
+      email: true,
+      createdAt: true,
     },
   },
 } satisfies Prisma.OrganizationMembershipSelect;
 
 const pendingInvitationDirectorySelect = {
   id: true,
-  organizationId: true,
   email: true,
   role: true,
   status: true,
@@ -127,6 +142,9 @@ type InitialWorkspaceUserRecord = Prisma.UserGetPayload<{
   select: typeof initialWorkspaceUserSelect;
 }>;
 type InitialWorkspaceMembershipRecord = InitialWorkspaceUserRecord["memberships"][number];
+type OrganizationMembershipMutationRecord = Prisma.OrganizationMembershipGetPayload<{
+  select: typeof organizationMembershipMutationSelect;
+}>;
 type OrganizationMembersDirectoryRecord = Prisma.OrganizationMembershipGetPayload<{
   select: typeof organizationMembersDirectorySelect;
 }>;
@@ -138,6 +156,9 @@ type OrganizationSettingsRecord = Prisma.OrganizationGetPayload<{
 }>;
 
 type OrganizationWriteClient = Prisma.TransactionClient;
+
+const MEMBERS_DIRECTORY_CACHE_TTL_MS = 2_000;
+const ADMIN_AUDIT_EVENTS_CACHE_TTL_MS = 1_500;
 
 export class WorkspaceOnboardingError extends Error {
   constructor(
@@ -457,7 +478,7 @@ function mapInitialWorkspaceResult(
 }
 
 function mapOrganizationDirectoryMember(
-  membership: OrganizationMembersDirectoryRecord
+  membership: OrganizationMembersDirectoryRecord | OrganizationMembershipMutationRecord
 ): OrganizationDirectoryMember {
   return {
     id: membership.id,
@@ -644,32 +665,41 @@ export async function getOrganizationMembersDirectory(
     throw new Error("Organization context is required.");
   }
 
-  const [memberships, pendingInvitations] = await Promise.all([
-    prisma.organizationMembership.findMany({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-      select: organizationMembersDirectorySelect,
-      orderBy: [
-        { status: "asc" },
-        { role: "asc" },
-        { createdAt: "asc" },
-      ],
-    }),
-    prisma.invitation.findMany({
-      where: {
-        organizationId: normalizedOrganizationId,
-        status: "PENDING",
-      },
-      select: pendingInvitationDirectorySelect,
-      orderBy: [{ createdAt: "desc" }],
-    }),
-  ]);
+  return getScopedCachedValue(
+    {
+      namespace: "organization-members-directory",
+      organizationId: normalizedOrganizationId,
+      ttlMs: MEMBERS_DIRECTORY_CACHE_TTL_MS,
+    },
+    async () => {
+      const [memberships, pendingInvitations] = await Promise.all([
+        prisma.organizationMembership.findMany({
+          where: {
+            organizationId: normalizedOrganizationId,
+          },
+          select: organizationMembersDirectorySelect,
+          orderBy: [
+            { status: "asc" },
+            { role: "asc" },
+            { createdAt: "asc" },
+          ],
+        }),
+        prisma.invitation.findMany({
+          where: {
+            organizationId: normalizedOrganizationId,
+            status: "PENDING",
+          },
+          select: pendingInvitationDirectorySelect,
+          orderBy: [{ createdAt: "desc" }],
+        }),
+      ]);
 
-  return {
-    members: memberships.map(mapOrganizationDirectoryMember),
-    pendingInvites: pendingInvitations.map(mapPendingInvitationDirectoryRecord),
-  };
+      return {
+        members: memberships.map(mapOrganizationDirectoryMember),
+        pendingInvites: pendingInvitations.map(mapPendingInvitationDirectoryRecord),
+      };
+    }
+  );
 }
 
 export async function getOrganizationSettings(
@@ -781,7 +811,21 @@ export async function getOrganizationAdminAuditEvents(
   organizationId: string,
   take = 20
 ): Promise<OrganizationAdminAuditEvent[]> {
-  return listAuditEventsForOrganization(organizationId, take);
+  const normalizedOrganizationId = normalizeOrganizationId(organizationId);
+
+  if (!normalizedOrganizationId) {
+    throw new Error("Organization context is required.");
+  }
+
+  return getScopedCachedValue(
+    {
+      namespace: "organization-admin-audit-events",
+      organizationId: normalizedOrganizationId,
+      key: `take:${take}`,
+      ttlMs: ADMIN_AUDIT_EVENTS_CACHE_TTL_MS,
+    },
+    () => listAuditEventsForOrganization(normalizedOrganizationId, take)
+  );
 }
 
 export async function updateOrganizationMembershipRole(input: {
@@ -819,7 +863,7 @@ export async function updateOrganizationMembershipRole(input: {
       where: {
         id: membershipId,
       },
-      select: organizationMembersDirectorySelect,
+      select: organizationMembershipMutationSelect,
     });
 
     if (!membership || membership.organizationId !== activeOrganizationId) {
@@ -894,7 +938,7 @@ export async function updateOrganizationMembershipRole(input: {
       data: {
         role: input.nextRole,
       },
-      select: organizationMembersDirectorySelect,
+      select: organizationMembershipMutationSelect,
     });
 
     previousRole = membership.role;
@@ -968,7 +1012,7 @@ export async function removeOrganizationMembership(input: {
       where: {
         id: membershipId,
       },
-      select: organizationMembersDirectorySelect,
+      select: organizationMembershipMutationSelect,
     });
 
     if (!membership || membership.organizationId !== activeOrganizationId) {

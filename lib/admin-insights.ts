@@ -5,6 +5,7 @@ import {
   getOrganizationAuditInsights,
   type OrganizationAuditEvent,
 } from "@/lib/audit";
+import { getScopedCachedValue } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 
 const adminInsightsOrganizationSelect = {
@@ -18,6 +19,8 @@ const adminInsightsOrganizationSelect = {
 type AdminInsightsOrganizationRecord = Prisma.OrganizationGetPayload<{
   select: typeof adminInsightsOrganizationSelect;
 }>;
+
+const ADMIN_INSIGHTS_CACHE_TTL_MS = 2_000;
 
 export class AdminInsightsError extends Error {
   constructor(
@@ -82,146 +85,170 @@ function mapOrganization(
   };
 }
 
+function readGroupedCount(
+  count:
+    | {
+        _all?: number;
+      }
+    | true
+    | null
+    | undefined
+) {
+  if (!count || count === true) {
+    return 0;
+  }
+
+  return count._all ?? 0;
+}
+
 export async function getOrganizationAdminInsights(
   organizationId: string
 ): Promise<OrganizationAdminInsights> {
   const normalizedOrganizationId = normalizeOrganizationId(organizationId);
-  const { last7Days, last30Days } = getAnalyticsInsightCutoffs();
-
-  const [
-    organization,
-    totalMembers,
-    pendingInvites,
-    invitesSentLast7Days,
-    invitesSentLast30Days,
-    acceptedInvites,
-    liveSavingCards,
-    firstSavingCard,
-    lastInviteSent,
-    lastAcceptedInvite,
-    lastSavingCardActivity,
-    auditInsights,
-  ] = await Promise.all([
-    prisma.organization.findUnique({
-      where: {
-        id: normalizedOrganizationId,
-      },
-      select: adminInsightsOrganizationSelect,
-    }),
-    prisma.organizationMembership.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-    }),
-    prisma.invitation.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-        status: "PENDING",
-      },
-    }),
-    prisma.invitation.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-        createdAt: {
-          gte: last7Days,
-        },
-      },
-    }),
-    prisma.invitation.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-        createdAt: {
-          gte: last30Days,
-        },
-      },
-    }),
-    prisma.invitation.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-        status: "ACCEPTED",
-      },
-    }),
-    prisma.savingCard.count({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-    }),
-    prisma.savingCard.findFirst({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-      select: {
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    }),
-    prisma.invitation.findFirst({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-      select: {
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    }),
-    prisma.invitation.findFirst({
-      where: {
-        organizationId: normalizedOrganizationId,
-        status: "ACCEPTED",
-      },
-      select: {
-        updatedAt: true,
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    }),
-    prisma.savingCard.findFirst({
-      where: {
-        organizationId: normalizedOrganizationId,
-      },
-      select: {
-        updatedAt: true,
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    }),
-    getOrganizationAuditInsights(normalizedOrganizationId),
-  ]);
-
-  if (!organization) {
-    throw new AdminInsightsError("Organization not found.", 404);
-  }
-
-  return {
-    organization: mapOrganization(organization),
-    metrics: {
-      totalMembers,
-      pendingInvites,
-      invitesSentLast7Days,
-      invitesSentLast30Days,
-      acceptedInvites,
-      liveSavingCards,
-      recentErrorEventsLast7Days:
-        auditInsights.metrics.recentErrorEventsLast7Days,
-      recentCriticalAdminActionsLast7Days:
-        auditInsights.metrics.recentCriticalAdminActionsLast7Days,
+  return getScopedCachedValue(
+    {
+      namespace: "admin-insights",
+      organizationId: normalizedOrganizationId,
+      ttlMs: ADMIN_INSIGHTS_CACHE_TTL_MS,
     },
-    signals: {
-      workspaceCreatedAt: organization.createdAt,
-      firstValueReached: Boolean(firstSavingCard),
-      firstValueAt: firstSavingCard?.createdAt ?? null,
-      firstValueSource: firstSavingCard ? "saving_card" : null,
-      lastInviteSentAt: lastInviteSent?.createdAt ?? null,
-      lastAcceptedInviteAt: lastAcceptedInvite?.updatedAt ?? null,
-      lastSavingCardActivityAt: lastSavingCardActivity?.updatedAt ?? null,
-    },
-    recentAdminActions: auditInsights.recentAdminActions,
-    recentCriticalAdminActions: auditInsights.recentCriticalAdminActions,
-  };
+    async () => {
+      const { last7Days, last30Days } = getAnalyticsInsightCutoffs();
+
+      const [
+        [
+          organization,
+          totalMembers,
+          invitationCountsByStatus,
+          invitesSentLast7Days,
+          invitesSentLast30Days,
+          latestInvitation,
+          latestAcceptedInvitation,
+          savingCardMetrics,
+        ],
+        auditInsights,
+      ] = await Promise.all([
+        prisma.$transaction([
+          prisma.organization.findUnique({
+            where: {
+              id: normalizedOrganizationId,
+            },
+            select: adminInsightsOrganizationSelect,
+          }),
+          prisma.organizationMembership.count({
+            where: {
+              organizationId: normalizedOrganizationId,
+            },
+          }),
+          prisma.invitation.groupBy({
+            by: ["status"],
+            where: {
+              organizationId: normalizedOrganizationId,
+              status: {
+                in: ["PENDING", "ACCEPTED"],
+              },
+            },
+            orderBy: {
+              status: "asc",
+            },
+            _count: {
+              _all: true,
+            },
+          }),
+          prisma.invitation.count({
+            where: {
+              organizationId: normalizedOrganizationId,
+              createdAt: {
+                gte: last7Days,
+              },
+            },
+          }),
+          prisma.invitation.count({
+            where: {
+              organizationId: normalizedOrganizationId,
+              createdAt: {
+                gte: last30Days,
+              },
+            },
+          }),
+          prisma.invitation.aggregate({
+            where: {
+              organizationId: normalizedOrganizationId,
+            },
+            _max: {
+              createdAt: true,
+            },
+          }),
+          prisma.invitation.aggregate({
+            where: {
+              organizationId: normalizedOrganizationId,
+              status: "ACCEPTED",
+            },
+            _max: {
+              updatedAt: true,
+            },
+          }),
+          prisma.savingCard.aggregate({
+            where: {
+              organizationId: normalizedOrganizationId,
+            },
+            _count: {
+              _all: true,
+            },
+            _min: {
+              createdAt: true,
+            },
+            _max: {
+              updatedAt: true,
+            },
+          }),
+        ]),
+        getOrganizationAuditInsights(normalizedOrganizationId),
+      ]);
+
+      if (!organization) {
+        throw new AdminInsightsError("Organization not found.", 404);
+      }
+
+      const pendingInvites =
+        readGroupedCount(
+          invitationCountsByStatus.find((entry) => entry.status === "PENDING")
+            ?._count
+        );
+      const acceptedInvites =
+        readGroupedCount(
+          invitationCountsByStatus.find((entry) => entry.status === "ACCEPTED")
+            ?._count
+        );
+      const liveSavingCards = readGroupedCount(savingCardMetrics._count);
+      const firstValueAt = savingCardMetrics._min.createdAt ?? null;
+      const lastSavingCardActivityAt = savingCardMetrics._max.updatedAt ?? null;
+
+      return {
+        organization: mapOrganization(organization),
+        metrics: {
+          totalMembers,
+          pendingInvites,
+          invitesSentLast7Days,
+          invitesSentLast30Days,
+          acceptedInvites,
+          liveSavingCards,
+          recentErrorEventsLast7Days:
+            auditInsights.metrics.recentErrorEventsLast7Days,
+          recentCriticalAdminActionsLast7Days:
+            auditInsights.metrics.recentCriticalAdminActionsLast7Days,
+        },
+        signals: {
+          workspaceCreatedAt: organization.createdAt,
+          firstValueReached: firstValueAt !== null,
+          firstValueAt,
+          firstValueSource: firstValueAt ? "saving_card" : null,
+          lastInviteSentAt: latestInvitation._max.createdAt ?? null,
+          lastAcceptedInviteAt: latestAcceptedInvitation._max.updatedAt ?? null,
+          lastSavingCardActivityAt,
+        },
+        recentAdminActions: auditInsights.recentAdminActions,
+        recentCriticalAdminActions: auditInsights.recentCriticalAdminActions,
+      };
+    }
+  );
 }

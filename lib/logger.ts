@@ -1,3 +1,5 @@
+import { resolveAppEnvironment } from "@/lib/env";
+
 export type StructuredLogLevel = "debug" | "info" | "warn" | "error";
 
 export type ObservabilityRuntime = "client" | "server" | "edge" | "unknown";
@@ -48,7 +50,7 @@ const SENSITIVE_KEY_PATTERN =
 const UNSERIALIZABLE_OBJECT_PLACEHOLDER = "[UnserializableObject]";
 
 function getAppEnvironment() {
-  return process.env.APP_ENV?.trim() || process.env.NODE_ENV || "development";
+  return resolveAppEnvironment();
 }
 
 function shouldWriteConsoleLog() {

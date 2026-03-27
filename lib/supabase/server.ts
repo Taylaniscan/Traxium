@@ -4,21 +4,17 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  getSupabaseAnonKey as getEnvSupabaseAnonKey,
+  getSupabaseProjectUrl as getEnvSupabaseProjectUrl,
+  getSupabaseServiceRoleKey as getEnvSupabaseServiceRoleKey,
+} from "@/lib/env";
+
 type CookieToSet = {
   name: string;
   value: string;
   options?: Parameters<Awaited<ReturnType<typeof cookies>>["set"]>[2];
 };
-
-function readRequiredEnv(name: string) {
-  const value = process.env[name]?.trim();
-
-  if (!value) {
-    throw new Error(`Missing ${name}`);
-  }
-
-  return value;
-}
 
 type SupabaseJwtClaims = {
   role?: string;
@@ -69,20 +65,12 @@ function validateSupabaseJwtRole({
 }
 
 function getSupabaseUrl() {
-  const url = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
-
-  try {
-    new URL(url);
-  } catch {
-    throw new Error(`Malformed NEXT_PUBLIC_SUPABASE_URL: ${url}`);
-  }
-
-  return url;
+  return getEnvSupabaseProjectUrl();
 }
 
 function getSupabaseAnonKey() {
   const url = getSupabaseUrl();
-  const key = readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const key = getEnvSupabaseAnonKey();
 
   validateSupabaseJwtRole({
     name: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -95,7 +83,7 @@ function getSupabaseAnonKey() {
 }
 
 function getSupabaseServiceRoleKey() {
-  const key = readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const key = getEnvSupabaseServiceRoleKey();
 
   validateSupabaseJwtRole({
     name: "SUPABASE_SERVICE_ROLE_KEY",

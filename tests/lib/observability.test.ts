@@ -8,6 +8,7 @@ type MockSentryScope = {
   setLevel: ReturnType<typeof vi.fn>;
 };
 
+const enqueueJobMock = vi.hoisted(() => vi.fn());
 const sentryState = vi.hoisted(() => {
   const scope: MockSentryScope = {
     setTag: vi.fn(),
@@ -25,6 +26,18 @@ const sentryState = vi.hoisted(() => {
     scope,
   };
 });
+
+vi.mock("@/lib/jobs", () => ({
+  enqueueJob: enqueueJobMock,
+  jobTypes: {
+    INVITATION_EMAIL_DELIVERY: "auth_email.invitation_delivery",
+    PASSWORD_RECOVERY_EMAIL_DELIVERY: "auth_email.password_recovery_delivery",
+    ANALYTICS_TRACK: "analytics.track",
+    ANALYTICS_IDENTIFY: "analytics.identify",
+    OBSERVABILITY_MESSAGE: "observability.message",
+    OBSERVABILITY_EXCEPTION: "observability.exception",
+  },
+}));
 
 vi.mock("@sentry/nextjs", () => ({
   addBreadcrumb: sentryState.addBreadcrumb,
@@ -48,6 +61,7 @@ import { sanitizeForLog } from "@/lib/logger";
 import {
   buildSentryInitOptions,
   captureException,
+  captureMessage,
   getObservabilityRequestContext,
   trackServerEvent,
 } from "@/lib/observability";
@@ -57,18 +71,21 @@ describe("lib/observability", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalAppEnv = process.env.APP_ENV;
   const originalSentryDsn = process.env.SENTRY_DSN;
+  const originalJobWorker = process.env.JOB_WORKER;
 
   beforeEach(() => {
     vi.clearAllMocks();
     env.NODE_ENV = "test";
     env.APP_ENV = "test";
     env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
+    delete env.JOB_WORKER;
   });
 
   afterEach(() => {
     env.NODE_ENV = originalNodeEnv;
     env.APP_ENV = originalAppEnv;
     env.SENTRY_DSN = originalSentryDsn;
+    env.JOB_WORKER = originalJobWorker;
   });
 
   it("masks sensitive fields before logging or sending events", () => {
@@ -144,7 +161,42 @@ describe("lib/observability", () => {
     );
   });
 
-  it("fails open when the underlying observability transport throws", () => {
+  it("queues server-side exceptions and messages instead of sending them inline", () => {
+    captureMessage(
+      "Background telemetry queued.",
+      {
+        event: "telemetry.background.started",
+        organizationId: "org-1",
+        userId: "user-1",
+      },
+      "info"
+    );
+    captureException(new Error("Database connection dropped."), {
+      event: "api.database.failed",
+      organizationId: "org-1",
+      userId: "user-1",
+      requestId: "req-456",
+      status: 500,
+    });
+
+    expect(enqueueJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "observability.message",
+        organizationId: "org-1",
+      })
+    );
+    expect(enqueueJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "observability.exception",
+        organizationId: "org-1",
+      })
+    );
+    expect(sentryState.captureMessage).not.toHaveBeenCalled();
+    expect(sentryState.captureException).not.toHaveBeenCalled();
+  });
+
+  it("fails open when the underlying client observability transport throws", () => {
+    env.JOB_WORKER = "true";
     sentryState.captureException.mockImplementationOnce(() => {
       throw new Error("Sentry transport failed.");
     });
@@ -152,6 +204,7 @@ describe("lib/observability", () => {
     expect(() =>
       captureException(new Error("Database connection dropped."), {
         event: "api.database.failed",
+        runtime: "client",
         organizationId: "org-1",
         userId: "user-1",
         requestId: "req-456",

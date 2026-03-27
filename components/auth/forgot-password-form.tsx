@@ -22,11 +22,20 @@ type ForgotPasswordErrorPayload = {
 type ForgotPasswordSuccessPayload = {
   success: true;
   delivery?: {
-    transport?: "supabase-auth" | "generated-link";
+    transport?:
+      | "supabase-auth"
+      | "generated-link"
+      | "job-queued"
+      | "queue-unavailable";
     requiresManualDelivery?: boolean;
+    state?: "queued" | "unavailable";
+    jobId?: string;
   };
   developmentRecoveryLink?: string;
 };
+
+type ForgotPasswordDeliveryTransport =
+  NonNullable<ForgotPasswordSuccessPayload["delivery"]>["transport"];
 
 function resolvePrefilledEmail(value: string | null) {
   return value?.trim() ?? "";
@@ -41,12 +50,15 @@ export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [developmentRecoveryLink, setDevelopmentRecoveryLink] = useState<string | null>(null);
+  const [deliveryTransport, setDeliveryTransport] =
+    useState<ForgotPasswordDeliveryTransport | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
     setDevelopmentRecoveryLink(null);
+    setDeliveryTransport(null);
 
     try {
       const response = await fetch("/api/auth/forgot-password", {
@@ -68,6 +80,7 @@ export function ForgotPasswordForm() {
 
       const payload = (await response.json()) as ForgotPasswordSuccessPayload;
       setDevelopmentRecoveryLink(payload.developmentRecoveryLink ?? null);
+      setDeliveryTransport(payload.delivery?.transport ?? null);
       setSent(true);
       setLoading(false);
     } catch (forgotPasswordError) {
@@ -95,7 +108,9 @@ export function ForgotPasswordForm() {
             <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
               {developmentRecoveryLink
                 ? "Supabase hosted email delivery is unavailable right now. Use the secure recovery link below."
-                : "Password reset email sent. Check your inbox for the secure reset link."}
+                : deliveryTransport === "queue-unavailable"
+                  ? "Password recovery request was accepted. Delivery is temporarily delayed; try again shortly if no email arrives."
+                  : "Password recovery queued. If the account exists, the reset email will arrive shortly."}
             </div>
           ) : null}
 

@@ -5,6 +5,11 @@ import {
   getPasswordConfirmationError,
   getPasswordValidationError,
 } from "@/lib/passwords";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const resetPasswordSchema = z.object({
@@ -29,6 +34,11 @@ async function readJsonBody(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await enforceRateLimit({
+      policy: "resetPassword",
+      request,
+    });
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -82,6 +92,10 @@ export async function POST(request: Request) {
         error.issues[0]?.message ?? "Reset password payload is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
     }
 
     return jsonError(

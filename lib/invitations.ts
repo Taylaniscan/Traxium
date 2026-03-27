@@ -9,19 +9,17 @@ import type {
 import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import {
-  generateInvitationActionLink,
-  isAuthEmailFallbackEligibleError,
+  deliverOrganizationInvitationEmail,
+  queueInvitationEmailJobSafely,
+  type HostedInvitationDeliveryResult,
+  type QueueUnavailableDeliveryResult,
+  type QueuedDeliveryResult,
 } from "@/lib/auth-email";
-import { buildAppUrl } from "@/lib/app-url";
 import {
   canAssignOrganizationRole,
   canManageOrganizationMembers,
 } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
-import {
-  createSupabaseAdminClient,
-  createSupabasePublicClient,
-} from "@/lib/supabase/server";
 import { buildTenantScopeWhere } from "@/lib/tenant-scope";
 import {
   organizationInvitationSelect,
@@ -54,13 +52,10 @@ export type InvitationAcceptanceResult = {
   activeOrganizationId: string;
 };
 
-export type InvitationDeliveryResult = {
-  channel: "invite" | "magic_link";
-  redirectTo: string;
-  transport: "supabase-auth" | "generated-link";
-  actionLink?: string;
-  requiresManualDelivery?: boolean;
-};
+export type InvitationDeliveryResult =
+  | HostedInvitationDeliveryResult
+  | QueuedDeliveryResult
+  | QueueUnavailableDeliveryResult;
 
 export type InvitationCreationResult = {
   invitation: OrganizationInvitationRecord;
@@ -111,129 +106,6 @@ function formatInvitationRoleLabel(role: OrganizationRole) {
     .join(" ");
 }
 
-function buildInvitationRedirectTo(
-  invitation: Pick<OrganizationInvitationRecord, "token">,
-  mode: "setup" | "accept"
-) {
-  return buildAppUrl(`/invite/${invitation.token}?mode=${mode}`);
-}
-
-function buildInvitationMetadata(
-  invitation: Pick<
-    OrganizationInvitationRecord,
-    "email" | "expiresAt" | "role" | "token"
-  > & {
-    organization: Pick<OrganizationInvitationRecord["organization"], "name" | "slug">;
-  }
-) {
-  return {
-    invitation_email: invitation.email,
-    invitation_role: invitation.role,
-    invitation_role_label: formatInvitationRoleLabel(invitation.role),
-    invitation_expires_at: invitation.expiresAt.toISOString(),
-    invitation_workspace_name: invitation.organization.name,
-    invitation_workspace_slug: invitation.organization.slug,
-    invitation_token: invitation.token,
-  };
-}
-
-function isExistingAuthUserErrorMessage(message: string) {
-  return /already\s+(registered|exists|been\s+registered)/iu.test(message);
-}
-
-async function deliverOrganizationInvitationEmail(
-  invitation: OrganizationInvitationRecord
-): Promise<InvitationDeliveryResult> {
-  const invitationMetadata = buildInvitationMetadata(invitation);
-  const setupRedirectTo = buildInvitationRedirectTo(invitation, "setup");
-  const acceptRedirectTo = buildInvitationRedirectTo(invitation, "accept");
-  const supabaseAdmin = createSupabaseAdminClient();
-
-  async function createGeneratedDelivery(input: {
-    channel: "invite" | "magic_link";
-    type: "invite" | "magiclink";
-    redirectTo: string;
-    data?: object;
-  }): Promise<InvitationDeliveryResult> {
-    const generatedLink = await generateInvitationActionLink({
-      type: input.type,
-      email: invitation.email,
-      redirectTo: input.redirectTo,
-      data: input.data,
-    });
-
-    return {
-      channel: input.channel,
-      redirectTo: input.redirectTo,
-      transport: "generated-link",
-      actionLink: generatedLink.actionLink,
-      requiresManualDelivery: true,
-    };
-  }
-
-  const inviteResponse = await supabaseAdmin.auth.admin.inviteUserByEmail(
-    invitation.email,
-    {
-      redirectTo: setupRedirectTo,
-      data: invitationMetadata,
-    }
-  );
-
-  if (!inviteResponse.error) {
-    return {
-      channel: "invite",
-      redirectTo: setupRedirectTo,
-      transport: "supabase-auth",
-    };
-  }
-
-  if (isAuthEmailFallbackEligibleError(inviteResponse.error.message)) {
-    return createGeneratedDelivery({
-      channel: "invite",
-      type: "invite",
-      redirectTo: setupRedirectTo,
-      data: invitationMetadata,
-    });
-  }
-
-  if (!isExistingAuthUserErrorMessage(inviteResponse.error.message)) {
-    throw new InvitationError(
-      `Invitation email could not be sent: ${inviteResponse.error.message}`,
-      422
-    );
-  }
-
-  const supabasePublic = createSupabasePublicClient();
-  const magicLinkResponse = await supabasePublic.auth.signInWithOtp({
-    email: invitation.email,
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: acceptRedirectTo,
-    },
-  });
-
-  if (magicLinkResponse.error) {
-    if (isAuthEmailFallbackEligibleError(magicLinkResponse.error.message)) {
-      return createGeneratedDelivery({
-        channel: "magic_link",
-        type: "magiclink",
-        redirectTo: acceptRedirectTo,
-      });
-    }
-
-    throw new InvitationError(
-      `Invitation email could not be sent: ${magicLinkResponse.error.message}`,
-      422
-    );
-  }
-
-  return {
-    channel: "magic_link",
-    redirectTo: acceptRedirectTo,
-    transport: "supabase-auth",
-  };
-}
-
 function isExpiredInvitation(invitation: Pick<OrganizationInvitationRecord, "status" | "expiresAt">) {
   return (
     invitation.status === INVITATION_STATUS_PENDING &&
@@ -254,6 +126,32 @@ function assertInvitationManagementAccess(
   if (!canAssignOrganizationRole(actorRole, targetRole)) {
     throw new InvitationError("Forbidden.", 403);
   }
+}
+
+function buildInvitationDeliveryQueueIdempotencyKey(
+  invitation: Pick<OrganizationInvitationRecord, "id" | "updatedAt">,
+  sendKind: "created" | "resent"
+) {
+  return [
+    "invitation-delivery",
+    invitation.id,
+    sendKind,
+    invitation.updatedAt.toISOString(),
+  ].join(":");
+}
+
+function getDeliveryChannelForPayload(delivery: InvitationDeliveryResult) {
+  return "channel" in delivery ? delivery.channel : null;
+}
+
+function getDeliveryTransportForPayload(delivery: InvitationDeliveryResult) {
+  return delivery.transport;
+}
+
+function getManualDeliveryFlag(delivery: InvitationDeliveryResult) {
+  return "requiresManualDelivery" in delivery
+    ? delivery.requiresManualDelivery ?? false
+    : false;
 }
 
 async function expirePendingInvitations(
@@ -378,9 +276,13 @@ export async function createOrganizationInvitation(
   input: {
     email: string;
     role: OrganizationRole;
-  }
+  },
+  options: {
+    deliveryMode?: "sync" | "async";
+  } = {}
 ): Promise<InvitationCreationResult> {
   const email = normalizeInvitationEmail(input.email);
+  const deliveryMode = options.deliveryMode ?? "sync";
   assertInvitationManagementAccess(actor, input.role);
 
   const invitation = await prisma.$transaction(async (tx) => {
@@ -428,7 +330,17 @@ export async function createOrganizationInvitation(
     });
   });
 
-  const delivery = await deliverOrganizationInvitationEmail(invitation);
+  const delivery =
+    deliveryMode === "async"
+      ? await queueInvitationEmailJobSafely({
+          invitationId: invitation.id,
+          organizationId: actor.organizationId,
+          idempotencyKey: buildInvitationDeliveryQueueIdempotencyKey(
+            invitation,
+            "created"
+          ),
+        })
+      : await deliverOrganizationInvitationEmail(invitation);
 
   await writeAuditEvent(prisma, {
     organizationId: actor.organizationId,
@@ -438,9 +350,9 @@ export async function createOrganizationInvitation(
     detail: `Created a ${formatInvitationRoleLabel(invitation.role)} invitation.`,
     payload: {
       invitationRole: invitation.role,
-      deliveryChannel: delivery.channel,
-      deliveryTransport: delivery.transport,
-      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      deliveryChannel: getDeliveryChannelForPayload(delivery),
+      deliveryTransport: getDeliveryTransportForPayload(delivery),
+      requiresManualDelivery: getManualDeliveryFlag(delivery),
     },
   });
 
@@ -451,9 +363,9 @@ export async function createOrganizationInvitation(
     properties: {
       invitationId: invitation.id,
       invitationRole: invitation.role,
-      deliveryChannel: delivery.channel,
-      deliveryTransport: delivery.transport,
-      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      deliveryChannel: getDeliveryChannelForPayload(delivery),
+      deliveryTransport: getDeliveryTransportForPayload(delivery),
+      requiresManualDelivery: getManualDeliveryFlag(delivery),
       sendKind: "created",
     },
   });
@@ -543,9 +455,12 @@ export async function revokeOrganizationInvitation(input: {
 export async function resendOrganizationInvitation(input: {
   actor: AuthenticatedUser;
   invitationId: string;
-}): Promise<InvitationResendResult> {
+}, options: {
+  deliveryMode?: "sync" | "async";
+} = {}): Promise<InvitationResendResult> {
   const invitationId = input.invitationId.trim();
   const organizationId = input.actor.activeOrganization.organizationId;
+  const deliveryMode = options.deliveryMode ?? "sync";
 
   if (!invitationId) {
     throw new InvitationError("Invitation id is required.", 422);
@@ -599,7 +514,17 @@ export async function resendOrganizationInvitation(input: {
     });
   });
 
-  const delivery = await deliverOrganizationInvitationEmail(invitation);
+  const delivery =
+    deliveryMode === "async"
+      ? await queueInvitationEmailJobSafely({
+          invitationId: invitation.id,
+          organizationId,
+          idempotencyKey: buildInvitationDeliveryQueueIdempotencyKey(
+            invitation,
+            "resent"
+          ),
+        })
+      : await deliverOrganizationInvitationEmail(invitation);
 
   await writeAuditEvent(prisma, {
     organizationId,
@@ -609,9 +534,9 @@ export async function resendOrganizationInvitation(input: {
     detail: "Resent a workspace invitation.",
     payload: {
       invitationRole: invitation.role,
-      deliveryChannel: delivery.channel,
-      deliveryTransport: delivery.transport,
-      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      deliveryChannel: getDeliveryChannelForPayload(delivery),
+      deliveryTransport: getDeliveryTransportForPayload(delivery),
+      requiresManualDelivery: getManualDeliveryFlag(delivery),
     },
   });
 
@@ -622,9 +547,9 @@ export async function resendOrganizationInvitation(input: {
     properties: {
       invitationId: invitation.id,
       invitationRole: invitation.role,
-      deliveryChannel: delivery.channel,
-      deliveryTransport: delivery.transport,
-      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      deliveryChannel: getDeliveryChannelForPayload(delivery),
+      deliveryTransport: getDeliveryTransportForPayload(delivery),
+      requiresManualDelivery: getManualDeliveryFlag(delivery),
       sendKind: "resent",
     },
   });

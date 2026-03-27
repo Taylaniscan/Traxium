@@ -1,9 +1,22 @@
+import { UsageFeature, UsageWindow } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { createAuthGuardErrorResponse, requirePermission } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
+import {
+  enforceUsageQuota,
+  recordUsageEvent,
+  UsageQuotaExceededError,
+} from "@/lib/usage";
 import { savingCardSchema } from "@/lib/validation";
+
+const IMPORT_QUOTA_WINDOW = UsageWindow.MONTH;
 
 function normalizeRow(
   row: Record<string, unknown>,
@@ -57,6 +70,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    await enforceRateLimit({
+      policy: "bulkImport",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+    });
+
     let formData: FormData;
 
     try {
@@ -131,7 +151,28 @@ export async function POST(request: Request) {
       }
     }
 
+    await enforceUsageQuota({
+      organizationId: user.organizationId,
+      feature: UsageFeature.SAVING_CARDS,
+      window: IMPORT_QUOTA_WINDOW,
+      requestedQuantity: normalized.length,
+      message: "This import would exceed the saving card quota for the current period.",
+    });
+
     await importSavingCards(normalized, user.id, user.organizationId);
+
+    await recordUsageEvent({
+      organizationId: user.organizationId,
+      feature: UsageFeature.SAVING_CARDS,
+      quantity: normalized.length,
+      window: IMPORT_QUOTA_WINDOW,
+      source: "api.saving_cards.import",
+      reason: "xlsx_import",
+      metadata: {
+        importedCount: normalized.length,
+        actorUserId: user.id,
+      },
+    });
 
     return NextResponse.json({ count: normalized.length });
   } catch (error) {
@@ -140,6 +181,14 @@ export async function POST(request: Request) {
         { error: error.issues[0]?.message ?? "Import payload is invalid." },
         { status: 422 }
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
+    if (error instanceof UsageQuotaExceededError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
     return NextResponse.json(

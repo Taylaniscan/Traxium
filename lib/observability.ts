@@ -1,15 +1,23 @@
 import * as Sentry from "@sentry/nextjs";
 
 import {
+  getSentryDsnForRuntime,
+  isDevelopmentEnvironment,
+  isJobWorkerProcess,
+  resolveAppEnvironment,
+} from "@/lib/env";
+import {
   getRequestLogContext,
   resolveObservabilityRuntime,
   sanitizeForLog,
+  serializeErrorForLog,
   writeStructuredLog,
   type ObservabilityRuntime,
   type RequestLogContext,
   type StructuredLogEntry,
   type StructuredLogLevel,
 } from "@/lib/logger";
+import { enqueueJob, jobTypes } from "@/lib/jobs";
 
 export type ObservabilityContext = {
   event: string;
@@ -26,20 +34,23 @@ export type ObservabilityContext = {
   fingerprint?: string[];
 };
 
+type ObservabilityMessageJobPayload = {
+  message: string;
+  context: ObservabilityContext;
+  level: StructuredLogLevel;
+};
+
+type ObservabilityExceptionJobPayload = {
+  error: ReturnType<typeof serializeErrorForLog>;
+  context: ObservabilityContext;
+};
+
 function getAppEnvironment() {
-  return process.env.APP_ENV?.trim() || process.env.NODE_ENV || "development";
+  return resolveAppEnvironment();
 }
 
 function getSentryDsn(runtime: ObservabilityRuntime) {
-  if (runtime === "client") {
-    return process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() || "";
-  }
-
-  return (
-    process.env.SENTRY_DSN?.trim() ||
-    process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() ||
-    ""
-  );
+  return getSentryDsnForRuntime(runtime);
 }
 
 function resolveContextRuntime(context?: ObservabilityContext) {
@@ -48,6 +59,10 @@ function resolveContextRuntime(context?: ObservabilityContext) {
 
 function isSentryEnabled(runtime: ObservabilityRuntime) {
   return Boolean(getSentryDsn(runtime));
+}
+
+function shouldQueueObservability(runtime: ObservabilityRuntime) {
+  return runtime === "server" && !isJobWorkerProcess();
 }
 
 function toSentryLevel(level: StructuredLogLevel) {
@@ -184,6 +199,32 @@ export function trackClientEvent(
   );
 }
 
+function dispatchSentryMessage(
+  message: string,
+  context: ObservabilityContext,
+  level: StructuredLogLevel
+) {
+  safeSentryCall(() => {
+    Sentry.withScope((scope) => {
+      applyScope(scope, context);
+      scope.setLevel(toSentryLevel(level));
+      Sentry.captureMessage(message);
+    });
+  });
+}
+
+function dispatchSentryException(
+  error: unknown,
+  context: ObservabilityContext
+) {
+  safeSentryCall(() => {
+    Sentry.withScope((scope) => {
+      applyScope(scope, context);
+      Sentry.captureException(error);
+    });
+  });
+}
+
 export function captureMessage(
   message: string,
   context: Omit<ObservabilityContext, "message">,
@@ -207,18 +248,45 @@ export function captureMessage(
     return entry;
   }
 
-  safeSentryCall(() => {
-    Sentry.withScope((scope) => {
-      applyScope(scope, {
-        ...context,
-        message,
-        requestId: context.requestId ?? entry.requestId,
+  const sentryContext = {
+    ...context,
+    message,
+    requestId: context.requestId ?? entry.requestId,
+    runtime,
+  };
+
+  if (shouldQueueObservability(runtime)) {
+    void Promise.resolve(
+      enqueueJob({
+        type: jobTypes.OBSERVABILITY_MESSAGE,
+        organizationId: sentryContext.organizationId,
+        payload: {
+          message,
+          context: sentryContext,
+          level,
+        } satisfies ObservabilityMessageJobPayload,
+      })
+    ).catch((error) => {
+      writeStructuredLog("warn", {
+        event: "observability.enqueue.failed",
         runtime,
+        organizationId: sentryContext.organizationId,
+        userId: sentryContext.userId,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Observability message could not be queued.",
+        payload: {
+          observabilityEvent: sentryContext.event,
+          kind: "message",
+        },
       });
-      scope.setLevel(toSentryLevel(level));
-      Sentry.captureMessage(message);
     });
-  });
+
+    return entry;
+  }
+
+  dispatchSentryMessage(message, sentryContext, level);
 
   return entry;
 }
@@ -244,24 +312,88 @@ export function captureException(
     return entry;
   }
 
-  safeSentryCall(() => {
-    Sentry.withScope((scope) => {
-      applyScope(scope, {
-        ...context,
-        requestId: context.requestId ?? entry.requestId,
+  const sentryContext = {
+    ...context,
+    requestId: context.requestId ?? entry.requestId,
+    runtime,
+  };
+
+  if (shouldQueueObservability(runtime)) {
+    void Promise.resolve(
+      enqueueJob({
+        type: jobTypes.OBSERVABILITY_EXCEPTION,
+        organizationId: sentryContext.organizationId,
+        payload: {
+          error: serializeErrorForLog(error),
+          context: sentryContext,
+        } satisfies ObservabilityExceptionJobPayload,
+      })
+    ).catch((enqueueError) => {
+      writeStructuredLog("warn", {
+        event: "observability.enqueue.failed",
         runtime,
+        organizationId: sentryContext.organizationId,
+        userId: sentryContext.userId,
+        message:
+          enqueueError instanceof Error
+            ? enqueueError.message
+            : "Observability exception could not be queued.",
+        payload: {
+          observabilityEvent: sentryContext.event,
+          kind: "exception",
+        },
       });
-      Sentry.captureException(error);
     });
-  });
+
+    return entry;
+  }
+
+  dispatchSentryException(error, sentryContext);
 
   return entry;
 }
 
+function buildErrorFromJobPayload(
+  payload: ReturnType<typeof serializeErrorForLog>
+) {
+  const error = new Error(payload.message);
+  error.name = payload.name;
+
+  if (payload.stack) {
+    error.stack = payload.stack;
+  }
+
+  return error;
+}
+
+export async function processObservabilityMessageJob({
+  job,
+}: {
+  job: {
+    payload: unknown;
+  };
+}) {
+  const payload = job.payload as ObservabilityMessageJobPayload;
+  dispatchSentryMessage(payload.message, payload.context, payload.level);
+}
+
+export async function processObservabilityExceptionJob({
+  job,
+}: {
+  job: {
+    payload: unknown;
+  };
+}) {
+  const payload = job.payload as ObservabilityExceptionJobPayload;
+  dispatchSentryException(
+    buildErrorFromJobPayload(payload.error),
+    payload.context
+  );
+}
+
 export function buildSentryInitOptions(runtime: ObservabilityRuntime) {
   const dsn = getSentryDsn(runtime);
-  const tracesSampleRate =
-    process.env.NODE_ENV === "development" ? 1 : 0.2;
+  const tracesSampleRate = isDevelopmentEnvironment() ? 1 : 0.2;
 
   const options: Sentry.BrowserOptions | Sentry.NodeOptions | Sentry.EdgeOptions = {
     dsn,
