@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/observability";
 
 type GlobalErrorProps = {
   error: Error & {
@@ -11,7 +12,13 @@ type GlobalErrorProps = {
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
-    console.error(error);
+    captureException(error, {
+      event: "app.global_error",
+      runtime: "client",
+      payload: {
+        digest: error.digest ?? null,
+      },
+    });
   }, [error]);
 
   return (

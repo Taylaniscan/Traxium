@@ -1,16 +1,11 @@
 import Link from "next/link";
 
-import { InvitationAcceptancePanel } from "@/components/invitations/invitation-acceptance-panel";
+import { InvitationFlow } from "@/components/invitations/invitation-flow";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWorkspaceOnboardingState } from "@/lib/auth";
 import { getInvitationByToken, getInvitationReadError } from "@/lib/invitations";
 
-function normalizeEmail(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function buildInviteLoginHref(token: string) {
-  return `/login?next=${encodeURIComponent(`/invite/${token}`)}`;
+function buildInviteLoginHref(token: string, email: string) {
+  return `/login?next=${encodeURIComponent(`/invite/${token}?mode=accept`)}&email=${encodeURIComponent(email)}&message=invite-sign-in`;
 }
 
 function formatRoleLabel(role: string) {
@@ -29,13 +24,23 @@ function formatDateLabel(value: Date) {
 }
 
 export default async function InvitePage(
-  { params }: { params: Promise<{ token: string }> }
+  {
+    params,
+    searchParams,
+  }: {
+    params: Promise<{ token: string }>;
+    searchParams: Promise<{ mode?: string | string[] }>;
+  }
 ) {
   const { token } = await params;
-  const [invitation, authState] = await Promise.all([
-    getInvitationByToken(token),
-    getWorkspaceOnboardingState(),
-  ]);
+  const { mode } = await searchParams;
+  const invitation = await getInvitationByToken(token);
+  const nextMode =
+    mode === "setup" || mode === "accept"
+      ? mode
+      : Array.isArray(mode) && (mode[0] === "setup" || mode[0] === "accept")
+        ? mode[0]
+        : "setup";
 
   if (!invitation) {
     return (
@@ -53,13 +58,7 @@ export default async function InvitePage(
   }
 
   const invitationError = getInvitationReadError(invitation);
-  const signedInEmail = authState.ok ? authState.user.email : null;
-  const emailsMatch =
-    signedInEmail !== null &&
-    normalizeEmail(signedInEmail) === normalizeEmail(invitation.email);
-  const loginHref = buildInviteLoginHref(token);
-  const canShowAcceptancePanel =
-    !invitationError && (authState.ok || authState.code === "UNAUTHENTICATED");
+  const loginHref = buildInviteLoginHref(token, invitation.email);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
@@ -94,12 +93,6 @@ export default async function InvitePage(
             </div>
           </dl>
 
-          {authState.ok ? null : authState.code === "UNAUTHENTICATED" ? null : (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              {authState.message}
-            </div>
-          )}
-
           {invitationError ? (
             <div className="space-y-4">
               <div className="rounded-md border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
@@ -107,22 +100,31 @@ export default async function InvitePage(
               </div>
 
               <Link
-                href="/dashboard"
+                href={invitationError.status === 409 ? "/dashboard" : loginHref}
                 className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
               >
-                Go to dashboard
+                {invitationError.status === 409 ? "Go to dashboard" : "Go to sign in"}
               </Link>
             </div>
-          ) : canShowAcceptancePanel ? (
-            <InvitationAcceptancePanel
-              token={token}
-              invitationEmail={invitation.email}
-              signedInEmail={signedInEmail}
-              canAccept={authState.ok && emailsMatch}
-              loginHref={loginHref}
-            />
           ) : null
           }
+
+          {!invitationError ? (
+            <InvitationFlow
+              token={token}
+              mode={nextMode}
+              invitation={{
+                id: invitation.id,
+                email: invitation.email,
+                role: invitation.role,
+                status: invitation.status,
+                expiresAt: invitation.expiresAt.toISOString(),
+                organization: invitation.organization,
+                invitedBy: invitation.invitedBy,
+              }}
+              loginHref={loginHref}
+            />
+          ) : null}
         </CardContent>
       </Card>
     </main>

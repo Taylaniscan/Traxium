@@ -13,9 +13,17 @@ import {
 
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
+const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
+const createSupabasePublicClientMock = vi.hoisted(() => vi.fn());
+const inviteUserByEmailMock = vi.hoisted(() => vi.fn());
+const generateLinkMock = vi.hoisted(() => vi.fn());
+const signInWithOtpMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
+  auditLog: {
+    create: vi.fn(),
+  },
   invitation: {
     findUnique: vi.fn(),
     update: vi.fn(),
@@ -29,6 +37,11 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock,
+  createSupabasePublicClient: createSupabasePublicClientMock,
 }));
 
 import { GET as getInvitationByTokenRoute } from "@/app/api/invitations/[token]/route";
@@ -92,6 +105,7 @@ describe("invitations routes", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-24T12:00:00.000Z"));
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
     tx = createInvitationTransactionMock();
 
     requireOrganizationMock.mockResolvedValue(
@@ -115,13 +129,49 @@ describe("invitations routes", () => {
       const transactionCallback = callback as (client: typeof tx) => Promise<unknown>;
       return transactionCallback(tx);
     });
+    inviteUserByEmailMock.mockResolvedValue({
+      data: { user: { id: "auth-user-1" } },
+      error: null,
+    });
+    signInWithOtpMock.mockResolvedValue({
+      data: { user: null, session: null },
+      error: null,
+    });
+    createSupabaseAdminClientMock.mockReturnValue({
+      auth: {
+        admin: {
+          generateLink: generateLinkMock,
+          inviteUserByEmail: inviteUserByEmailMock,
+        },
+      },
+    });
+    createSupabasePublicClientMock.mockReturnValue({
+      auth: {
+        signInWithOtp: signInWithOtpMock,
+      },
+    });
+    generateLinkMock.mockResolvedValue({
+      data: {
+        properties: {
+          action_link: "https://kdsfmmwmpdhtezwdqbnk.supabase.co/auth/v1/verify?type=invite&token=generated",
+          email_otp: "123456",
+          hashed_token: "hashed-token",
+          redirect_to: "http://localhost:3000/invite/token-123?mode=setup",
+          verification_type: "invite",
+        },
+        user: {
+          id: "auth-user-1",
+        },
+      },
+      error: null,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("allows an organization admin to create an invitation", async () => {
+  it("creates an invitation and sends a real invite email through Supabase Auth", async () => {
     const createdInvitation = createInvitationRecord();
 
     tx.invitation.updateMany
@@ -167,18 +217,146 @@ describe("invitations routes", () => {
           email: "admin@example.com",
         },
       },
+      delivery: {
+        channel: "invite",
+        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
+        transport: "supabase-auth",
+      },
     });
-    expect(tx.invitation.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(inviteUserByEmailMock).toHaveBeenCalledWith("new.user@example.com", {
+      redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
+      data: {
+        invitation_email: "new.user@example.com",
+        invitation_role: OrganizationRole.MEMBER,
+        invitation_role_label: "Member",
+        invitation_expires_at: "2026-03-31T12:00:00.000Z",
+        invitation_workspace_name: "Atlas Procurement",
+        invitation_workspace_slug: "atlas-procurement",
+        invitation_token: "token-123",
+      },
+    });
+    expect(signInWithOtpMock).not.toHaveBeenCalled();
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: {
         organizationId: DEFAULT_ORGANIZATION_ID,
-        email: "new.user@example.com",
-        role: OrganizationRole.MEMBER,
-        token: expect.any(String),
-        status: InvitationStatus.PENDING,
-        invitedByUserId: DEFAULT_USER_ID,
-      }),
-      select: expect.any(Object),
+        userId: DEFAULT_USER_ID,
+        actorUserId: DEFAULT_USER_ID,
+        targetUserId: null,
+        targetEntityId: "invite-1",
+        eventType: "invite.created",
+        action: "invite.created",
+        detail: "Created a Member invitation.",
+        payload: {
+          invitationRole: OrganizationRole.MEMBER,
+          deliveryChannel: "invite",
+          deliveryTransport: "supabase-auth",
+          requiresManualDelivery: false,
+        },
+      },
     });
+  });
+
+  it("falls back to an invite acceptance magic link when the invited email already has an auth account", async () => {
+    const createdInvitation = createInvitationRecord();
+
+    tx.invitation.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+    tx.user.findFirst.mockResolvedValueOnce(null);
+    tx.invitation.create.mockResolvedValueOnce(createdInvitation);
+    inviteUserByEmailMock.mockResolvedValueOnce({
+      data: { user: null },
+      error: {
+        message: "A user has already been registered with this email address.",
+      },
+    });
+
+    const response = await createInvitationRoute(
+      new Request("http://localhost/api/invitations", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "new.user@example.com",
+          role: "MEMBER",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      delivery: {
+        channel: "magic_link",
+        redirectTo: "http://localhost:3000/invite/token-123?mode=accept",
+        transport: "supabase-auth",
+      },
+    });
+    expect(signInWithOtpMock).toHaveBeenCalledWith({
+      email: "new.user@example.com",
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: "http://localhost:3000/invite/token-123?mode=accept",
+      },
+    });
+  });
+
+  it("falls back to a generated invite action link when Supabase hosted email delivery is rate limited", async () => {
+    const createdInvitation = createInvitationRecord();
+
+    tx.invitation.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+    tx.user.findFirst.mockResolvedValueOnce(null);
+    tx.invitation.create.mockResolvedValueOnce(createdInvitation);
+    inviteUserByEmailMock.mockResolvedValueOnce({
+      data: { user: null },
+      error: {
+        message: "Email rate limit exceeded",
+      },
+    });
+
+    const response = await createInvitationRoute(
+      new Request("http://localhost/api/invitations", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "new.user@example.com",
+          role: "MEMBER",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      delivery: {
+        channel: "invite",
+        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
+        transport: "generated-link",
+        actionLink:
+          "https://kdsfmmwmpdhtezwdqbnk.supabase.co/auth/v1/verify?type=invite&token=generated",
+        requiresManualDelivery: true,
+      },
+    });
+    expect(generateLinkMock).toHaveBeenCalledWith({
+      type: "invite",
+      email: "new.user@example.com",
+      options: {
+        redirectTo: "http://localhost:3000/invite/token-123?mode=setup",
+        data: {
+          invitation_email: "new.user@example.com",
+          invitation_role: OrganizationRole.MEMBER,
+          invitation_role_label: "Member",
+          invitation_expires_at: "2026-03-31T12:00:00.000Z",
+          invitation_workspace_name: "Atlas Procurement",
+          invitation_workspace_slug: "atlas-procurement",
+          invitation_token: "token-123",
+        },
+      },
+    });
+    expect(signInWithOtpMock).not.toHaveBeenCalled();
   });
 
   it("prevents a normal member from creating an invitation", async () => {

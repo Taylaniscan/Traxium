@@ -11,6 +11,10 @@ vi.mock("@/lib/auth", () => ({
 import { POST } from "@/app/api/auth/bootstrap/route";
 
 describe("auth bootstrap route", () => {
+  const request = new Request("http://localhost/api/auth/bootstrap", {
+    method: "POST",
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -22,7 +26,7 @@ describe("auth bootstrap route", () => {
       message: "Authenticated session is required.",
     });
 
-    const response = await POST();
+    const response = await POST(request);
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
@@ -31,21 +35,21 @@ describe("auth bootstrap route", () => {
     });
   });
 
-  it("returns 403 when the authenticated account is not provisioned in Traxium", async () => {
+  it("returns 403 when the authenticated account should continue into workspace onboarding", async () => {
     bootstrapCurrentUserMock.mockResolvedValueOnce({
       ok: false,
-      code: "USER_NOT_PROVISIONED",
+      code: "ORGANIZATION_ACCESS_REQUIRED",
       message:
-        "Your account is authenticated, but no Traxium workspace user is provisioned for this email.",
+        "Your account is authenticated but does not yet belong to a Traxium workspace.",
     });
 
-    const response = await POST();
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "Your account is authenticated, but no Traxium workspace user is provisioned for this email.",
-      code: "USER_NOT_PROVISIONED",
+        "Your account is authenticated but does not yet belong to a Traxium workspace.",
+      code: "ORGANIZATION_ACCESS_REQUIRED",
     });
   });
 
@@ -56,7 +60,7 @@ describe("auth bootstrap route", () => {
       message: "Your account is not an active member of any Traxium organization.",
     });
 
-    const response = await POST();
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -72,7 +76,7 @@ describe("auth bootstrap route", () => {
       user: createSessionUser(),
     });
 
-    const response = await POST();
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -84,7 +88,7 @@ describe("auth bootstrap route", () => {
   it("returns 500 JSON when bootstrap throws unexpectedly", async () => {
     bootstrapCurrentUserMock.mockRejectedValueOnce(new Error("Missing User.activeOrganizationId column"));
 
-    const response = await POST();
+    const response = await POST(request);
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({

@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  captureException,
+  trackClientEvent,
+} from "@/lib/observability";
 
 type WorkspaceOnboardingFormProps = {
   userName: string;
@@ -22,9 +26,16 @@ export function WorkspaceOnboardingForm({
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const submissionInFlightRef = useRef(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (submissionInFlightRef.current) {
+      return;
+    }
+
+    submissionInFlightRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -41,22 +52,46 @@ export function WorkspaceOnboardingForm({
         const payload = (await response.json().catch(() => null)) as WorkspaceOnboardingErrorPayload | null;
 
         if (response.status === 409) {
+          trackClientEvent(
+            {
+              event: "onboarding.workspace.conflict",
+              message: payload?.error ?? "Workspace already exists.",
+            },
+            "warn"
+          );
           window.location.assign("/dashboard");
           return;
         }
 
+        trackClientEvent(
+          {
+            event: "onboarding.workspace.rejected",
+            message: payload?.error ?? "Workspace could not be created.",
+            payload: {
+              code: payload?.code ?? null,
+              status: response.status,
+            },
+          },
+          "warn"
+        );
         setError(payload?.error ?? "Workspace could not be created.");
+        submissionInFlightRef.current = false;
         setLoading(false);
         return;
       }
 
       window.location.assign("/dashboard");
     } catch (submissionError) {
+      captureException(submissionError, {
+        event: "onboarding.workspace.failed",
+        runtime: "client",
+      });
       setError(
         submissionError instanceof Error
           ? submissionError.message
           : "Workspace could not be created."
       );
+      submissionInFlightRef.current = false;
       setLoading(false);
     }
   }
@@ -99,7 +134,11 @@ export function WorkspaceOnboardingForm({
               </div>
             ) : null}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !name.trim()}
+            >
               {loading ? "Creating workspace..." : "Create workspace"}
             </Button>
           </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/observability";
 
 type AppErrorProps = {
   error: Error & {
@@ -11,7 +12,13 @@ type AppErrorProps = {
 
 export default function AppError({ error, reset }: AppErrorProps) {
   useEffect(() => {
-    console.error(error);
+    captureException(error, {
+      event: "app.route_error",
+      runtime: "client",
+      payload: {
+        digest: error.digest ?? null,
+      },
+    });
   }, [error]);
 
   return (

@@ -46,6 +46,7 @@ import {
   AuthGuardError,
   bootstrapCurrentUser,
   getCurrentUser,
+  getWorkspaceOnboardingState,
   requireOrganization,
   requirePermission,
   requireRole,
@@ -152,6 +153,34 @@ describe("lib/auth guards", () => {
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
     expect(redirectMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("treats an authenticated first-login account as an onboarding candidate", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        app_metadata: {},
+        user_metadata: {},
+      })
+    );
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.findMany.mockResolvedValueOnce([]);
+
+    await expect(getWorkspaceOnboardingState()).resolves.toEqual({
+      ok: true,
+      needsWorkspace: true,
+      user: {
+        id: "auth-user-1",
+        name: "User",
+        email: "user@example.com",
+      },
+    });
+
+    await expect(bootstrapCurrentUser()).resolves.toEqual({
+      ok: false,
+      code: "ORGANIZATION_ACCESS_REQUIRED",
+      message:
+        "Your account is authenticated but does not yet belong to a Traxium workspace.",
+    });
   });
 
   it("resolves the current user from active organization membership instead of metadata organization", async () => {

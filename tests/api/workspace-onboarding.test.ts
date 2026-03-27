@@ -73,6 +73,50 @@ function createResolvedUserRecord(
   };
 }
 
+function createExistingWorkspaceTransactionUser(
+  organizationId = "org-new",
+  overrides: Partial<{
+    activeOrganizationId: string | null;
+    memberships: Array<{
+      id: string;
+      organizationId: string;
+      role: OrganizationRole;
+      status: MembershipStatus;
+      createdAt: Date;
+      updatedAt: Date;
+      organization: {
+        id: string;
+        name: string;
+        slug: string;
+        createdAt: Date;
+        updatedAt: Date;
+      };
+    }>;
+  }> = {}
+) {
+  return {
+    activeOrganizationId: organizationId,
+    memberships: [
+      {
+        id: `membership-${organizationId}`,
+        organizationId,
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+        createdAt: new Date("2026-03-24T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+        organization: {
+          id: organizationId,
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+          createdAt: new Date("2026-03-24T00:00:00.000Z"),
+          updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+        },
+      },
+    ],
+    ...overrides,
+  };
+}
+
 function mockAuthenticatedSession(authUser: ReturnType<typeof createAuthSessionUser> | null) {
   const getUser = vi.fn().mockResolvedValue({
     data: { user: authUser },
@@ -92,6 +136,7 @@ function createTransactionMock() {
   return {
     user: {
       findUnique: vi.fn(),
+      create: vi.fn(),
       update: vi.fn(),
     },
     organization: {
@@ -99,6 +144,9 @@ function createTransactionMock() {
       create: vi.fn(),
     },
     organizationMembership: {
+      upsert: vi.fn(),
+    },
+    auditLog: {
       create: vi.fn(),
     },
   };
@@ -165,7 +213,7 @@ describe("workspace onboarding route", () => {
       createdAt: new Date("2026-03-24T00:00:00.000Z"),
       updatedAt: new Date("2026-03-24T00:00:00.000Z"),
     });
-    tx.organizationMembership.create.mockResolvedValueOnce({
+    tx.organizationMembership.upsert.mockResolvedValueOnce({
       id: "membership-org-new",
       organizationId: "org-new",
       role: OrganizationRole.OWNER,
@@ -238,8 +286,18 @@ describe("workspace onboarding route", () => {
         updatedAt: true,
       },
     });
-    expect(tx.organizationMembership.create).toHaveBeenCalledWith({
-      data: {
+    expect(tx.organizationMembership.upsert).toHaveBeenCalledWith({
+      where: {
+        userId_organizationId: {
+          userId: DEFAULT_USER_ID,
+          organizationId: "org-new",
+        },
+      },
+      update: {
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+      },
+      create: {
         userId: DEFAULT_USER_ID,
         organizationId: "org-new",
         role: OrganizationRole.OWNER,
@@ -261,6 +319,22 @@ describe("workspace onboarding route", () => {
         activeOrganizationId: "org-new",
       },
     });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-new",
+        userId: DEFAULT_USER_ID,
+        actorUserId: DEFAULT_USER_ID,
+        targetUserId: DEFAULT_USER_ID,
+        targetEntityId: "org-new",
+        eventType: "onboarding.workspace_created",
+        action: "onboarding.workspace_created",
+        detail: "Workspace Atlas Procurement was created.",
+        payload: {
+          membershipRole: OrganizationRole.OWNER,
+          organizationSlug: "atlas-procurement",
+        },
+      },
+    });
     expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-1", {
       app_metadata: {
         userId: DEFAULT_USER_ID,
@@ -269,14 +343,198 @@ describe("workspace onboarding route", () => {
     });
   });
 
-  it("does not create a duplicate initial organization once the user already has a membership", async () => {
+  it("provisions a new app user during first-login workspace creation", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        email: "new.user@example.com",
+        app_metadata: {},
+        user_metadata: {
+          full_name: "New User",
+        },
+      })
+    );
     mockPrisma.user.findUnique.mockResolvedValueOnce(
       createResolvedUserRecord({
-        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        id: "user-new",
+        name: "New User",
+        email: "new.user@example.com",
+        activeOrganizationId: "org-new",
         memberships: [
-          createMembership(DEFAULT_ORGANIZATION_ID, {
-            role: OrganizationRole.ADMIN,
+          createMembership("org-new", {
+            role: OrganizationRole.OWNER,
           }),
+        ],
+      })
+    );
+    mockPrisma.user.findMany.mockResolvedValueOnce([]);
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create.mockResolvedValueOnce({
+      id: "org-new",
+      name: "Atlas Procurement",
+      slug: "atlas-procurement",
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.user.create.mockResolvedValueOnce({
+      id: "user-new",
+    });
+    tx.organizationMembership.upsert.mockResolvedValueOnce({
+      id: "membership-org-new",
+      organizationId: "org-new",
+      role: OrganizationRole.OWNER,
+      status: MembershipStatus.ACTIVE,
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/onboarding/workspace", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Atlas Procurement",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      organization: {
+        id: "org-new",
+        name: "Atlas Procurement",
+        slug: "atlas-procurement",
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+      },
+      membership: {
+        id: "membership-org-new",
+        organizationId: "org-new",
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+      },
+      activeOrganizationId: "org-new",
+      user: {
+        id: "user-new",
+        name: "New User",
+        email: "new.user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: "org-new",
+        activeOrganizationId: "org-new",
+        activeOrganization: {
+          membershipId: "membership-org-new",
+          organizationId: "org-new",
+          membershipRole: OrganizationRole.OWNER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      },
+    });
+    expect(tx.user.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-new",
+        activeOrganizationId: "org-new",
+        name: "New User",
+        email: "new.user@example.com",
+        role: Role.TACTICAL_BUYER,
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(tx.organizationMembership.upsert).toHaveBeenCalledWith({
+      where: {
+        userId_organizationId: {
+          userId: "user-new",
+          organizationId: "org-new",
+        },
+      },
+      update: {
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+      },
+      create: {
+        userId: "user-new",
+        organizationId: "org-new",
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-new",
+        userId: "user-new",
+        actorUserId: "user-new",
+        targetUserId: "user-new",
+        targetEntityId: "org-new",
+        eventType: "onboarding.workspace_created",
+        action: "onboarding.workspace_created",
+        detail: "Workspace Atlas Procurement was created.",
+        payload: {
+          membershipRole: OrganizationRole.OWNER,
+          organizationSlug: "atlas-procurement",
+        },
+      },
+    });
+    expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-1", {
+      app_metadata: {
+        userId: "user-new",
+        activeOrganizationId: "org-new",
+      },
+    });
+  });
+
+  it("returns the existing workspace when onboarding is submitted again for the same membership", async () => {
+    mockPrisma.user.findUnique
+      .mockResolvedValueOnce(
+        createResolvedUserRecord({
+          activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+          memberships: [
+            createMembership(DEFAULT_ORGANIZATION_ID, {
+              role: OrganizationRole.ADMIN,
+            }),
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        createResolvedUserRecord({
+          activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+          memberships: [
+            createMembership(DEFAULT_ORGANIZATION_ID, {
+              role: OrganizationRole.ADMIN,
+            }),
+          ],
+        })
+      );
+    tx.user.findUnique.mockResolvedValueOnce(
+      createExistingWorkspaceTransactionUser(DEFAULT_ORGANIZATION_ID, {
+        memberships: [
+          {
+            id: `membership-${DEFAULT_ORGANIZATION_ID}`,
+            organizationId: DEFAULT_ORGANIZATION_ID,
+            role: OrganizationRole.ADMIN,
+            status: MembershipStatus.ACTIVE,
+            createdAt: new Date("2026-03-24T00:00:00.000Z"),
+            updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+            organization: {
+              id: DEFAULT_ORGANIZATION_ID,
+              name: "Atlas Procurement",
+              slug: "atlas-procurement",
+              createdAt: new Date("2026-03-24T00:00:00.000Z"),
+              updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+            },
+          },
         ],
       })
     );
@@ -293,13 +551,48 @@ describe("workspace onboarding route", () => {
       })
     );
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
-      error: "Initial workspace onboarding is already complete for this account.",
-      code: "WORKSPACE_ONBOARDING_ERROR",
+      success: true,
+      organization: {
+        id: DEFAULT_ORGANIZATION_ID,
+        name: "Atlas Procurement",
+        slug: "atlas-procurement",
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+      },
+      membership: {
+        id: `membership-${DEFAULT_ORGANIZATION_ID}`,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        role: OrganizationRole.ADMIN,
+        status: MembershipStatus.ACTIVE,
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+      },
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      user: {
+        id: DEFAULT_USER_ID,
+        name: "Test User",
+        email: "user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: `membership-${DEFAULT_ORGANIZATION_ID}`,
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.ADMIN,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      },
     });
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    expect(updateUserByIdMock).not.toHaveBeenCalled();
+    expect(tx.organization.create).not.toHaveBeenCalled();
+    expect(tx.organizationMembership.upsert).not.toHaveBeenCalled();
+    expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-1", {
+      app_metadata: {
+        userId: DEFAULT_USER_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      },
+    });
   });
 
   it("returns validation errors for blank workspace names", async () => {
@@ -351,7 +644,7 @@ describe("workspace onboarding route", () => {
       createdAt: new Date("2026-03-24T00:00:00.000Z"),
       updatedAt: new Date("2026-03-24T00:00:00.000Z"),
     });
-    tx.organizationMembership.create.mockResolvedValueOnce({
+    tx.organizationMembership.upsert.mockResolvedValueOnce({
       id: "membership-org-new",
       organizationId: "org-new",
       role: OrganizationRole.OWNER,

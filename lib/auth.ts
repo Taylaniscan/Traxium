@@ -7,8 +7,12 @@ import {
   acceptOrganizationInvitation,
   type InvitationAcceptanceResult,
 } from "@/lib/invitations";
+import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import { prisma } from "@/lib/prisma";
-import { createInitialWorkspaceForUser, WorkspaceOnboardingError } from "@/lib/organizations";
+import {
+  createInitialWorkspaceForAuthenticatedUser,
+  createInitialWorkspaceForUser,
+} from "@/lib/organizations";
 import { hasAnyRole, hasPermission } from "@/lib/permissions";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
@@ -61,11 +65,13 @@ type AuthenticatedAppUserResult =
   | {
       ok: true;
       authUser: AuthSessionUser;
-      user: SessionUserRecord;
+      email: string;
+      name: string;
+      user: SessionUserRecord | null;
     }
   | {
       ok: false;
-      code: "UNAUTHENTICATED" | "AMBIGUOUS_USER" | "USER_NOT_PROVISIONED";
+      code: "UNAUTHENTICATED" | "AMBIGUOUS_USER";
       message: string;
     };
 
@@ -80,7 +86,6 @@ export type SessionBootstrapResult =
       code:
         | "UNAUTHENTICATED"
         | "AMBIGUOUS_USER"
-        | "USER_NOT_PROVISIONED"
         | "ORGANIZATION_ACCESS_REQUIRED"
         | "SESSION_REPAIR_FAILED";
       message: string;
@@ -98,11 +103,12 @@ export type WorkspaceOnboardingStateResult =
     }
   | {
       ok: false;
-      code: "UNAUTHENTICATED" | "AMBIGUOUS_USER" | "USER_NOT_PROVISIONED";
+      code: "UNAUTHENTICATED" | "AMBIGUOUS_USER";
       message: string;
     };
 
 export type WorkspaceOnboardingResult = {
+  created: boolean;
   organization: {
     id: string;
     name: string;
@@ -184,6 +190,30 @@ function readMetadataValue(source: unknown, keys: readonly string[]): string | n
   }
 
   return null;
+}
+
+function startCase(value: string) {
+  return value
+    .split(/[\s._-]+/u)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function resolveSessionDisplayName(authUser: AuthSessionUser, email: string) {
+  const metadataName = readMetadataValue(authUser.user_metadata, [
+    "name",
+    "full_name",
+    "display_name",
+    "preferred_name",
+  ]);
+
+  if (metadataName) {
+    return metadataName;
+  }
+
+  const localPart = email.split("@")[0]?.trim() ?? "";
+  return startCase(localPart) || email;
 }
 
 function getAuthUserId(authUser: AuthSessionUser): string | null {
@@ -367,21 +397,14 @@ async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult
       return {
         ok: true,
         authUser,
+        email,
+        name: user.name,
         user,
       };
     }
   }
 
   const candidates = await findSessionUsersByEmail(email);
-
-  if (!candidates.length) {
-    return {
-      ok: false,
-      code: "USER_NOT_PROVISIONED",
-      message:
-        "Your account is authenticated, but no Traxium workspace user is provisioned for this email.",
-    };
-  }
 
   if (candidates.length > 1) {
     return {
@@ -395,14 +418,16 @@ async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult
   return {
     ok: true,
     authUser,
-    user: candidates[0],
+    email,
+    name: candidates[0]?.name ?? resolveSessionDisplayName(authUser, email),
+    user: candidates[0] ?? null,
   };
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const resolved = await resolveAuthenticatedAppUser();
 
-  if (!resolved.ok) {
+  if (!resolved.ok || !resolved.user) {
     return null;
   }
 
@@ -420,6 +445,15 @@ export async function bootstrapCurrentUser(): Promise<SessionBootstrapResult> {
 
   if (!resolved.ok) {
     return resolved;
+  }
+
+  if (!resolved.user) {
+    return {
+      ok: false,
+      code: "ORGANIZATION_ACCESS_REQUIRED",
+      message:
+        "Your account is authenticated but does not yet belong to a Traxium workspace.",
+    };
   }
 
   const preferredActiveOrganizationId = getPreferredActiveOrganizationId(resolved.user);
@@ -499,11 +533,11 @@ export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboarding
 
   return {
     ok: true,
-    needsWorkspace: resolved.user.memberships.length === 0,
+    needsWorkspace: !resolved.user || resolved.user.memberships.length === 0,
     user: {
-      id: resolved.user.id,
-      name: resolved.user.name,
-      email: resolved.user.email,
+      id: resolved.user?.id ?? resolved.authUser.id,
+      name: resolved.user?.name ?? resolved.name,
+      email: resolved.user?.email ?? resolved.email,
     },
   };
 }
@@ -521,21 +555,29 @@ export async function createInitialWorkspaceOnboarding(
     );
   }
 
-  if (resolved.user.memberships.length > 0) {
-    throw new WorkspaceOnboardingError(
-      "Initial workspace onboarding is already complete for this account.",
-      409
-    );
+  let result: Awaited<ReturnType<typeof createInitialWorkspaceForUser>>;
+  let persistedUserId: string;
+
+  if (resolved.user) {
+    result = await createInitialWorkspaceForUser(resolved.user.id, workspaceName);
+    persistedUserId = resolved.user.id;
+  } else {
+    const provisionedResult = await createInitialWorkspaceForAuthenticatedUser({
+      name: resolved.name,
+      email: resolved.email,
+      workspaceName,
+    });
+
+    result = provisionedResult;
+    persistedUserId = provisionedResult.userId;
   }
 
-  const result = await createInitialWorkspaceForUser(resolved.user.id, workspaceName);
-
   await updateAuthSessionContext(resolved.authUser, {
-    userId: resolved.user.id,
+    userId: persistedUserId,
     activeOrganizationId: result.activeOrganizationId,
   });
 
-  const refreshedUser = await findSessionUserById(resolved.user.id);
+  const refreshedUser = await findSessionUserById(persistedUserId);
 
   if (!refreshedUser) {
     throw new Error("Workspace user could not be reloaded after onboarding.");
@@ -549,7 +591,20 @@ export async function createInitialWorkspaceOnboarding(
     throw new Error("Workspace onboarding completed without an active organization membership.");
   }
 
+  if (result.created) {
+    await trackEvent({
+      event: analyticsEventNames.ONBOARDING_WORKSPACE_CREATED,
+      organizationId: result.organization.id,
+      userId: persistedUserId,
+      properties: {
+        creationMode: resolved.user ? "existing_user" : "first_login",
+        membershipRole: result.membership.role,
+      },
+    });
+  }
+
   return {
+    created: result.created,
     organization: result.organization,
     membership: result.membership,
     activeOrganizationId: result.activeOrganizationId,
@@ -570,11 +625,20 @@ export async function acceptInvitationForCurrentUser(
     );
   }
 
+  if (!resolved.user) {
+    throw new AuthGuardError(
+      "Your account must complete workspace onboarding before continuing.",
+      403,
+      "FORBIDDEN"
+    );
+  }
+
   const result = await acceptOrganizationInvitation({
     token,
     userId: resolved.user.id,
     userEmail: resolved.user.email,
     activeOrganizationId: getPreferredActiveOrganizationId(resolved.user),
+    source: "authenticated_user",
   });
 
   await updateAuthSessionContext(resolved.authUser, {
@@ -601,6 +665,14 @@ export async function switchCurrentOrganization(
       resolved.message,
       resolved.code === "UNAUTHENTICATED" ? 401 : 403,
       resolved.code === "UNAUTHENTICATED" ? "UNAUTHENTICATED" : "FORBIDDEN"
+    );
+  }
+
+  if (!resolved.user) {
+    throw new AuthGuardError(
+      "Your account does not yet belong to a Traxium workspace.",
+      403,
+      "FORBIDDEN"
     );
   }
 

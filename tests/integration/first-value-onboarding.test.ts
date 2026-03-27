@@ -268,7 +268,11 @@ describe("first-value onboarding", () => {
       ],
     });
 
-    const response = await postSampleDataRoute();
+    const response = await postSampleDataRoute(
+      new Request("http://localhost/api/onboarding/sample-data", {
+        method: "POST",
+      })
+    );
 
     expect(loadFirstValueSampleDataMock).toHaveBeenCalledWith(
       DEFAULT_USER_ID,

@@ -5,6 +5,11 @@ import {
   createInitialWorkspaceOnboarding,
   isAuthGuardError,
 } from "@/lib/auth";
+import {
+  captureException,
+  createRouteObservabilityContext,
+  trackServerEvent,
+} from "@/lib/observability";
 import { WorkspaceOnboardingError } from "@/lib/organizations";
 
 const workspaceOnboardingSchema = z.object({
@@ -45,15 +50,39 @@ async function readJsonBody(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const requestContext = createRouteObservabilityContext(request, {
+    event: "onboarding.workspace.requested",
+  });
+
   try {
     const body = await readJsonBody(request);
 
     if (!body.ok) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "onboarding.workspace.invalid_json",
+          status: 400,
+        },
+        "warn"
+      );
       return body.response;
     }
 
     const payload = workspaceOnboardingSchema.parse(body.data);
     const result = await createInitialWorkspaceOnboarding(payload.name);
+
+    trackServerEvent({
+      ...requestContext,
+      event: "onboarding.workspace.succeeded",
+      organizationId: result.organization.id,
+      userId: result.user.id,
+      status: 201,
+      payload: {
+        membershipRole: result.membership.role,
+        activeOrganizationId: result.activeOrganizationId,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -67,6 +96,16 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof ZodError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "onboarding.workspace.validation_failed",
+          message:
+            error.issues[0]?.message ?? "Workspace onboarding payload is invalid.",
+          status: 422,
+        },
+        "warn"
+      );
       return jsonError(
         error.issues[0]?.message ?? "Workspace onboarding payload is invalid.",
         422,
@@ -75,12 +114,39 @@ export async function POST(request: Request) {
     }
 
     if (isAuthGuardError(error)) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "onboarding.workspace.unauthorized",
+          message: error.message,
+          status: error.status,
+          payload: {
+            code: error.code,
+          },
+        },
+        "warn"
+      );
       return jsonError(error.message, error.status, error.code);
     }
 
     if (error instanceof WorkspaceOnboardingError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "onboarding.workspace.rejected",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
       return jsonError(error.message, error.status, "WORKSPACE_ONBOARDING_ERROR");
     }
+
+    captureException(error, {
+      ...requestContext,
+      event: "onboarding.workspace.failed",
+      status: 500,
+    });
 
     return jsonError(
       error instanceof Error ? error.message : "Workspace onboarding failed.",

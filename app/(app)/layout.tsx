@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AnalyticsSessionIdentify } from "@/components/analytics/analytics-session-identify";
 import { AppShell } from "@/components/layout/app-shell";
 import { bootstrapCurrentUser } from "@/lib/auth";
 
@@ -13,5 +14,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <AnalyticsSessionIdentify
+        userId={session.user.id}
+        organizationId={session.user.activeOrganization.organizationId}
+        appRole={session.user.role}
+        membershipRole={session.user.activeOrganization.membershipRole}
+      />
+      {children}
+    </AppShell>
+  );
 }

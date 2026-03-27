@@ -140,3 +140,12 @@ export function createSupabaseAdminClient() {
     },
   });
 }
+
+export function createSupabasePublicClient() {
+  return createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}

@@ -34,6 +34,13 @@ type InvitationCreateResponse = {
   invitation: {
     token: string;
   };
+  delivery: {
+    channel: "invite" | "magic_link";
+    redirectTo: string;
+    transport: "supabase-auth" | "generated-link";
+    actionLink?: string;
+    requiresManualDelivery?: boolean;
+  };
 };
 
 type InvitationCreateError = {
@@ -49,6 +56,7 @@ export function FirstValueLaunchpad({
   );
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -61,6 +69,7 @@ export function FirstValueLaunchpad({
     setInviteLoading(true);
     setInviteError(null);
     setInviteLink(null);
+    setInviteSuccess(null);
     setCopyState("idle");
 
     try {
@@ -83,9 +92,16 @@ export function FirstValueLaunchpad({
       }
 
       const payload = (await response.json()) as InvitationCreateResponse;
-      const nextInviteLink = `${window.location.origin}/invite/${payload.invitation.token}`;
+      const nextInviteLink = payload.delivery.actionLink ?? payload.delivery.redirectTo;
 
       setInviteLink(nextInviteLink);
+      setInviteSuccess(
+        payload.delivery.transport === "generated-link"
+          ? "Supabase email delivery is unavailable right now. Share this secure invite link directly."
+          : payload.delivery.channel === "invite"
+          ? "Invitation email sent. The teammate can complete account setup from the email."
+          : "Invitation sign-in email sent. The teammate can open the email to join this workspace."
+      );
       setEmail("");
       setRole(viewerMembershipRole === "OWNER" ? "ADMIN" : "MEMBER");
       setInviteLoading(false);
@@ -139,7 +155,7 @@ export function FirstValueLaunchpad({
                 Invite teammate
               </h3>
               <p className="text-sm text-[var(--muted-foreground)]">
-                Email delivery is not wired yet, so this creates a secure invitation link you can share directly.
+                Traxium now sends the invitation email directly. The secure invite link remains available as a manual fallback.
               </p>
             </div>
 
@@ -181,6 +197,12 @@ export function FirstValueLaunchpad({
               </div>
             ) : null}
 
+            {inviteSuccess ? (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                {inviteSuccess}
+              </div>
+            ) : null}
+
             {inviteLink ? (
               <div className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
                 <div className="space-y-1">
@@ -188,7 +210,7 @@ export function FirstValueLaunchpad({
                     Secure invite link
                   </p>
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Share this link with the invited teammate. Acceptance is still restricted to the invited email address.
+                    Keep this as a backup. Acceptance is still restricted to the invited email address.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 md:flex-row">

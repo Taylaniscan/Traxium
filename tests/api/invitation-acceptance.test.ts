@@ -136,6 +136,7 @@ function createTransactionMock() {
       updateMany: vi.fn(),
     },
     organizationMembership: {
+      findUnique: vi.fn(),
       upsert: vi.fn(),
     },
     user: {
@@ -238,31 +239,6 @@ describe("invitation acceptance route", () => {
       },
       activeOrganizationId: DEFAULT_ORGANIZATION_ID,
     });
-    expect(tx.organizationMembership.upsert).toHaveBeenCalledWith({
-      where: {
-        userId_organizationId: {
-          userId: DEFAULT_USER_ID,
-          organizationId: DEFAULT_ORGANIZATION_ID,
-        },
-      },
-      update: {
-        status: MembershipStatus.ACTIVE,
-      },
-      create: {
-        userId: DEFAULT_USER_ID,
-        organizationId: DEFAULT_ORGANIZATION_ID,
-        role: OrganizationRole.MEMBER,
-        status: MembershipStatus.ACTIVE,
-      },
-      select: {
-        id: true,
-        organizationId: true,
-        role: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
     expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-1", {
       app_metadata: {
         userId: DEFAULT_USER_ID,
@@ -299,20 +275,54 @@ describe("invitation acceptance route", () => {
     expect(updateUserByIdMock).not.toHaveBeenCalled();
   });
 
-  it("does not allow an already accepted invitation to be reused", async () => {
+  it("treats a second acceptance attempt as a safe idempotent success when membership already exists", async () => {
     tx.invitation.findUnique.mockResolvedValueOnce(
       createInvitationRecord({
         status: InvitationStatus.ACCEPTED,
       })
     );
+    tx.organizationMembership.findUnique.mockResolvedValueOnce({
+      id: "membership-org-1",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      role: OrganizationRole.MEMBER,
+      status: MembershipStatus.ACTIVE,
+      createdAt: new Date("2026-03-24T12:05:00.000Z"),
+      updatedAt: new Date("2026-03-24T12:05:00.000Z"),
+    });
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ token: "token-123" }),
     });
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      error: "This invitation has already been accepted.",
+      success: true,
+      invitation: {
+        id: "invite-1",
+        email: "new.user@example.com",
+        role: OrganizationRole.MEMBER,
+        status: InvitationStatus.ACCEPTED,
+        expiresAt: "2026-03-31T12:00:00.000Z",
+        organization: {
+          id: DEFAULT_ORGANIZATION_ID,
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+        },
+        invitedBy: {
+          id: "admin-user-1",
+          name: "Admin User",
+          email: "admin@example.com",
+        },
+      },
+      membership: {
+        id: "membership-org-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        role: OrganizationRole.MEMBER,
+        status: MembershipStatus.ACTIVE,
+        createdAt: "2026-03-24T12:05:00.000Z",
+        updatedAt: "2026-03-24T12:05:00.000Z",
+      },
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
     });
     expect(tx.organizationMembership.upsert).not.toHaveBeenCalled();
   });

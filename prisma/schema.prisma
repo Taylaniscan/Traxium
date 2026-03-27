@@ -71,6 +71,7 @@ enum ForecastSource {
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  description String?
   slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -88,6 +89,7 @@ model Organization {
   activeUsers   User[]                   @relation("ActiveOrganization")
   memberships   OrganizationMembership[]
   invitations   Invitation[]
+  auditLogs     AuditLog[]
 }
 
 model User {
@@ -524,15 +526,30 @@ model Notification {
 }
 
 model AuditLog {
-  id           String   @id @default(cuid())
-  userId       String?
-  savingCardId String?
-  action       String
-  detail       String
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  actorUserId    String?
+  targetUserId   String?
+  targetEntityId String?
+  savingCardId   String?
+  eventType      String?
+  action         String
+  detail         String
+  payload        Json?
+  createdAt      DateTime @default(now())
 
-  user       User?       @relation(fields: [userId], references: [id])
-  savingCard SavingCard? @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+  savingCard   SavingCard?   @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
+  @@index([organizationId, eventType, createdAt])
+  @@index([organizationId, actorUserId])
+  @@index([organizationId, targetUserId])
+  @@index([organizationId, targetEntityId])
 }
 
 model FxRate {

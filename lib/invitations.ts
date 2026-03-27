@@ -6,11 +6,22 @@ import type {
   Prisma,
 } from "@prisma/client";
 
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
+import { analyticsEventNames, trackEvent } from "@/lib/analytics";
+import {
+  generateInvitationActionLink,
+  isAuthEmailFallbackEligibleError,
+} from "@/lib/auth-email";
+import { buildAppUrl } from "@/lib/app-url";
 import {
   canAssignOrganizationRole,
   canManageOrganizationMembers,
 } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
+import {
+  createSupabaseAdminClient,
+  createSupabasePublicClient,
+} from "@/lib/supabase/server";
 import { buildTenantScopeWhere } from "@/lib/tenant-scope";
 import {
   organizationInvitationSelect,
@@ -43,6 +54,29 @@ export type InvitationAcceptanceResult = {
   activeOrganizationId: string;
 };
 
+export type InvitationDeliveryResult = {
+  channel: "invite" | "magic_link";
+  redirectTo: string;
+  transport: "supabase-auth" | "generated-link";
+  actionLink?: string;
+  requiresManualDelivery?: boolean;
+};
+
+export type InvitationCreationResult = {
+  invitation: OrganizationInvitationRecord;
+  delivery: InvitationDeliveryResult;
+};
+
+export type InvitationLifecycleResult = {
+  changed: boolean;
+  invitation: OrganizationInvitationRecord;
+};
+
+export type InvitationResendResult = {
+  invitation: OrganizationInvitationRecord;
+  delivery: InvitationDeliveryResult;
+};
+
 export class InvitationError extends Error {
   constructor(
     message: string,
@@ -67,6 +101,137 @@ function createInvitationExpiryDate(now = new Date()) {
 
 function normalizeInvitationToken(token: string) {
   return token.trim();
+}
+
+function formatInvitationRoleLabel(role: OrganizationRole) {
+  return role
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildInvitationRedirectTo(
+  invitation: Pick<OrganizationInvitationRecord, "token">,
+  mode: "setup" | "accept"
+) {
+  return buildAppUrl(`/invite/${invitation.token}?mode=${mode}`);
+}
+
+function buildInvitationMetadata(
+  invitation: Pick<
+    OrganizationInvitationRecord,
+    "email" | "expiresAt" | "role" | "token"
+  > & {
+    organization: Pick<OrganizationInvitationRecord["organization"], "name" | "slug">;
+  }
+) {
+  return {
+    invitation_email: invitation.email,
+    invitation_role: invitation.role,
+    invitation_role_label: formatInvitationRoleLabel(invitation.role),
+    invitation_expires_at: invitation.expiresAt.toISOString(),
+    invitation_workspace_name: invitation.organization.name,
+    invitation_workspace_slug: invitation.organization.slug,
+    invitation_token: invitation.token,
+  };
+}
+
+function isExistingAuthUserErrorMessage(message: string) {
+  return /already\s+(registered|exists|been\s+registered)/iu.test(message);
+}
+
+async function deliverOrganizationInvitationEmail(
+  invitation: OrganizationInvitationRecord
+): Promise<InvitationDeliveryResult> {
+  const invitationMetadata = buildInvitationMetadata(invitation);
+  const setupRedirectTo = buildInvitationRedirectTo(invitation, "setup");
+  const acceptRedirectTo = buildInvitationRedirectTo(invitation, "accept");
+  const supabaseAdmin = createSupabaseAdminClient();
+
+  async function createGeneratedDelivery(input: {
+    channel: "invite" | "magic_link";
+    type: "invite" | "magiclink";
+    redirectTo: string;
+    data?: object;
+  }): Promise<InvitationDeliveryResult> {
+    const generatedLink = await generateInvitationActionLink({
+      type: input.type,
+      email: invitation.email,
+      redirectTo: input.redirectTo,
+      data: input.data,
+    });
+
+    return {
+      channel: input.channel,
+      redirectTo: input.redirectTo,
+      transport: "generated-link",
+      actionLink: generatedLink.actionLink,
+      requiresManualDelivery: true,
+    };
+  }
+
+  const inviteResponse = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    invitation.email,
+    {
+      redirectTo: setupRedirectTo,
+      data: invitationMetadata,
+    }
+  );
+
+  if (!inviteResponse.error) {
+    return {
+      channel: "invite",
+      redirectTo: setupRedirectTo,
+      transport: "supabase-auth",
+    };
+  }
+
+  if (isAuthEmailFallbackEligibleError(inviteResponse.error.message)) {
+    return createGeneratedDelivery({
+      channel: "invite",
+      type: "invite",
+      redirectTo: setupRedirectTo,
+      data: invitationMetadata,
+    });
+  }
+
+  if (!isExistingAuthUserErrorMessage(inviteResponse.error.message)) {
+    throw new InvitationError(
+      `Invitation email could not be sent: ${inviteResponse.error.message}`,
+      422
+    );
+  }
+
+  const supabasePublic = createSupabasePublicClient();
+  const magicLinkResponse = await supabasePublic.auth.signInWithOtp({
+    email: invitation.email,
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: acceptRedirectTo,
+    },
+  });
+
+  if (magicLinkResponse.error) {
+    if (isAuthEmailFallbackEligibleError(magicLinkResponse.error.message)) {
+      return createGeneratedDelivery({
+        channel: "magic_link",
+        type: "magiclink",
+        redirectTo: acceptRedirectTo,
+      });
+    }
+
+    throw new InvitationError(
+      `Invitation email could not be sent: ${magicLinkResponse.error.message}`,
+      422
+    );
+  }
+
+  return {
+    channel: "magic_link",
+    redirectTo: acceptRedirectTo,
+    transport: "supabase-auth",
+  };
 }
 
 function isExpiredInvitation(invitation: Pick<OrganizationInvitationRecord, "status" | "expiresAt">) {
@@ -172,17 +337,53 @@ async function findInvitationByToken(
   });
 }
 
+async function findInvitationById(
+  tx: InvitationWriteClient,
+  invitationId: string
+): Promise<OrganizationInvitationRecord | null> {
+  const normalizedInvitationId = invitationId.trim();
+
+  if (!normalizedInvitationId) {
+    return null;
+  }
+
+  const invitation = await tx.invitation.findUnique({
+    where: {
+      id: normalizedInvitationId,
+    },
+    select: organizationInvitationSelect,
+  });
+
+  if (!invitation) {
+    return null;
+  }
+
+  if (!isExpiredInvitation(invitation)) {
+    return invitation;
+  }
+
+  return tx.invitation.update({
+    where: {
+      id: invitation.id,
+    },
+    data: {
+      status: INVITATION_STATUS_EXPIRED,
+    },
+    select: organizationInvitationSelect,
+  });
+}
+
 export async function createOrganizationInvitation(
   actor: AuthenticatedUser,
   input: {
     email: string;
     role: OrganizationRole;
   }
-): Promise<OrganizationInvitationRecord> {
+): Promise<InvitationCreationResult> {
   const email = normalizeInvitationEmail(input.email);
   assertInvitationManagementAccess(actor, input.role);
 
-  return prisma.$transaction(async (tx) => {
+  const invitation = await prisma.$transaction(async (tx) => {
     const now = new Date();
 
     await expirePendingInvitations(tx, actor.organizationId, email, now);
@@ -226,12 +427,212 @@ export async function createOrganizationInvitation(
       select: organizationInvitationSelect,
     });
   });
+
+  const delivery = await deliverOrganizationInvitationEmail(invitation);
+
+  await writeAuditEvent(prisma, {
+    organizationId: actor.organizationId,
+    actorUserId: actor.id,
+    targetEntityId: invitation.id,
+    eventType: auditEventTypes.INVITE_CREATED,
+    detail: `Created a ${formatInvitationRoleLabel(invitation.role)} invitation.`,
+    payload: {
+      invitationRole: invitation.role,
+      deliveryChannel: delivery.channel,
+      deliveryTransport: delivery.transport,
+      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+    },
+  });
+
+  await trackEvent({
+    event: analyticsEventNames.INVITATION_SENT,
+    organizationId: actor.organizationId,
+    userId: actor.id,
+    properties: {
+      invitationId: invitation.id,
+      invitationRole: invitation.role,
+      deliveryChannel: delivery.channel,
+      deliveryTransport: delivery.transport,
+      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      sendKind: "created",
+    },
+  });
+
+  return {
+    invitation,
+    delivery,
+  };
 }
 
 export async function getInvitationByToken(
   token: string
 ): Promise<OrganizationInvitationRecord | null> {
   return findInvitationByToken(prisma, token);
+}
+
+export async function revokeOrganizationInvitation(input: {
+  actor: AuthenticatedUser;
+  invitationId: string;
+}): Promise<InvitationLifecycleResult> {
+  const invitationId = input.invitationId.trim();
+  const organizationId = input.actor.activeOrganization.organizationId;
+
+  if (!invitationId) {
+    throw new InvitationError("Invitation id is required.", 422);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const invitation = await findInvitationById(tx, invitationId);
+
+    if (!invitation || invitation.organizationId !== organizationId) {
+      throw new InvitationError("Invitation not found in the active organization.", 404);
+    }
+
+    assertInvitationManagementAccess(input.actor, invitation.role);
+
+    if (invitation.status === INVITATION_STATUS_ACCEPTED) {
+      throw new InvitationError(
+        "Accepted invitations cannot be revoked.",
+        409
+      );
+    }
+
+    if (invitation.status === INVITATION_STATUS_EXPIRED) {
+      throw new InvitationError(
+        "Expired invitations do not need cancellation. Resend to issue a fresh invite.",
+        409
+      );
+    }
+
+    if (invitation.status === INVITATION_STATUS_REVOKED) {
+      return {
+        changed: false,
+        invitation,
+      };
+    }
+
+    const updatedInvitation = await tx.invitation.update({
+      where: {
+        id: invitation.id,
+      },
+      data: {
+        status: INVITATION_STATUS_REVOKED,
+      },
+      select: organizationInvitationSelect,
+    });
+
+    await writeAuditEvent(tx, {
+      organizationId,
+      actorUserId: input.actor.id,
+      targetEntityId: updatedInvitation.id,
+      eventType: auditEventTypes.INVITE_REVOKED,
+      detail: "Cancelled a pending invitation.",
+      payload: {
+        invitationRole: updatedInvitation.role,
+        status: updatedInvitation.status,
+      },
+    });
+
+    return {
+      changed: true,
+      invitation: updatedInvitation,
+    };
+  });
+}
+
+export async function resendOrganizationInvitation(input: {
+  actor: AuthenticatedUser;
+  invitationId: string;
+}): Promise<InvitationResendResult> {
+  const invitationId = input.invitationId.trim();
+  const organizationId = input.actor.activeOrganization.organizationId;
+
+  if (!invitationId) {
+    throw new InvitationError("Invitation id is required.", 422);
+  }
+
+  const invitation = await prisma.$transaction(async (tx) => {
+    const existingInvitation = await findInvitationById(tx, invitationId);
+
+    if (!existingInvitation || existingInvitation.organizationId !== organizationId) {
+      throw new InvitationError("Invitation not found in the active organization.", 404);
+    }
+
+    assertInvitationManagementAccess(input.actor, existingInvitation.role);
+
+    if (existingInvitation.status === INVITATION_STATUS_ACCEPTED) {
+      throw new InvitationError(
+        "This invitation has already been accepted.",
+        409
+      );
+    }
+
+    if (existingInvitation.status === INVITATION_STATUS_REVOKED) {
+      throw new InvitationError(
+        "This invitation has been revoked. Create a new invitation to send it again.",
+        409
+      );
+    }
+
+    const existingMember = await findActiveOrganizationMemberByEmail(
+      tx,
+      organizationId,
+      existingInvitation.email
+    );
+
+    if (existingMember) {
+      throw new InvitationError(
+        "This email address is already an active member of the workspace.",
+        409
+      );
+    }
+
+    return tx.invitation.update({
+      where: {
+        id: existingInvitation.id,
+      },
+      data: {
+        status: INVITATION_STATUS_PENDING,
+        expiresAt: createInvitationExpiryDate(new Date()),
+      },
+      select: organizationInvitationSelect,
+    });
+  });
+
+  const delivery = await deliverOrganizationInvitationEmail(invitation);
+
+  await writeAuditEvent(prisma, {
+    organizationId,
+    actorUserId: input.actor.id,
+    targetEntityId: invitation.id,
+    eventType: auditEventTypes.INVITE_RESENT,
+    detail: "Resent a workspace invitation.",
+    payload: {
+      invitationRole: invitation.role,
+      deliveryChannel: delivery.channel,
+      deliveryTransport: delivery.transport,
+      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+    },
+  });
+
+  await trackEvent({
+    event: analyticsEventNames.INVITATION_SENT,
+    organizationId,
+    userId: input.actor.id,
+    properties: {
+      invitationId: invitation.id,
+      invitationRole: invitation.role,
+      deliveryChannel: delivery.channel,
+      deliveryTransport: delivery.transport,
+      requiresManualDelivery: delivery.requiresManualDelivery ?? false,
+      sendKind: "resent",
+    },
+  });
+
+  return {
+    invitation,
+    delivery,
+  };
 }
 
 export function getInvitationReadError(
@@ -254,10 +655,15 @@ export async function acceptOrganizationInvitation(input: {
   userId: string;
   userEmail: string;
   activeOrganizationId: string | null;
+  source?: "authenticated_user" | "invited_account_setup";
 }): Promise<InvitationAcceptanceResult> {
   const normalizedEmail = normalizeInvitationEmail(input.userEmail);
 
-  return prisma.$transaction(async (tx) => {
+  let trackedInvitationId: string | null = null;
+  let trackedInvitationRole: OrganizationRole | null = null;
+  let trackedOrganizationId: string | null = null;
+
+  const result = await prisma.$transaction(async (tx) => {
     const invitation = await findInvitationByToken(tx, input.token);
 
     if (!invitation) {
@@ -269,6 +675,29 @@ export async function acceptOrganizationInvitation(input: {
         "This invitation does not match the signed-in account.",
         403
       );
+    }
+
+    if (invitation.status === INVITATION_STATUS_ACCEPTED) {
+      const existingMembership = await tx.organizationMembership.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: input.userId,
+            organizationId: invitation.organizationId,
+          },
+        },
+        select: invitationMembershipSelect,
+      });
+
+      if (existingMembership) {
+        const existingActiveOrganizationId =
+          input.activeOrganizationId?.trim() || invitation.organizationId;
+
+        return {
+          invitation,
+          membership: existingMembership,
+          activeOrganizationId: existingActiveOrganizationId,
+        };
+      }
     }
 
     const invitationError = getInvitationReadError(invitation);
@@ -353,10 +782,29 @@ export async function acceptOrganizationInvitation(input: {
       throw new InvitationError("Invitation not found.", 404);
     }
 
+    trackedInvitationId = acceptedInvitation.id;
+    trackedInvitationRole = acceptedInvitation.role;
+    trackedOrganizationId = acceptedInvitation.organizationId;
+
     return {
       invitation: acceptedInvitation,
       membership,
       activeOrganizationId,
     };
   });
+
+  if (trackedInvitationId && trackedInvitationRole && trackedOrganizationId) {
+    await trackEvent({
+      event: analyticsEventNames.INVITATION_ACCEPTED,
+      organizationId: trackedOrganizationId,
+      userId: input.userId,
+      properties: {
+        invitationId: trackedInvitationId,
+        invitationRole: trackedInvitationRole,
+        acceptanceSource: input.source ?? "authenticated_user",
+      },
+    });
+  }
+
+  return result;
 }
