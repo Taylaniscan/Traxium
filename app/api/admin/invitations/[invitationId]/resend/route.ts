@@ -14,6 +14,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const invitationResendParamsSchema = z.object({
   invitationId: z.string().trim().min(1, "Invitation id is required."),
@@ -49,6 +54,15 @@ export async function POST(
       organizationId: user.activeOrganization.organizationId,
       userId: user.id,
     };
+
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.invitations.resend",
+    });
+
     const { invitationId } = invitationResendParamsSchema.parse(await params);
     const result = await resendOrganizationInvitation({
       actor: user,
@@ -106,6 +120,20 @@ export async function POST(
         error.issues[0]?.message ?? "Invitation resend request is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.invitations.resend.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

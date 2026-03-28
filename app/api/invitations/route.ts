@@ -74,6 +74,7 @@ export async function POST(request: Request) {
       request,
       userId: user.id,
       organizationId: user.activeOrganization.organizationId,
+      action: "invitations.create",
     });
 
     const body = await readJsonBody(request);

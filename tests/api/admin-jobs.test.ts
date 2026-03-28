@@ -15,6 +15,17 @@ import {
 } from "../helpers/security-fixtures";
 
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
 
 const mockPrisma = vi.hoisted(() => ({
   job: {
@@ -32,6 +43,12 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
 import { GET as listJobsRoute } from "@/app/api/admin/jobs/route";
@@ -84,6 +101,14 @@ describe("admin jobs routes", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-27T12:00:00.000Z"));
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation(
+      (error: { message: string; status?: number }) =>
+        Response.json(
+          { error: error.message, code: "RATE_LIMITED" },
+          { status: error.status ?? 429 }
+        )
+    );
 
     requireOrganizationMock.mockResolvedValue(
       createSessionUser({

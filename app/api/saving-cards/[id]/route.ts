@@ -4,6 +4,11 @@ import { ZodError, z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { addApproval, getSavingCard, setFinanceLock, updateSavingCard } from "@/lib/data";
 import { canApprovePhase, canLockFinance } from "@/lib/permissions";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 import { savingCardSchema } from "@/lib/validation";
 
 const paramsSchema = z.object({
@@ -55,6 +60,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   try {
+    await enforceRateLimit({
+      policy: "savingCardUpdate",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.update",
+    });
+
     const id = await resolveSavingCardId(params);
     const body = await readJsonBody(request);
 
@@ -83,6 +96,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   } catch (error) {
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
     }
 
     return jsonError(
@@ -131,6 +148,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
+    await enforceRateLimit({
+      policy: "savingCardUpdate",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.action",
+    });
+
     const id = await resolveSavingCardId(params);
     const body = await readJsonBody(request);
 
@@ -175,6 +200,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Action payload is invalid.", 422);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
     }
 
     return jsonError(

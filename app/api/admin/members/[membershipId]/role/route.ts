@@ -14,6 +14,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const roleUpdateBodySchema = z.object({
   role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
@@ -60,6 +65,15 @@ export async function PATCH(
       organizationId: user.activeOrganization.organizationId,
       userId: user.id,
     };
+
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.members.role_update",
+    });
+
     const { membershipId } = roleUpdateParamsSchema.parse(await params);
     const body = await readJsonBody(request);
 
@@ -118,6 +132,20 @@ export async function PATCH(
         error.issues[0]?.message ?? "Role update payload is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.members.role_update.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

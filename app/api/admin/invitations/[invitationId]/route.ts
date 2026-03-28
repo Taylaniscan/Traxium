@@ -14,6 +14,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const invitationLifecycleParamsSchema = z.object({
   invitationId: z.string().trim().min(1, "Invitation id is required."),
@@ -41,6 +46,15 @@ export async function DELETE(
       organizationId: user.activeOrganization.organizationId,
       userId: user.id,
     };
+
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.invitations.revoke",
+    });
+
     const { invitationId } = invitationLifecycleParamsSchema.parse(await params);
     const result = await revokeOrganizationInvitation({
       actor: user,
@@ -92,6 +106,20 @@ export async function DELETE(
         error.issues[0]?.message ?? "Invitation revoke request is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.invitations.revoke.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

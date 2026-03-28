@@ -16,6 +16,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const organizationSettingsSchema = z.object({
   name: z.string().trim().min(1, "Workspace name is required."),
@@ -156,6 +161,14 @@ export async function PATCH(request: Request) {
       return jsonError("Forbidden.", 403);
     }
 
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.settings.update",
+    });
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -213,6 +226,20 @@ export async function PATCH(request: Request) {
         error.issues[0]?.message ?? "Workspace settings payload is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.settings.update.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

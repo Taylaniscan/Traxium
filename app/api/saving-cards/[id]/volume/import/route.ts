@@ -1,6 +1,11 @@
 import * as XLSX from "xlsx";
 import { ZodError } from "zod";
 import { requireUser } from "@/lib/auth";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 import { importFromCsv } from "@/lib/volume";
 import {
   jsonError,
@@ -22,6 +27,14 @@ export async function POST(
   const user = await requireUser();
 
   try {
+    await enforceRateLimit({
+      policy: "volumeImport",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.volume.import",
+    });
+
     const { id } = volumeCardParamsSchema.parse(await params);
     const card = await resolveVolumeCardContext(id, user.organizationId);
 
@@ -85,6 +98,10 @@ export async function POST(
   } catch (error) {
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card id is invalid.", 422);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
     }
 
     return jsonError(

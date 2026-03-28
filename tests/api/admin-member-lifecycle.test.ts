@@ -14,6 +14,17 @@ import {
 } from "../helpers/security-fixtures";
 
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const createSupabasePublicClientMock = vi.hoisted(() => vi.fn());
 const inviteUserByEmailMock = vi.hoisted(() => vi.fn());
@@ -38,6 +49,12 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -155,6 +172,14 @@ describe("admin member lifecycle routes", () => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
     tx = createLifecycleTransactionMock();
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation(
+      (error: { message: string; status?: number }) =>
+        Response.json(
+          { error: error.message, code: "RATE_LIMITED" },
+          { status: error.status ?? 429 }
+        )
+    );
 
     requireOrganizationMock.mockResolvedValue(
       createSessionUser({

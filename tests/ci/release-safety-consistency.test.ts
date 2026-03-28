@@ -125,12 +125,19 @@ describe("release safety consistency", () => {
     const environmentSetup = readProjectFile("docs/environment-setup.md");
     const releaseChecklist = readProjectFile("docs/release-checklist.md");
     const deploymentStrategy = readProjectFile("docs/deployment-strategy.md");
+    const apiHardeningMatrix = readProjectFile("docs/api-hardening-matrix.md");
     const operationsRunbook = readProjectFile("docs/operations-runbook.md");
     const smokeTests = readProjectFile("docs/post-release-smoke-tests.md");
+    const runtimeBaseline = readProjectFile("docs/runtime-baseline.md");
 
     expect(nextConfig).not.toMatch(/\benv\s*:/u);
     expect(nextConfig).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(nextConfig).not.toContain("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    expect(nextConfig).toContain("Content-Security-Policy");
+    expect(nextConfig).toContain("Strict-Transport-Security");
+    expect(nextConfig).toContain("Permissions-Policy");
+    expect(nextConfig).toContain("Cross-Origin-Opener-Policy");
+    expect(nextConfig).toContain("Cross-Origin-Resource-Policy");
 
     expect(environmentSetup).toContain("npm run env:check");
     expect(environmentSetup).toContain("npm run build");
@@ -149,6 +156,12 @@ describe("release safety consistency", () => {
     expect(deploymentStrategy).toContain("prisma migrate deploy");
     expect(deploymentStrategy).toContain("STRIPE_SECRET_KEY");
     expect(deploymentStrategy).toContain("STRIPE_GROWTH_BASE_PRICE_ID");
+    expect(apiHardeningMatrix).toContain("/api/auth/forgot-password");
+    expect(apiHardeningMatrix).toContain("/api/admin/settings");
+    expect(apiHardeningMatrix).toContain("/api/export");
+    expect(apiHardeningMatrix).toContain("/api/billing/webhook");
+    expect(apiHardeningMatrix).not.toContain("Unknown");
+    expect(apiHardeningMatrix).not.toContain("TODO");
     expect(operationsRunbook).toContain("auth");
     expect(operationsRunbook).toContain("onboarding");
     expect(operationsRunbook).toContain("Invitation Incident Flow");
@@ -162,6 +175,11 @@ describe("release safety consistency", () => {
     expect(smokeTests).toContain("/admin/insights");
     expect(smokeTests).toContain("/admin/jobs");
     expect(smokeTests).toContain("npm run jobs:worker:once");
+    expect(runtimeBaseline).toContain("Verified Automated Coverage");
+    expect(runtimeBaseline).toContain("Pending Manual Verification");
+    expect(runtimeBaseline).toContain("Saving-card create");
+    expect(runtimeBaseline).toContain("Evidence upload");
+    expect(runtimeBaseline).toContain("Admin jobs");
   });
 
   it("keeps predeploy summaries secret-safe while accepting preview-safe config", () => {

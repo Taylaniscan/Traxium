@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       request,
       userId: user.id,
       organizationId: user.organizationId,
+      action: "saving-cards.create",
     });
 
     const body = await readJsonBody(request);

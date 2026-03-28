@@ -11,6 +11,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -52,6 +57,14 @@ export async function POST(
       userId: user.id,
     };
 
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.jobs.retry",
+    });
+
     if (!canManageOrganizationMembers(user.activeOrganization.membershipRole)) {
       trackServerEvent(
         {
@@ -92,6 +105,20 @@ export async function POST(
       job: result.job,
     });
   } catch (error) {
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.jobs.retry.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
+    }
+
     const authResponse = createAuthGuardErrorResponse(error);
 
     if (authResponse) {

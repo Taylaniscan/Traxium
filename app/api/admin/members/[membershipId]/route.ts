@@ -14,6 +14,11 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const memberLifecycleParamsSchema = z.object({
   membershipId: z.string().trim().min(1, "Membership id is required."),
@@ -41,6 +46,15 @@ export async function DELETE(
       organizationId: user.activeOrganization.organizationId,
       userId: user.id,
     };
+
+    await enforceRateLimit({
+      policy: "adminMutation",
+      request,
+      userId: user.id,
+      organizationId: user.activeOrganization.organizationId,
+      action: "admin.members.remove",
+    });
+
     const { membershipId } = memberLifecycleParamsSchema.parse(await params);
     const result = await removeOrganizationMembership({
       actor: user,
@@ -80,6 +94,20 @@ export async function DELETE(
         error.issues[0]?.message ?? "Member removal request is invalid.",
         422
       );
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          ...actorContext,
+          event: "admin.members.remove.rate_limited",
+          message: error.message,
+          status: error.status,
+        },
+        "warn"
+      );
+      return createRateLimitErrorResponse(error);
     }
 
     const authResponse = createAuthGuardErrorResponse(error);

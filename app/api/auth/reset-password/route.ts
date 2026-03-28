@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     await enforceRateLimit({
       policy: "resetPassword",
       request,
+      action: "auth.reset-password",
     });
 
     const body = await readJsonBody(request);

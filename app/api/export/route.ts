@@ -2,12 +2,17 @@ import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness, mapSavingCardsForExport } from "@/lib/data";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -15,6 +20,14 @@ export async function GET() {
   }
 
   try {
+    await enforceRateLimit({
+      policy: "dataExport",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.export",
+    });
+
     const [cards, workspaceReadiness] = await Promise.all([
       getSavingCards(user),
       getWorkspaceReadiness(user),
@@ -66,6 +79,10 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
     return jsonError(
       error instanceof Error ? error.message : "Export failed.",
       500

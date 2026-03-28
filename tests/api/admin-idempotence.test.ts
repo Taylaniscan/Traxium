@@ -9,6 +9,17 @@ import {
 } from "../helpers/security-fixtures";
 
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string, readonly status = 429) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
@@ -21,6 +32,12 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  createRateLimitErrorResponse: createRateLimitErrorResponseMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -156,6 +173,14 @@ describe("admin idempotence routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tx = createTransactionMock();
+    enforceRateLimitMock.mockResolvedValue(undefined);
+    createRateLimitErrorResponseMock.mockImplementation(
+      (error: { message: string; status?: number }) =>
+        Response.json(
+          { error: error.message, code: "RATE_LIMITED" },
+          { status: error.status ?? 429 }
+        )
+    );
 
     requireOrganizationMock.mockResolvedValue(
       createSessionUser({

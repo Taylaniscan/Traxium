@@ -152,6 +152,7 @@ export async function POST(request: Request) {
       request,
       userId: user.id,
       organizationId: user.organizationId,
+      action: "evidence.upload",
     });
 
     let formData: FormData;

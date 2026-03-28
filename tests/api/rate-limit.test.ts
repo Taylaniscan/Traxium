@@ -1,5 +1,5 @@
 import { Role } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -23,6 +23,12 @@ const UsageQuotaExceededErrorMock = vi.hoisted(
       }
     }
 );
+const prismaMock = vi.hoisted(() => ({
+  $queryRaw: vi.fn(),
+  rateLimitBucket: {
+    deleteMany: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/auth-email", () => ({
   queuePasswordRecoveryEmailJobSafely: queuePasswordRecoveryEmailJobSafelyMock,
@@ -37,6 +43,10 @@ vi.mock("@/lib/data", () => ({
   createSavingCard: createSavingCardMock,
 }));
 
+vi.mock("@/lib/prisma", () => ({
+  prisma: prismaMock,
+}));
+
 vi.mock("@/lib/usage", () => ({
   enforceUsageQuota: enforceUsageQuotaMock,
   recordUsageEvent: recordUsageEventMock,
@@ -45,7 +55,12 @@ vi.mock("@/lib/usage", () => ({
 
 import { POST as forgotPasswordRoute } from "@/app/api/auth/forgot-password/route";
 import { POST as postSavingCardsRoute } from "@/app/api/saving-cards/route";
-import { rateLimitPolicies, resetRateLimitStore } from "@/lib/rate-limit";
+import {
+  createMemoryRateLimitStore,
+  rateLimitPolicies,
+  resetRateLimitStore,
+  setRateLimitStoreForTests,
+} from "@/lib/rate-limit";
 
 function createForgotPasswordRequest(ip: string) {
   return new Request("http://localhost/api/auth/forgot-password", {
@@ -103,6 +118,7 @@ function createSavingCardRequest(ip = "198.51.100.20") {
 describe("rate limit enforcement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setRateLimitStoreForTests(createMemoryRateLimitStore());
     resetRateLimitStore();
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
 
@@ -125,6 +141,11 @@ describe("rate limit enforcement", () => {
     });
     enforceUsageQuotaMock.mockResolvedValue(undefined);
     recordUsageEventMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    resetRateLimitStore();
+    setRateLimitStoreForTests(null);
   });
 
   it("allows forgot-password requests while the IP stays under the configured limit", async () => {

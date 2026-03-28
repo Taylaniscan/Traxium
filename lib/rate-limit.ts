@@ -1,25 +1,54 @@
+import { createHash } from "node:crypto";
+
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 
-type RateLimitStoreEntry = {
-  count: number;
-  resetAtMs: number;
-};
-
-type RateLimitStoreState = {
-  entries: Map<string, RateLimitStoreEntry>;
-  lastSweepAtMs: number;
-};
-
-type GlobalWithRateLimitStore = typeof globalThis & {
-  __traxiumRateLimitStore?: RateLimitStoreState;
-};
+import { prisma } from "@/lib/prisma";
 
 type RateLimitScope = "ip" | "user" | "organization" | "organization-user";
+type RateLimitFailureMode = "open" | "closed";
 
 type RateLimitPolicy = {
   scope: RateLimitScope;
   maxRequests: number;
   windowMs: number;
+  failureMode: RateLimitFailureMode;
+};
+
+type RateLimitStoreConsumeInput = {
+  bucketKey: string;
+  policy: string;
+  action: string | null;
+  scope: RateLimitScope;
+  now: Date;
+  expiresAt: Date;
+};
+
+type RateLimitStoreConsumeResult = {
+  hits: number;
+  resetAt: Date;
+};
+
+type PrismaRateLimitClient = Pick<typeof prisma, "$queryRaw"> & {
+  rateLimitBucket?: {
+    deleteMany(args: { where: { expiresAt: { lt: Date } } }): Promise<unknown>;
+  };
+};
+
+type RateLimitComputationResult = {
+  allowed: boolean;
+  policy: RateLimitPolicyKey;
+  key: string;
+  limit: number;
+  remaining: number;
+  resetAt: Date;
+  retryAfterSeconds: number;
+};
+
+export type RateLimitStore = {
+  kind: string;
+  consume(input: RateLimitStoreConsumeInput): Promise<RateLimitStoreConsumeResult>;
+  reset?(): void | Promise<void>;
 };
 
 export const rateLimitPolicies = {
@@ -27,31 +56,61 @@ export const rateLimitPolicies = {
     scope: "ip",
     maxRequests: 5,
     windowMs: 10 * 60 * 1000,
+    failureMode: "closed",
   },
   resetPassword: {
     scope: "ip",
     maxRequests: 10,
     windowMs: 10 * 60 * 1000,
+    failureMode: "closed",
   },
   savingCardMutation: {
     scope: "organization-user",
     maxRequests: 20,
     windowMs: 60 * 1000,
+    failureMode: "closed",
+  },
+  savingCardUpdate: {
+    scope: "organization-user",
+    maxRequests: 30,
+    windowMs: 60 * 1000,
+    failureMode: "closed",
   },
   bulkImport: {
     scope: "organization-user",
     maxRequests: 3,
     windowMs: 15 * 60 * 1000,
+    failureMode: "closed",
+  },
+  volumeImport: {
+    scope: "organization-user",
+    maxRequests: 6,
+    windowMs: 15 * 60 * 1000,
+    failureMode: "closed",
   },
   evidenceUpload: {
     scope: "organization-user",
     maxRequests: 10,
     windowMs: 5 * 60 * 1000,
+    failureMode: "closed",
   },
   invitationCreate: {
     scope: "organization-user",
     maxRequests: 20,
     windowMs: 60 * 60 * 1000,
+    failureMode: "closed",
+  },
+  adminMutation: {
+    scope: "organization-user",
+    maxRequests: 30,
+    windowMs: 10 * 60 * 1000,
+    failureMode: "closed",
+  },
+  dataExport: {
+    scope: "organization-user",
+    maxRequests: 12,
+    windowMs: 15 * 60 * 1000,
+    failureMode: "closed",
   },
 } as const satisfies Record<string, RateLimitPolicy>;
 
@@ -68,6 +127,7 @@ export type EnforceRateLimitInput = {
   request: Request;
   userId?: string | null;
   organizationId?: string | null;
+  action?: string | null;
   message?: string;
 };
 
@@ -80,6 +140,23 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
+type MemoryRateLimitEntry = {
+  hits: number;
+  resetAtMs: number;
+};
+
+type ConsumeRateLimitOptions = {
+  action?: string | null;
+  now?: Date;
+  store?: RateLimitStore;
+};
+
+const RATE_LIMIT_PRUNE_INTERVAL_MS = 10 * 60 * 1000;
+const RATE_LIMIT_BACKEND_RETRY_AFTER_SECONDS = 60;
+
+let activeRateLimitStoreOverride: RateLimitStore | null = null;
+let lastPrunedExpiredBucketsAtMs = 0;
+
 export class RateLimitExceededError extends Error {
   constructor(
     message: string,
@@ -89,24 +166,25 @@ export class RateLimitExceededError extends Error {
     readonly remaining: number,
     readonly resetAt: Date,
     readonly retryAfterSeconds: number,
-    readonly status: 429 = 429
+    readonly status: 429 | 503 = 429
   ) {
     super(message);
     this.name = "RateLimitExceededError";
   }
 }
 
-function getStore() {
-  const globalWithStore = globalThis as GlobalWithRateLimitStore;
-
-  if (!globalWithStore.__traxiumRateLimitStore) {
-    globalWithStore.__traxiumRateLimitStore = {
-      entries: new Map(),
-      lastSweepAtMs: 0,
-    };
+export class RateLimitBackendUnavailableError extends RateLimitExceededError {
+  constructor(
+    message: string,
+    policy: RateLimitPolicyKey,
+    key: string,
+    limit: number,
+    resetAt: Date,
+    retryAfterSeconds: number
+  ) {
+    super(message, policy, key, limit, 0, resetAt, retryAfterSeconds, 503);
+    this.name = "RateLimitBackendUnavailableError";
   }
-
-  return globalWithStore.__traxiumRateLimitStore;
 }
 
 function normalizeIdentifier(value: string | null | undefined, fieldName: string) {
@@ -117,6 +195,16 @@ function normalizeIdentifier(value: string | null | undefined, fieldName: string
   }
 
   return normalized;
+}
+
+function normalizeAction(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.replace(/[^a-zA-Z0-9._:-]+/gu, "-");
 }
 
 function resolveRequestIp(request: Request) {
@@ -145,7 +233,10 @@ function resolveRequestIp(request: Request) {
   return "unknown";
 }
 
-function buildIdentity(request: Request, input: Omit<EnforceRateLimitInput, "policy" | "message" | "request">): RateLimitIdentity {
+function buildIdentity(
+  request: Request,
+  input: Omit<EnforceRateLimitInput, "policy" | "message" | "request">
+): RateLimitIdentity {
   return {
     ip: resolveRequestIp(request),
     userId: input.userId ?? null,
@@ -153,43 +244,195 @@ function buildIdentity(request: Request, input: Omit<EnforceRateLimitInput, "pol
   };
 }
 
+function hashRateLimitKey(rawKey: string) {
+  return createHash("sha256").update(rawKey).digest("hex");
+}
+
+function buildKeyPrefix(
+  policy: RateLimitPolicyKey,
+  action: string | null
+) {
+  const actionSegment = action ? `:action:${action}` : "";
+  return `policy:${policy}${actionSegment}`;
+}
+
 const scopedKeyBuilders: Record<
   RateLimitScope,
-  (policy: RateLimitPolicyKey, identity: RateLimitIdentity) => string
+  (
+    prefix: string,
+    identity: RateLimitIdentity
+  ) => string
 > = {
-  ip: (policy, identity) =>
-    `policy:${policy}:ip:${normalizeIdentifier(identity.ip, "Rate limit IP")}`,
-  user: (policy, identity) =>
-    `policy:${policy}:user:${normalizeIdentifier(identity.userId, "Rate limit user id")}`,
-  organization: (policy, identity) =>
-    `policy:${policy}:org:${normalizeIdentifier(identity.organizationId, "Rate limit organization id")}`,
-  "organization-user": (policy, identity) =>
+  ip: (prefix, identity) =>
+    `${prefix}:ip:${normalizeIdentifier(identity.ip, "Rate limit IP")}`,
+  user: (prefix, identity) =>
+    `${prefix}:user:${normalizeIdentifier(identity.userId, "Rate limit user id")}`,
+  organization: (prefix, identity) =>
+    `${prefix}:org:${normalizeIdentifier(identity.organizationId, "Rate limit organization id")}`,
+  "organization-user": (prefix, identity) =>
     [
-      `policy:${policy}`,
+      prefix,
       `org:${normalizeIdentifier(identity.organizationId, "Rate limit organization id")}`,
       `user:${normalizeIdentifier(identity.userId, "Rate limit user id")}`,
     ].join(":"),
 };
 
-function buildScopedKey(policy: RateLimitPolicyKey, identity: RateLimitIdentity) {
-  const config = rateLimitPolicies[policy];
-  return scopedKeyBuilders[config.scope](policy, identity);
+function buildScopedKey(
+  policy: RateLimitPolicyKey,
+  identity: RateLimitIdentity,
+  action: string | null
+) {
+  const config = rateLimitPolicies[policy] as RateLimitPolicy;
+  const rawKey = scopedKeyBuilders[config.scope](
+    buildKeyPrefix(policy, action),
+    identity
+  );
+
+  return hashRateLimitKey(rawKey);
 }
 
-function maybeSweepExpiredEntries(nowMs: number) {
-  const store = getStore();
+function toSafeInteger(value: bigint | number) {
+  return typeof value === "bigint" ? Number(value) : value;
+}
 
-  if (nowMs - store.lastSweepAtMs < 60_000) {
+function maybePruneExpiredBuckets(
+  client: PrismaRateLimitClient,
+  now: Date
+) {
+  if (!client.rateLimitBucket) {
     return;
   }
 
-  for (const [key, entry] of store.entries.entries()) {
-    if (entry.resetAtMs <= nowMs) {
-      store.entries.delete(key);
-    }
+  const nowMs = now.getTime();
+
+  if (nowMs - lastPrunedExpiredBucketsAtMs < RATE_LIMIT_PRUNE_INTERVAL_MS) {
+    return;
   }
 
-  store.lastSweepAtMs = nowMs;
+  lastPrunedExpiredBucketsAtMs = nowMs;
+
+  void client.rateLimitBucket
+    .deleteMany({
+      where: {
+        expiresAt: {
+          lt: now,
+        },
+      },
+    })
+    .catch(() => undefined);
+}
+
+export function createDatabaseRateLimitStore(
+  client: PrismaRateLimitClient = prisma
+): RateLimitStore {
+  return {
+    kind: "postgresql",
+    async consume(input) {
+      maybePruneExpiredBuckets(client, input.now);
+
+      const rows = await client.$queryRaw<
+        Array<{ hits: bigint | number; expiresAt: Date }>
+      >(Prisma.sql`
+        INSERT INTO "RateLimitBucket" (
+          "bucketKey",
+          "policy",
+          "action",
+          "scope",
+          "hits",
+          "windowStartedAt",
+          "expiresAt",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${input.bucketKey},
+          ${input.policy},
+          ${input.action},
+          ${input.scope},
+          1,
+          ${input.now},
+          ${input.expiresAt},
+          ${input.now},
+          ${input.now}
+        )
+        ON CONFLICT ("bucketKey") DO UPDATE
+        SET
+          "policy" = EXCLUDED."policy",
+          "action" = EXCLUDED."action",
+          "scope" = EXCLUDED."scope",
+          "hits" = CASE
+            WHEN "RateLimitBucket"."expiresAt" <= ${input.now} THEN 1
+            ELSE "RateLimitBucket"."hits" + 1
+          END,
+          "windowStartedAt" = CASE
+            WHEN "RateLimitBucket"."expiresAt" <= ${input.now} THEN ${input.now}
+            ELSE "RateLimitBucket"."windowStartedAt"
+          END,
+          "expiresAt" = CASE
+            WHEN "RateLimitBucket"."expiresAt" <= ${input.now} THEN ${input.expiresAt}
+            ELSE "RateLimitBucket"."expiresAt"
+          END,
+          "updatedAt" = ${input.now}
+        RETURNING "hits", "expiresAt"
+      `);
+
+      const row = rows[0];
+
+      if (!row) {
+        throw new Error("Rate limit store did not return an updated bucket.");
+      }
+
+      return {
+        hits: toSafeInteger(row.hits),
+        resetAt: new Date(row.expiresAt),
+      };
+    },
+  };
+}
+
+export function createMemoryRateLimitStore(
+  sharedEntries: Map<string, MemoryRateLimitEntry> = new Map()
+): RateLimitStore {
+  return {
+    kind: "memory-test",
+    async consume(input) {
+      const existing = sharedEntries.get(input.bucketKey);
+      const nowMs = input.now.getTime();
+      const nextEntry =
+        !existing || existing.resetAtMs <= nowMs
+          ? {
+              hits: 1,
+              resetAtMs: input.expiresAt.getTime(),
+            }
+          : {
+              hits: existing.hits + 1,
+              resetAtMs: existing.resetAtMs,
+            };
+
+      sharedEntries.set(input.bucketKey, nextEntry);
+
+      return {
+        hits: nextEntry.hits,
+        resetAt: new Date(nextEntry.resetAtMs),
+      };
+    },
+    reset() {
+      sharedEntries.clear();
+    },
+  };
+}
+
+export function setRateLimitStoreForTests(store: RateLimitStore | null) {
+  activeRateLimitStoreOverride = store;
+}
+
+export function resetRateLimitStore() {
+  activeRateLimitStoreOverride?.reset?.();
+  lastPrunedExpiredBucketsAtMs = 0;
+}
+
+function getRateLimitStore() {
+  return activeRateLimitStoreOverride ?? createDatabaseRateLimitStore();
 }
 
 function buildRateLimitMessage(policy: RateLimitPolicyKey) {
@@ -200,67 +443,107 @@ function buildRateLimitMessage(policy: RateLimitPolicyKey) {
       return "Too many password reset attempts. Please try again later.";
     case "savingCardMutation":
       return "Too many saving card creation attempts. Please slow down and try again shortly.";
+    case "savingCardUpdate":
+      return "Too many saving card update attempts. Please slow down and try again shortly.";
     case "bulkImport":
       return "Too many import attempts. Please wait before starting another import.";
+    case "volumeImport":
+      return "Too many volume import attempts. Please wait before uploading again.";
     case "evidenceUpload":
       return "Too many evidence upload attempts. Please wait before uploading again.";
     case "invitationCreate":
       return "Too many invitation attempts. Please wait before sending more invites.";
+    case "adminMutation":
+      return "Too many administrative change attempts. Please wait before trying again.";
+    case "dataExport":
+      return "Too many export attempts. Please wait before starting another export.";
   }
 }
 
-export function resetRateLimitStore() {
-  const store = getStore();
-  store.entries.clear();
-  store.lastSweepAtMs = 0;
+function buildRateLimitBackendUnavailableMessage(policy: RateLimitPolicyKey) {
+  switch (policy) {
+    case "forgotPassword":
+    case "resetPassword":
+      return "Rate limit protection is temporarily unavailable. Please retry shortly.";
+    default:
+      return "Request throttling is temporarily unavailable. Please retry shortly.";
+  }
 }
 
-export function consumeRateLimit(
+export async function consumeRateLimit(
   policy: RateLimitPolicyKey,
   identity: RateLimitIdentity,
-  nowMs = Date.now()
-) {
-  maybeSweepExpiredEntries(nowMs);
+  options: ConsumeRateLimitOptions = {}
+): Promise<RateLimitComputationResult & { degraded: boolean }> {
+  const config = rateLimitPolicies[policy] as RateLimitPolicy;
+  const now = options.now ?? new Date();
+  const action = normalizeAction(options.action);
+  const key = buildScopedKey(policy, identity, action);
+  const store = options.store ?? getRateLimitStore();
+  const expiresAt = new Date(now.getTime() + config.windowMs);
 
-  const config = rateLimitPolicies[policy];
-  const key = buildScopedKey(policy, identity);
-  const store = getStore();
-  const existing = store.entries.get(key);
-  const nextEntry =
-    !existing || existing.resetAtMs <= nowMs
-      ? {
-          count: 1,
-          resetAtMs: nowMs + config.windowMs,
-        }
-      : {
-          count: existing.count + 1,
-          resetAtMs: existing.resetAtMs,
-        };
+  try {
+    const result = await store.consume({
+      bucketKey: key,
+      policy,
+      action,
+      scope: config.scope,
+      now,
+      expiresAt,
+    });
+    const remaining = Math.max(0, config.maxRequests - result.hits);
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((result.resetAt.getTime() - now.getTime()) / 1000)
+    );
 
-  store.entries.set(key, nextEntry);
+    return {
+      allowed: result.hits <= config.maxRequests,
+      degraded: false,
+      policy,
+      key,
+      limit: config.maxRequests,
+      remaining,
+      resetAt: result.resetAt,
+      retryAfterSeconds,
+    };
+  } catch (error) {
+    if (config.failureMode === "open") {
+      return {
+        allowed: true,
+        degraded: true,
+        policy,
+        key,
+        limit: config.maxRequests,
+        remaining: config.maxRequests,
+        resetAt: expiresAt,
+        retryAfterSeconds: Math.max(
+          1,
+          Math.ceil(config.windowMs / 1000)
+        ),
+      };
+    }
 
-  const remaining = Math.max(0, config.maxRequests - nextEntry.count);
-  const retryAfterSeconds = Math.max(
-    1,
-    Math.ceil((nextEntry.resetAtMs - nowMs) / 1000)
-  );
-
-  return {
-    allowed: nextEntry.count <= config.maxRequests,
-    policy,
-    key,
-    limit: config.maxRequests,
-    remaining,
-    resetAt: new Date(nextEntry.resetAtMs),
-    retryAfterSeconds,
-  };
+    throw new RateLimitBackendUnavailableError(
+      buildRateLimitBackendUnavailableMessage(policy),
+      policy,
+      key,
+      config.maxRequests,
+      new Date(
+        now.getTime() + RATE_LIMIT_BACKEND_RETRY_AFTER_SECONDS * 1000
+      ),
+      RATE_LIMIT_BACKEND_RETRY_AFTER_SECONDS
+    );
+  }
 }
 
 export async function enforceRateLimit(
   input: EnforceRateLimitInput
 ): Promise<RateLimitResult> {
   const identity = buildIdentity(input.request, input);
-  const result = consumeRateLimit(input.policy, identity);
+  const result = await consumeRateLimit(input.policy, identity, {
+    action: input.action,
+  });
 
   if (!result.allowed) {
     throw new RateLimitExceededError(
@@ -285,10 +568,15 @@ export async function enforceRateLimit(
 }
 
 export function createRateLimitErrorResponse(error: RateLimitExceededError) {
+  const code =
+    error instanceof RateLimitBackendUnavailableError
+      ? "RATE_LIMIT_UNAVAILABLE"
+      : "RATE_LIMITED";
+
   return NextResponse.json(
     {
       error: error.message,
-      code: "RATE_LIMITED",
+      code,
     },
     {
       status: error.status,
@@ -297,6 +585,7 @@ export function createRateLimitErrorResponse(error: RateLimitExceededError) {
         "X-RateLimit-Limit": String(error.limit),
         "X-RateLimit-Remaining": String(error.remaining),
         "X-RateLimit-Reset": error.resetAt.toISOString(),
+        "X-RateLimit-Policy": error.policy,
       },
     }
   );

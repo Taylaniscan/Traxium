@@ -8,6 +8,10 @@ import type { WorkspaceReadiness } from "@/lib/types";
 
 type TimelineCards = Awaited<ReturnType<typeof getSavingCards>>;
 type TimelineReferenceData = Awaited<ReturnType<typeof getReferenceData>>;
+type TimelineFilterOption = {
+  id: string;
+  name: string;
+};
 
 const EMPTY_REFERENCE_DATA: TimelineReferenceData = {
   users: [],
@@ -51,23 +55,16 @@ export default async function TimelinePage() {
     console.log("Workspace readiness could not be loaded:", readinessResult.reason);
   }
 
+  const toFilterOption = (item: TimelineFilterOption) => ({
+    id: item.id,
+    name: item.name,
+  });
+
   const filters = {
-    categories: referenceData.categories.map((item) => ({
-      id: item.id,
-      name: item.name,
-    })),
-    buyers: referenceData.buyers.map((item) => ({
-      id: item.id,
-      name: item.name,
-    })),
-    suppliers: referenceData.suppliers.map((item) => ({
-      id: item.id,
-      name: item.name,
-    })),
-    businessUnits: referenceData.businessUnits.map((item) => ({
-      id: item.id,
-      name: item.name,
-    })),
+    categories: referenceData.categories.map(toFilterOption),
+    buyers: referenceData.buyers.map(toFilterOption),
+    suppliers: referenceData.suppliers.map(toFilterOption),
+    businessUnits: referenceData.businessUnits.map(toFilterOption),
   };
 
   return (
