@@ -1,55 +1,43 @@
-import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAuthSessionUser } from "./helpers/security-fixtures";
+const updateSessionMock = vi.hoisted(() => vi.fn());
 
-const getUserMock = vi.hoisted(() => vi.fn());
-const createServerClientMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@supabase/ssr", () => ({
-  createServerClient: createServerClientMock,
+vi.mock("@/lib/supabase/middleware", () => ({
+  updateSession: updateSessionMock,
 }));
 
-import { middleware } from "@/middleware";
+import { config, middleware } from "@/middleware";
 
 describe("middleware auth routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "placeholder-anon-key");
-
-    createServerClientMock.mockReturnValue({
-      auth: {
-        getUser: getUserMock,
-      },
-    });
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
+  it("delegates every request to updateSession without adding auth redirects", async () => {
+    const response = NextResponse.next();
+    updateSessionMock.mockResolvedValueOnce(response);
+    const request = new NextRequest("http://localhost:3000/dashboard");
+
+    await expect(middleware(request)).resolves.toBe(response);
+    expect(updateSessionMock).toHaveBeenCalledTimes(1);
+    expect(updateSessionMock).toHaveBeenCalledWith(request);
   });
 
-  it("does not redirect /login when a Supabase session exists", async () => {
-    getUserMock.mockResolvedValueOnce({
-      data: { user: createAuthSessionUser() },
-      error: null,
-    });
+  it("does not special-case public auth routes in middleware anymore", async () => {
+    const response = NextResponse.next();
+    updateSessionMock.mockResolvedValueOnce(response);
+    const request = new NextRequest("http://localhost:3000/login");
 
-    const response = await middleware(new NextRequest("http://localhost:3000/login"));
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("location")).toBeNull();
+    await expect(middleware(request)).resolves.toBe(response);
+    expect(updateSessionMock).toHaveBeenCalledWith(request);
   });
 
-  it("redirects unauthenticated protected requests to /login", async () => {
-    getUserMock.mockResolvedValueOnce({
-      data: { user: null },
-      error: null,
+  it("keeps the existing matcher unchanged", () => {
+    expect(config).toEqual({
+      matcher: [
+        "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
+      ],
     });
-
-    const response = await middleware(new NextRequest("http://localhost:3000/dashboard"));
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 });

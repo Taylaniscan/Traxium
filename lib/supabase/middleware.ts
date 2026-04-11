@@ -1,11 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-import {
-  readOptionalClientEnv,
-  readOptionalClientUrlEnv,
-} from "@/lib/env";
-
 type CookieToSet = {
   name: string;
   value: string;
@@ -20,26 +15,39 @@ type CookieToSet = {
   };
 };
 
+function getSupabaseMiddlewareEnv() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? null;
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? null;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  try {
+    new URL(supabaseUrl);
+  } catch {
+    return null;
+  }
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+  };
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
     request,
   });
 
-  let supabaseUrl: string | null;
-  let supabaseAnonKey: string | null;
+  const env = getSupabaseMiddlewareEnv();
 
-  try {
-    supabaseUrl = readOptionalClientUrlEnv("NEXT_PUBLIC_SUPABASE_URL");
-    supabaseAnonKey = readOptionalClientEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  } catch {
+  if (!env) {
     return response;
   }
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return response;
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();

@@ -10,6 +10,7 @@ import {
   createCheckoutSessionForOrganization,
 } from "@/lib/billing/checkout";
 import { stripePlanCatalogKeys } from "@/lib/billing/config";
+import { canManageOrganizationMembers } from "@/lib/organizations";
 
 const billingCheckoutSchema = z.object({
   planCode: z.enum(stripePlanCatalogKeys),
@@ -33,7 +34,18 @@ async function readJsonBody(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireOrganization({ redirectTo: null });
+    const user = await requireOrganization({
+      redirectTo: null,
+      allowBillingBlocked: true,
+    });
+
+    if (!canManageOrganizationMembers(user.activeOrganization.membershipRole)) {
+      return jsonError(
+        "Only workspace admins and owners can manage billing checkout.",
+        403
+      );
+    }
+
     const body = await readJsonBody(request);
 
     if (!body.ok) {

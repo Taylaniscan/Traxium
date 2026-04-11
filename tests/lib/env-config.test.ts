@@ -223,12 +223,15 @@ describe("env configuration helpers", () => {
       storageBucket: "evidence-private",
       billing: {
         appEnvironment: "preview",
+        secretKeyMode: "test",
+        publishableKeyMode: null,
         portalReturnUrl: "http://localhost:3000/settings/billing",
         checkoutSuccessUrl:
           "http://localhost:3000/settings/billing?checkout=success",
         checkoutCancelUrl:
           "http://localhost:3000/settings/billing?checkout=cancelled",
         hasSecretKey: true,
+        hasPublishableKey: false,
         hasWebhookSecret: true,
         planCodes: ["starter", "growth"],
       },

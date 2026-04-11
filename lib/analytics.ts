@@ -1,6 +1,5 @@
 import {
   getAnalyticsRuntimeConfig,
-  isJobWorkerProcess,
 } from "@/lib/env";
 import {
   resolveObservabilityRuntime,
@@ -8,7 +7,6 @@ import {
   writeStructuredLog,
   type ObservabilityRuntime,
 } from "@/lib/logger";
-import { enqueueJob, jobTypes } from "@/lib/jobs";
 
 export const analyticsEventNames = {
   AUTH_LOGIN_SUCCEEDED: "auth.login.succeeded",
@@ -105,8 +103,42 @@ export type SuccessfulLoginAnalyticsInput = {
   runtime?: ObservabilityRuntime;
 };
 
-function shouldQueueAnalytics(runtime: ObservabilityRuntime) {
-  return runtime === "server" && !isJobWorkerProcess();
+async function shouldQueueAnalytics(runtime: ObservabilityRuntime) {
+  if (runtime !== "server") {
+    return false;
+  }
+
+  const { isJobWorkerProcess } = await import("@/lib/env");
+
+  return !isJobWorkerProcess();
+}
+
+async function enqueueAnalyticsTrackJob(input: {
+  payload: AnalyticsTrackPayload;
+  idempotencyKey: string | null;
+}) {
+  const { enqueueJob, jobTypes } = await import("@/lib/jobs");
+
+  await enqueueJob({
+    type: jobTypes.ANALYTICS_TRACK,
+    organizationId: input.payload.organizationId,
+    payload: input.payload,
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
+async function enqueueAnalyticsIdentifyJob(input: {
+  payload: AnalyticsIdentifyPayload;
+  idempotencyKey: string | null;
+}) {
+  const { enqueueJob, jobTypes } = await import("@/lib/jobs");
+
+  await enqueueJob({
+    type: jobTypes.ANALYTICS_IDENTIFY,
+    organizationId: input.payload.organizationId,
+    payload: input.payload,
+    idempotencyKey: input.idempotencyKey,
+  });
 }
 
 function normalizePath(value: string, fallback: string) {
@@ -391,10 +423,8 @@ export async function trackEvent(input: AnalyticsTrackInput) {
   const payload = buildAnalyticsTrackPayload(input);
 
   try {
-    if (shouldQueueAnalytics(payload.runtime)) {
-      await enqueueJob({
-        type: jobTypes.ANALYTICS_TRACK,
-        organizationId: payload.organizationId,
+    if (await shouldQueueAnalytics(payload.runtime)) {
+      await enqueueAnalyticsTrackJob({
         payload,
         idempotencyKey: input.idempotencyKey ?? null,
       });
@@ -421,10 +451,8 @@ export async function identifyUser(input: AnalyticsIdentifyInput) {
   const payload = buildAnalyticsIdentifyPayload(input);
 
   try {
-    if (shouldQueueAnalytics(payload.runtime)) {
-      await enqueueJob({
-        type: jobTypes.ANALYTICS_IDENTIFY,
-        organizationId: payload.organizationId,
+    if (await shouldQueueAnalytics(payload.runtime)) {
+      await enqueueAnalyticsIdentifyJob({
         payload,
         idempotencyKey: input.idempotencyKey ?? null,
       });

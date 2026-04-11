@@ -1,7 +1,12 @@
 import { Phase, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MockAuthGuardError,
+  createAuthGuardJsonResponse,
+} from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const createPhaseChangeRequestMock = vi.hoisted(() => vi.fn());
 const approvePhaseChangeRequestMock = vi.hoisted(() => vi.fn());
 const WorkflowErrorMock = vi.hoisted(
@@ -18,7 +23,8 @@ const WorkflowErrorMock = vi.hoisted(
 );
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -42,18 +48,26 @@ function createJsonRequest(url: string, body: unknown) {
 
 describe("workflow API routes", () => {
   beforeEach(() => {
-    getCurrentUserMock.mockResolvedValue({
+    vi.clearAllMocks();
+    requireUserMock.mockResolvedValue({
       id: "user-1",
       name: "Workflow User",
       email: "user@example.com",
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
   });
 
   describe("app/api/phase-change-request/route.ts", () => {
     it("returns 401 JSON for unauthenticated requests", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      requireUserMock.mockRejectedValueOnce(
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
+      );
 
       const response = await postPhaseChangeRequestRoute(
         createJsonRequest("http://localhost/api/phase-change-request", {
@@ -137,7 +151,13 @@ describe("workflow API routes", () => {
 
   describe("app/api/approve-phase-change/route.ts", () => {
     it("returns 401 JSON for unauthenticated requests", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      requireUserMock.mockRejectedValueOnce(
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
+      );
 
       const response = await postApprovePhaseChangeRoute(
         createJsonRequest("http://localhost/api/approve-phase-change", {

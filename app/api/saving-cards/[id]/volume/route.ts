@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import { requireUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getVolumeTimeline } from "@/lib/volume";
 import {
   jsonError,
@@ -11,9 +11,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await requireUser();
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const { id } = volumeCardParamsSchema.parse(await params);
     const card = await resolveVolumeCardContext(id, user.organizationId);
 
@@ -25,6 +24,12 @@ export async function GET(
 
     return Response.json(result);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card id is invalid.", 422);
     }

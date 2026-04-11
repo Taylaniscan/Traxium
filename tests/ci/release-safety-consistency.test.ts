@@ -33,6 +33,7 @@ describe("release safety consistency", () => {
       "DIRECT_URL",
       "NEXT_PUBLIC_SUPABASE_URL",
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
       "SUPABASE_SERVICE_ROLE_KEY",
       "SUPABASE_STORAGE_BUCKET",
       "STRIPE_SECRET_KEY",
@@ -125,6 +126,9 @@ describe("release safety consistency", () => {
     const environmentSetup = readProjectFile("docs/environment-setup.md");
     const releaseChecklist = readProjectFile("docs/release-checklist.md");
     const deploymentStrategy = readProjectFile("docs/deployment-strategy.md");
+    const billingAccessGuide = readProjectFile(
+      "docs/subscription-gating-and-billing-recovery.md"
+    );
     const apiHardeningMatrix = readProjectFile("docs/api-hardening-matrix.md");
     const operationsRunbook = readProjectFile("docs/operations-runbook.md");
     const smokeTests = readProjectFile("docs/post-release-smoke-tests.md");
@@ -142,6 +146,7 @@ describe("release safety consistency", () => {
     expect(environmentSetup).toContain("npm run env:check");
     expect(environmentSetup).toContain("npm run build");
     expect(environmentSetup).toContain("STRIPE_SECRET_KEY");
+    expect(environmentSetup).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
     expect(environmentSetup).toContain("STRIPE_WEBHOOK_SECRET");
     expect(environmentSetup).toContain("STRIPE_STARTER_BASE_PRICE_ID");
     expect(releaseChecklist).toContain("npm run db:generate");
@@ -149,13 +154,30 @@ describe("release safety consistency", () => {
     expect(releaseChecklist).toContain("npm run test");
     expect(releaseChecklist).toContain("npm run build");
     expect(releaseChecklist).toContain("STRIPE_SECRET_KEY");
+    expect(releaseChecklist).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
     expect(releaseChecklist).toContain("STRIPE_GROWTH_METERED_PRICE_ID");
+    expect(releaseChecklist).toContain(
+      "subscription-gating-and-billing-recovery.md"
+    );
     expect(deploymentStrategy).toContain("npm run predeploy");
     expect(deploymentStrategy).toContain("npm run release:verify");
     expect(deploymentStrategy).toContain("npm run release:migrate");
     expect(deploymentStrategy).toContain("prisma migrate deploy");
     expect(deploymentStrategy).toContain("STRIPE_SECRET_KEY");
     expect(deploymentStrategy).toContain("STRIPE_GROWTH_BASE_PRICE_ID");
+    expect(deploymentStrategy).toContain(
+      "subscription-gating-and-billing-recovery.md"
+    );
+    expect(billingAccessGuide).toContain("How Access Is Determined");
+    expect(billingAccessGuide).toContain("/billing-required");
+    expect(billingAccessGuide).toContain("/api/auth/bootstrap");
+    expect(billingAccessGuide).toContain("/settings/billing");
+    expect(billingAccessGuide).toContain("sk_live_");
+    expect(billingAccessGuide).toContain("pk_live_");
+    expect(billingAccessGuide).toContain("lib/billing/access.ts");
+    expect(billingAccessGuide).toContain("scripts/predeploy-check.ts");
+    expect(billingAccessGuide).not.toContain("TODO");
+    expect(billingAccessGuide).not.toContain("Unknown");
     expect(apiHardeningMatrix).toContain("/api/auth/forgot-password");
     expect(apiHardeningMatrix).toContain("/api/admin/settings");
     expect(apiHardeningMatrix).toContain("/api/export");
@@ -175,11 +197,15 @@ describe("release safety consistency", () => {
     expect(smokeTests).toContain("/admin/insights");
     expect(smokeTests).toContain("/admin/jobs");
     expect(smokeTests).toContain("npm run jobs:worker:once");
+    expect(smokeTests).toContain("/billing-required");
+    expect(smokeTests).toContain("/api/auth/bootstrap");
+    expect(smokeTests).toContain("/settings/billing");
     expect(runtimeBaseline).toContain("Verified Automated Coverage");
     expect(runtimeBaseline).toContain("Pending Manual Verification");
     expect(runtimeBaseline).toContain("Saving-card create");
     expect(runtimeBaseline).toContain("Evidence upload");
     expect(runtimeBaseline).toContain("Admin jobs");
+    expect(runtimeBaseline).toContain("Blocked billing and recovery");
   });
 
   it("keeps predeploy summaries secret-safe while accepting preview-safe config", () => {
@@ -230,6 +256,7 @@ describe("release safety consistency", () => {
       databaseHost: "aws-1-eu-central-1.pooler.supabase.com",
       directHost: "aws-1-eu-central-1.pooler.supabase.com",
       productionAliasHost: "app.traxium.com",
+      stripeKeyMode: "test",
     });
     expect(serializedResult).not.toContain(anonKey);
     expect(serializedResult).not.toContain(serviceRoleKey);

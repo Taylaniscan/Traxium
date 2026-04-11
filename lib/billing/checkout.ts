@@ -9,6 +9,7 @@ import {
   type StripePlanCatalogKey,
 } from "@/lib/billing/config";
 import { getStripeClient } from "@/lib/billing/stripe";
+import { resolveAppEnvironment } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { billingCustomerSelect, type BillingCustomerRecord } from "@/lib/types";
 
@@ -54,7 +55,7 @@ export type BillingPortalSessionResult = {
 export class BillingCheckoutError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 404 | 409 | 422 | 500 = 400
+    readonly status: 400 | 404 | 409 | 422 | 500 | 503 = 400
   ) {
     super(message);
     this.name = "BillingCheckoutError";
@@ -100,9 +101,37 @@ function normalizeStripeMetadata(metadata: Stripe.Metadata) {
   return Object.fromEntries(entries);
 }
 
+function createBillingConfigurationError() {
+  if (resolveAppEnvironment() === "development") {
+    return new BillingCheckoutError(
+      "Billing is not configured for local development yet. Add the local Stripe settings before starting a subscription.",
+      503
+    );
+  }
+
+  return new BillingCheckoutError(
+    "Billing is not available right now. Please try again later.",
+    503
+  );
+}
+
+function resolveStripeBillingConfig(
+  config?: StripeBillingConfig
+) {
+  if (config) {
+    return config;
+  }
+
+  try {
+    return getStripeBillingConfig();
+  } catch {
+    throw createBillingConfigurationError();
+  }
+}
+
 export function resolveCheckoutPlanSelection(
   input: Pick<CreateCheckoutSessionInput, "planCode" | "priceId">,
-  config: StripeBillingConfig = getStripeBillingConfig()
+  config: StripeBillingConfig = resolveStripeBillingConfig()
 ): CheckoutPlanSelection {
   const priceId = normalizeRequiredString(input.priceId, "Price id");
   const plan = config.plans[input.planCode];
@@ -221,7 +250,7 @@ export async function createCheckoutSessionForOrganization(
     "Organization id"
   );
   const userId = normalizeRequiredString(input.userId, "User id");
-  const config = dependencies.config ?? getStripeBillingConfig();
+  const config = resolveStripeBillingConfig(dependencies.config);
   const stripeClient = dependencies.stripeClient ?? getStripeClient();
   const prismaClient = dependencies.prismaClient ?? prisma;
   const selection = resolveCheckoutPlanSelection(input, config);
@@ -296,8 +325,6 @@ export async function createBillingPortalSessionForOrganization(
     input.organizationId,
     "Organization id"
   );
-  const config = dependencies.config ?? getStripeBillingConfig();
-  const stripeClient = dependencies.stripeClient ?? getStripeClient();
   const prismaClient = dependencies.prismaClient ?? prisma;
   const billingCustomer = await getOrganizationBillingCustomer(
     organizationId,
@@ -306,11 +333,13 @@ export async function createBillingPortalSessionForOrganization(
 
   if (!billingCustomer) {
     throw new BillingCheckoutError(
-      "Billing portal is unavailable because the organization does not have a billing customer.",
+      "Billing portal is unavailable because this workspace does not have a billing customer yet. Start a subscription first.",
       404
     );
   }
 
+  const config = resolveStripeBillingConfig(dependencies.config);
+  const stripeClient = dependencies.stripeClient ?? getStripeClient();
   const session = await stripeClient.billingPortal.sessions.create({
     customer: billingCustomer.stripeCustomerId,
     return_url: config.portalReturnUrl,

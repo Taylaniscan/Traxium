@@ -1,7 +1,7 @@
 import { Phase } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { createPhaseChangeRequest, WorkflowError } from "@/lib/data";
 
 const phaseChangeRequestSchema = z
@@ -41,13 +41,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const body = await readJsonBody(request);
 
     if (!body.ok) {
@@ -75,6 +70,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof WorkflowError) {
       return jsonError(error.message, error.status);
     }

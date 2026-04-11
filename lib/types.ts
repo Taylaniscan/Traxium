@@ -24,7 +24,11 @@ export const appPermissions = [
 
 export type AppPermission = (typeof appPermissions)[number];
 
-export type AuthFailureCode = "UNAUTHENTICATED" | "ORGANIZATION_REQUIRED" | "FORBIDDEN";
+export type AuthFailureCode =
+  | "UNAUTHENTICATED"
+  | "ORGANIZATION_REQUIRED"
+  | "BILLING_REQUIRED"
+  | "FORBIDDEN";
 
 export type ActiveOrganizationContext = {
   membershipId: string;
@@ -416,6 +420,8 @@ export type OrganizationQuotaSnapshotRecord = Prisma.QuotaSnapshotGetPayload<{
 
 export type AuthGuardOptions = {
   redirectTo?: string | null;
+  billingRedirectTo?: string | null;
+  allowBillingBlocked?: boolean;
 };
 
 export const savingCardPortfolioSelect = {

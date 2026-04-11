@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { ZodError } from "zod";
-import { requireUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -24,9 +24,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await requireUser();
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "volumeImport",
       request,
@@ -96,6 +95,12 @@ export async function POST(
     );
     return Response.json(result);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card id is invalid.", 422);
     }

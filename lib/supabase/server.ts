@@ -16,6 +16,14 @@ type CookieToSet = {
   options?: Parameters<Awaited<ReturnType<typeof cookies>>["set"]>[2];
 };
 
+type SupabaseCookieAdapter = {
+  getAll(): {
+    name: string;
+    value: string;
+  }[];
+  setAll(cookiesToSet: CookieToSet[]): void;
+};
+
 type SupabaseJwtClaims = {
   role?: string;
   ref?: string;
@@ -97,25 +105,29 @@ function getSupabaseServiceRoleKey() {
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
+  return createSupabaseRouteClient({
+    getAll() {
+      return cookieStore.getAll();
+    },
+    setAll(cookiesToSet: CookieToSet[]) {
+      cookiesToSet.forEach(({ name, value, options }) => {
+        try {
+          cookieStore.set(name, value, options);
+        } catch {
+          // Some Server Component contexts cannot set cookies here.
+          // Middleware handles refresh separately.
+        }
+      });
+    },
+  });
+}
+
+export function createSupabaseRouteClient(cookies: SupabaseCookieAdapter) {
   return createServerClient(
     getSupabaseUrl(),
     getSupabaseAnonKey(),
     {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet: CookieToSet[]) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            try {
-              cookieStore.set(name, value, options);
-            } catch {
-              // Some Server Component contexts cannot set cookies here.
-              // Middleware handles refresh separately.
-            }
-          });
-        },
-      },
+      cookies,
     }
   );
 }

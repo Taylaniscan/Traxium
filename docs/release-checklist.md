@@ -26,6 +26,8 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
 - Verify auth, onboarding, admin, observability, and async jobs changes include tests when behavior changed.
 - Verify no server secret was moved into a `NEXT_PUBLIC_*` variable.
 - Verify `.env.example` and [environment-setup.md](/Users/atlas/Documents/Traxium/docs/environment-setup.md) still reflect the current config contract if env usage changed.
+- Verify [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) still matches the current access-state mapping, blocked-route contract, billing recovery flow, and Stripe deploy guard behavior if billing or auth guards changed.
+- Verify [billing-access-staging-qa.md](/Users/atlas/Documents/Traxium/docs/billing-access-staging-qa.md) still matches the real blocked-billing, recovery, multi-org, and release-verification workflow before preview signoff.
 
 ## Deploy Before Release
 
@@ -48,7 +50,13 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
   - `STRIPE_GROWTH_PRODUCT_ID`
   - `STRIPE_GROWTH_BASE_PRICE_ID`
   - `STRIPE_GROWTH_METERED_PRICE_ID`
+- Confirm Stripe mode safety before release:
+  - `STRIPE_SECRET_KEY` must be a live `sk_live_` key
+  - if `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is set, it must be a live `pk_live_` key
+  - publishable and secret keys must stay in the same Stripe mode
+  - production must not use preview/local/test Stripe catalog IDs
 - Confirm optional runtime integrations are intentional:
+  - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `SENTRY_DSN`
   - `NEXT_PUBLIC_SENTRY_DSN`
   - `ANALYTICS_HOST`

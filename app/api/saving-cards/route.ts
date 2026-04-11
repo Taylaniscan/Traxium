@@ -1,7 +1,7 @@
 import { UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { createSavingCard, getSavingCards } from "@/lib/data";
 import {
   createRateLimitErrorResponse,
@@ -37,16 +37,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 export async function GET() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const cards = await getSavingCards(user.organizationId);
     return NextResponse.json(cards);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     return jsonError(
       error instanceof Error ? error.message : "Unable to load saving cards.",
       500
@@ -55,13 +56,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "savingCardMutation",
       request,
@@ -111,6 +107,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json(card, { status: 201 });
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
     }

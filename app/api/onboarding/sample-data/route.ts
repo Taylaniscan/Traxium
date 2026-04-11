@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import { FirstValueError, loadFirstValueSampleData } from "@/lib/first-value";
 import {
@@ -16,21 +16,12 @@ export async function POST(request: Request) {
   const requestContext = createRouteObservabilityContext(request, {
     event: "onboarding.sample_data.requested",
   });
-  const user = await getCurrentUser();
-
-  if (!user) {
-    trackServerEvent(
-      {
-        ...requestContext,
-        event: "onboarding.sample_data.unauthorized",
-        status: 401,
-      },
-      "warn"
-    );
-    return jsonError("Unauthorized.", 401);
-  }
+  let user:
+    | Awaited<ReturnType<typeof requireUser>>
+    | null = null;
 
   try {
+    user = await requireUser({ redirectTo: null });
     const result = await loadFirstValueSampleData(user.id, user.organizationId);
 
     trackServerEvent({
@@ -63,13 +54,28 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "onboarding.sample_data.unauthorized",
+          message: error instanceof Error ? error.message : "Unauthorized",
+          status: authResponse.status,
+        },
+        "warn"
+      );
+      return authResponse;
+    }
+
     if (error instanceof FirstValueError) {
       trackServerEvent(
         {
           ...requestContext,
           event: "onboarding.sample_data.rejected",
-          organizationId: user.organizationId,
-          userId: user.id,
+          organizationId: user?.organizationId,
+          userId: user?.id,
           message: error.message,
           status: error.status,
         },
@@ -81,8 +87,8 @@ export async function POST(request: Request) {
     captureException(error, {
       ...requestContext,
       event: "onboarding.sample_data.failed",
-      organizationId: user.organizationId,
-      userId: user.id,
+      organizationId: user?.organizationId,
+      userId: user?.id,
       status: 500,
     });
 

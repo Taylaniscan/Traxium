@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness, mapSavingCardsForExport } from "@/lib/data";
 import {
   createRateLimitErrorResponse,
@@ -13,13 +13,8 @@ function jsonError(error: string, status: number) {
 }
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "dataExport",
       request,
@@ -79,6 +74,12 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof RateLimitExceededError) {
       return createRateLimitErrorResponse(error);
     }

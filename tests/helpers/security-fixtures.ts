@@ -4,13 +4,24 @@ export const DEFAULT_ORGANIZATION_ID = "org-1";
 export const OTHER_ORGANIZATION_ID = "org-2";
 export const DEFAULT_USER_ID = "user-1";
 
-export type MockAuthGuardErrorCode = "UNAUTHENTICATED" | "ORGANIZATION_REQUIRED" | "FORBIDDEN";
+export type MockAuthGuardErrorCode =
+  | "UNAUTHENTICATED"
+  | "ORGANIZATION_REQUIRED"
+  | "BILLING_REQUIRED"
+  | "FORBIDDEN";
+
+type MockBillingGuardDetails = {
+  accessState?: string | null;
+  reasonCode?: string | null;
+  billingRequiredPath?: string | null;
+};
 
 export class MockAuthGuardError extends Error {
   constructor(
     message: string,
-    readonly status: 401 | 403,
-    readonly code: MockAuthGuardErrorCode
+    readonly status: 401 | 402 | 403,
+    readonly code: MockAuthGuardErrorCode,
+    readonly details?: MockBillingGuardDetails
   ) {
     super(message);
     this.name = "AuthGuardError";
@@ -23,9 +34,18 @@ export function createAuthGuardJsonResponse(error: unknown) {
   }
 
   return Response.json(
-    {
-      error: error.code === "FORBIDDEN" ? "Forbidden." : "Unauthorized.",
-    },
+    error.code === "BILLING_REQUIRED"
+      ? {
+          error: error.message,
+          code: error.code,
+          accessState: error.details?.accessState ?? null,
+          reasonCode: error.details?.reasonCode ?? null,
+          billingRequiredPath:
+            error.details?.billingRequiredPath ?? "/billing-required",
+        }
+      : {
+          error: error.code === "FORBIDDEN" ? "Forbidden." : "Unauthorized.",
+        },
     { status: error.status }
   );
 }

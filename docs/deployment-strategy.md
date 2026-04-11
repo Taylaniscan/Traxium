@@ -40,6 +40,9 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 - Use `APP_ENV=production`.
 - Production deployments must use the production application domain and live Supabase project.
 - Production deployments must also use live Stripe billing secrets, return URLs, product ids, and price ids.
+- `STRIPE_SECRET_KEY` must be `sk_live_`, and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` must be `pk_live_` if it is set.
+- The predeploy guard rejects mixed Stripe mode config such as test keys in production or preview/local/test catalog IDs paired with a live secret.
+- Keep [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) aligned with deploy behavior whenever billing access or recovery flow changes.
 - On Vercel, keep `VERCEL_ENV=production` aligned with `APP_ENV=production`.
 - Run `npm run release:verify` before approving a production release.
 - Production builds should use [vercel.json](/Users/atlas/Documents/Traxium/vercel.json) so the predeploy guard runs before `next build`.

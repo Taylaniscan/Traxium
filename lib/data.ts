@@ -1771,6 +1771,25 @@ export async function getDashboardData(
   );
 }
 
+export function resolveCommandCenterForecastBucket(value: unknown) {
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      month: "Unknown timing",
+      sortValue: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
+  return {
+    month: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      year: "numeric",
+    }).format(date),
+    sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
+  };
+}
+
 function buildCommandCenterWhere(
   context: TenantContextSource,
   filters?: CommandCenterFilters
@@ -1905,21 +1924,21 @@ export async function getCommandCenterData(
   const forecastCurve = Object.values(
     forecastCards.reduce<Record<string, { month: string; savings: number; forecast: number; sortValue: number }>>(
       (acc, card) => {
-        const date = new Date(card.impactStartDate);
-        const monthKey = new Intl.DateTimeFormat("en-US", {
-          month: "short",
-          year: "numeric",
-        }).format(date);
+        const monthBucket = resolveCommandCenterForecastBucket(
+          card.impactStartDate
+        );
+        const monthKey = `${monthBucket.sortValue}:${monthBucket.month}`;
 
         acc[monthKey] ??= {
-          month: monthKey,
+          month: monthBucket.month,
           savings: 0,
           forecast: 0,
-          sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
+          sortValue: monthBucket.sortValue,
         };
 
         acc[monthKey].savings += card.calculatedSavings;
-        acc[monthKey].forecast += card.calculatedSavings * getForecastMultiplier(card.frequency);
+        acc[monthKey].forecast +=
+          card.calculatedSavings * getForecastMultiplier(card.frequency);
         return acc;
       },
       {}

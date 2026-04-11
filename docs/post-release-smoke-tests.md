@@ -55,3 +55,12 @@ Run these checks immediately after every preview signoff deployment and every pr
 13. Worker health:
     Run `npm run jobs:worker:once` in the deployed worker environment.
     Expected: the worker starts, drains available work once, exits cleanly, and the jobs page reflects the updated status without new unexpected failures.
+
+14. Blocked billing and recovery:
+    Use a preview-safe validation workspace that is intentionally in a blocked billing state. Do not induce a real customer billing failure in production.
+    Expected:
+    - opening `/dashboard` redirects to `/billing-required`
+    - `/api/auth/bootstrap` returns `402` with `billingRequiredPath: "/billing-required"`
+    - admin users see recovery actions such as portal or checkout handoff
+    - normal members only see contact-admin guidance
+    - after Stripe recovery, `/settings/billing` returns the user to `/dashboard` once subscription sync is active again

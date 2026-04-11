@@ -1,5 +1,5 @@
 import { ZodError, z } from "zod";
-import { requireUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import {
   deleteForecast,
   parsePeriodInput,
@@ -28,9 +28,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await requireUser();
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const { id } = volumeCardParamsSchema.parse(await params);
     const card = await resolveVolumeCardContext(id, user.organizationId);
 
@@ -63,6 +62,12 @@ export async function POST(
 
     return Response.json(result, { status: 201 });
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Forecast payload is invalid.", 422);
     }
@@ -78,9 +83,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await requireUser();
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const { id } = volumeCardParamsSchema.parse(await params);
     const card = await resolveVolumeCardContext(id, user.organizationId);
 
@@ -105,6 +109,12 @@ export async function DELETE(
 
     return Response.json({ success: true });
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Forecast delete payload is invalid.", 422);
     }

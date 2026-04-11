@@ -1,7 +1,7 @@
 import { Phase } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { addApproval, getSavingCard, setFinanceLock, updateSavingCard } from "@/lib/data";
 import { canApprovePhase, canLockFinance } from "@/lib/permissions";
 import {
@@ -53,13 +53,8 @@ async function resolveSavingCardId(
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "savingCardUpdate",
       request,
@@ -94,6 +89,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const card = await updateSavingCard(id, payload.data, user.id, user.organizationId);
     return NextResponse.json(card);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
     }
@@ -110,13 +111,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const id = await resolveSavingCardId(params);
     const card = await getSavingCard(id, user.organizationId);
 
@@ -129,6 +125,12 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
       409
     );
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card id is invalid.", 422);
     }
@@ -141,13 +143,8 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "savingCardUpdate",
       request,
@@ -198,6 +195,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return jsonError("Unsupported action.", 422);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Action payload is invalid.", 422);
     }

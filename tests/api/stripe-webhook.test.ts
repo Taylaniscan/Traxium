@@ -680,4 +680,33 @@ describe("Stripe webhook route", () => {
       true
     );
   });
+
+  it("fails explicitly when Stripe sends an unknown subscription status", async () => {
+    const response = await stripeWebhookRoute(
+      createSignedWebhookRequest(
+        createStripeEvent({
+          id: "evt_subscription_unknown_status",
+          type: "customer.subscription.updated",
+          object: createSubscriptionObject({
+            status: "future_status",
+          }),
+        })
+      )
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        'Unsupported Stripe subscription status "future_status". Update the billing sync before processing this event.',
+    });
+    expect(prismaState.subscriptions).toHaveLength(0);
+    expect(prismaState.webhookEvents).toEqual([
+      expect.objectContaining({
+        stripeEventId: "evt_subscription_unknown_status",
+        processedAt: null,
+        processingError:
+          'Unsupported Stripe subscription status "future_status". Update the billing sync before processing this event.',
+      }),
+    ]);
+  });
 });

@@ -42,36 +42,72 @@ const EMPTY_COMMAND_CENTER_FILTER_OPTIONS: CommandCenterFilterOptions = {
 const SERVER_OUTLINE_BUTTON_CLASS =
   "inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
+async function loadCommandCenterDataState(organizationId: string) {
+  try {
+    return {
+      initialData: (await getCommandCenterData(organizationId)) as CommandCenterData,
+      dataError: null,
+    };
+  } catch (error) {
+    console.error("Command Center data could not be loaded:", error);
+
+    return {
+      initialData: EMPTY_COMMAND_CENTER_DATA,
+      dataError:
+        "Command center analytics could not be loaded right now. Refresh the page or try again in a moment.",
+    };
+  }
+}
+
+async function loadCommandCenterFilterOptionsState(organizationId: string) {
+  try {
+    return {
+      filterOptions: (await getCommandCenterFilterOptions(
+        organizationId
+      )) as CommandCenterFilterOptions,
+      filterOptionsError: null,
+    };
+  } catch (error) {
+    console.error("Command Center filter options could not be loaded:", error);
+
+    return {
+      filterOptions: EMPTY_COMMAND_CENTER_FILTER_OPTIONS,
+      filterOptionsError:
+        "Command center filters could not be loaded. Filter options are temporarily unavailable.",
+    };
+  }
+}
+
+async function loadCommandCenterReadinessState(organizationId: string) {
+  try {
+    return {
+      workspaceReadiness: (await getWorkspaceReadiness(
+        organizationId
+      )) as WorkspaceReadiness | null,
+      readinessError: null,
+    };
+  } catch (error) {
+    console.error("Workspace readiness could not be loaded:", error);
+
+    return {
+      workspaceReadiness: null,
+      readinessError:
+        "Workspace setup status could not be loaded. Command center charts are still available, but readiness guidance is temporarily unavailable.",
+    };
+  }
+}
+
 export default async function CommandCenterPage() {
   const user = await requireUser();
-
-  let initialData: CommandCenterData = EMPTY_COMMAND_CENTER_DATA;
-  let filterOptions: CommandCenterFilterOptions = EMPTY_COMMAND_CENTER_FILTER_OPTIONS;
-  let workspaceReadiness: WorkspaceReadiness | null = null;
-
-  const [dataResult, filterOptionsResult, readinessResult] = await Promise.allSettled([
-    getCommandCenterData(user.organizationId),
-    getCommandCenterFilterOptions(user.organizationId),
-    getWorkspaceReadiness(user.organizationId),
+  const [
+    { initialData, dataError },
+    { filterOptions, filterOptionsError },
+    { workspaceReadiness, readinessError },
+  ] = await Promise.all([
+    loadCommandCenterDataState(user.organizationId),
+    loadCommandCenterFilterOptionsState(user.organizationId),
+    loadCommandCenterReadinessState(user.organizationId),
   ]);
-
-  if (dataResult.status === "fulfilled") {
-    initialData = dataResult.value;
-  } else {
-    console.log("Command Center data could not be loaded:", dataResult.reason);
-  }
-
-  if (filterOptionsResult.status === "fulfilled") {
-    filterOptions = filterOptionsResult.value;
-  } else {
-    console.log("Command Center filter options could not be loaded:", filterOptionsResult.reason);
-  }
-
-  if (readinessResult.status === "fulfilled") {
-    workspaceReadiness = readinessResult.value;
-  } else {
-    console.log("Workspace readiness could not be loaded:", readinessResult.reason);
-  }
 
   return (
     <div className="space-y-6">
@@ -85,6 +121,11 @@ export default async function CommandCenterPage() {
         initialData={initialData}
         filterOptions={filterOptions}
         readiness={workspaceReadiness}
+        loadState={{
+          dataError,
+          filterOptionsError,
+          readinessError,
+        }}
       />
     </div>
   );

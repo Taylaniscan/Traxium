@@ -13,6 +13,7 @@ vi.mock("server-only", () => ({}));
 import {
   assertStripeBillingConfiguration,
   getStripeBillingConfig,
+  isStripeBillingConfigured,
   type StripeBillingConfig,
 } from "@/lib/billing/config";
 import {
@@ -97,12 +98,15 @@ describe("Stripe billing config", () => {
     });
     expect(assertStripeBillingConfiguration(createBillingEnv())).toEqual({
       appEnvironment: "development",
+      secretKeyMode: "test",
+      publishableKeyMode: null,
       portalReturnUrl: "http://localhost:3000/settings/billing",
       checkoutSuccessUrl:
         "http://localhost:3000/settings/billing?checkout=success",
       checkoutCancelUrl:
         "http://localhost:3000/settings/billing?checkout=cancelled",
       hasSecretKey: true,
+      hasPublishableKey: false,
       hasWebhookSecret: true,
       planCodes: ["starter", "growth"],
     });
@@ -111,6 +115,17 @@ describe("Stripe billing config", () => {
     expectTypeOf(config.plans.starter.code).toEqualTypeOf<
       StripeBillingConfig["plans"]["starter"]["code"]
     >();
+  });
+
+  it("reports whether Stripe billing is fully configured without throwing", () => {
+    expect(isStripeBillingConfigured(createBillingEnv())).toBe(true);
+    expect(
+      isStripeBillingConfigured(
+        createBillingEnv({
+          STRIPE_SECRET_KEY: undefined,
+        })
+      )
+    ).toBe(false);
   });
 
   it("creates and caches a Stripe client through the shared helper", () => {

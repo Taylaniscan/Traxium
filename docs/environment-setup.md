@@ -40,6 +40,7 @@ Required in `preview` and `production`, and required in `development` only when 
 
 Optional in all environments:
 
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `SENTRY_DSN`
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `NEXT_PUBLIC_ANALYTICS_HOST`
@@ -61,6 +62,7 @@ Optional in all environments:
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
 5. Add the Stripe billing values below if you need local checkout, portal, or webhook testing:
+   - Optional: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` if a client Stripe integration needs it
    - `STRIPE_SECRET_KEY`
    - `STRIPE_WEBHOOK_SECRET`
    - `STRIPE_PORTAL_RETURN_URL`
@@ -74,6 +76,7 @@ Optional in all environments:
    - `STRIPE_GROWTH_METERED_PRICE_ID`
 6. Keep `DIRECT_URL` equal to `DATABASE_URL` unless your network can reliably reach the Supabase direct host.
 7. Run `npm run env:check` before `npm run dev` or `npm run build`.
+8. If you set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, keep it in the same Stripe mode as `STRIPE_SECRET_KEY`.
 
 ## Preview
 
@@ -84,6 +87,8 @@ Required:
 - All shared required variables above
 - `NEXT_PUBLIC_APP_URL` must point to the preview deployment URL
 - Preview-safe Stripe product, price, secret, and return URL values must be present for billing routes
+- Stripe test keys are allowed in preview, and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` may be omitted
+- If a publishable key is set, it must stay in the same mode as `STRIPE_SECRET_KEY`
 
 Recommended:
 
@@ -100,6 +105,8 @@ Required:
 - All shared required variables above
 - Production-safe `NEXT_PUBLIC_APP_URL`
 - Live Stripe secret, webhook secret, product ids, price ids, and billing return URLs
+- If `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is set, it must be a live `pk_live_` key
+- Mixed Stripe config is rejected: `sk_test_` secrets, `pk_test_` publishable keys, or preview/local/test catalog IDs paired with live production billing
 
 Recommended:
 
@@ -114,6 +121,7 @@ Only these variables are intended for browser exposure:
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `NEXT_PUBLIC_ANALYTICS_HOST`
 - `NEXT_PUBLIC_ANALYTICS_KEY`

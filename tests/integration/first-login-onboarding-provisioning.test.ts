@@ -81,22 +81,29 @@ describe("first-login onboarding provisioning", () => {
     ).rejects.toThrow("NEXT_REDIRECT:/onboarding");
   });
 
-  it("sends a membership user to the dashboard instead of onboarding", async () => {
-    getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
-      ok: true,
-      needsWorkspace: false,
-      user: {
-        id: "user-1",
-        name: "Member User",
-        email: "member@example.com",
+  it("redirects a billing-blocked workspace to the billing-required page from protected app routes", async () => {
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: false,
+      code: "BILLING_REQUIRED",
+      message:
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+      accessState: {
+        accessState: "blocked_unpaid",
+        reasonCode: "unpaid",
       },
     });
 
     await expect(
-      LoginPage({
-        searchParams: Promise.resolve({}),
+      AppLayout({
+        children: React.createElement("div", null, "protected"),
       })
-    ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+    ).rejects.toThrow("NEXT_REDIRECT:/billing-required");
+  });
+
+  it("renders the login page without a premature server-side redirect for an authenticated membership user", () => {
+    const page = LoginPage();
+
+    expect(page).toBeTruthy();
   });
 
   it("renders the onboarding form for a first-login user without creating a redirect loop", async () => {
@@ -133,5 +140,29 @@ describe("first-login onboarding provisioning", () => {
 
     expect(appShellMock).toHaveBeenCalledTimes(1);
     expect(markup).toContain("dashboard-ready");
+  });
+
+  it("allows an active admin workspace through the protected app layout", async () => {
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: true,
+      repaired: false,
+      user: createSessionUser({
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+        activeOrganization: {
+          membershipId: "membership-admin",
+          organizationId: "org-1",
+          membershipRole: "ADMIN",
+          membershipStatus: "ACTIVE",
+        },
+      }),
+    });
+
+    const layout = await AppLayout({
+      children: React.createElement("section", null, "admin-dashboard-ready"),
+    });
+    const markup = renderToStaticMarkup(layout as React.ReactElement);
+
+    expect(appShellMock).toHaveBeenCalledTimes(1);
+    expect(markup).toContain("admin-dashboard-ready");
   });
 });

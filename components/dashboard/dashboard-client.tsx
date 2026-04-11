@@ -2,526 +2,115 @@
 
 import Link from "next/link";
 import type { OrganizationRole } from "@prisma/client";
-import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, CircleDollarSign, Filter, Settings, Target, TrendingUp } from "lucide-react";
-import { FirstValueLaunchpad } from "@/components/onboarding/first-value-launchpad";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
-import { implementationComplexities, phaseLabels, qualificationStatuses, savingDrivers } from "@/lib/constants";
-import type { DashboardData, WorkspaceReadiness } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
+import type { ComponentType, ReactNode } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  ArrowUpRight,
+  CircleDollarSign,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 
-export function DashboardClient({
-  data,
-  readiness,
-  viewer,
-}: {
-  data: DashboardData;
-  readiness?: WorkspaceReadiness | null;
-  viewer: {
-    organizationMembershipRole: OrganizationRole;
-  };
-}) {
-  const [filters, setFilters] = useState({
-    savingDriver: "",
-    implementationComplexity: "",
-    qualificationStatus: ""
-  });
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { phaseLabels, phases } from "@/lib/constants";
+import type {
+  DashboardCardSummary,
+  DashboardData,
+  WorkspaceReadiness,
+} from "@/lib/types";
+import { formatCurrency } from "@/lib/utils/numberFormatter";
 
-  const filteredCards = useMemo(
-    () =>
-      data.cards.filter((card) => {
-        if (filters.savingDriver && card.savingDriver !== filters.savingDriver) return false;
-        if (filters.implementationComplexity && card.implementationComplexity !== filters.implementationComplexity) return false;
-        if (filters.qualificationStatus && card.qualificationStatus !== filters.qualificationStatus) return false;
-        return true;
-      }),
-    [data.cards, filters]
-  );
+export type DashboardClientLoadState = {
+  dataError?: string | null;
+  readinessError?: string | null;
+};
 
-  const metrics = useMemo(() => deriveDashboardMetrics(filteredCards), [filteredCards]);
-  const hasCards = data.cards.length > 0;
-  const hasActiveFilters = Boolean(
-    filters.savingDriver || filters.implementationComplexity || filters.qualificationStatus
-  );
-  const showRampUpState =
-    hasCards && (data.cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
-  const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
-  const nextActions = buildDashboardNextActions(readiness, data.cards.length);
+type DashboardChartDatum = {
+  label: string;
+  savings: number;
+};
 
-  const kpis = [
-    { label: "Pipeline Savings", value: metrics.pipelineSavings, icon: CircleDollarSign },
-    { label: "Realised Savings", value: metrics.realisedSavings, icon: TrendingUp },
-    { label: "Achieved Savings", value: metrics.achievedSavings, icon: Target },
-    { label: "Savings Forecast", value: metrics.forecastSavings, icon: ArrowUpRight }
-  ];
+type DashboardForecastDatum = {
+  month: string;
+  savings: number;
+  forecast: number;
+};
 
-  if (!hasCards) {
-    return (
-      <DashboardZeroState
-        readiness={readiness}
-        configuredCollections={configuredCollections}
-        nextActions={nextActions}
-        viewer={viewer}
-      />
-    );
+type DashboardProjectRow = {
+  title: string;
+  category: string;
+  phase: string;
+  value: number;
+};
+
+type DashboardMetrics = {
+  pipelineSavings: number;
+  realisedSavings: number;
+  achievedSavings: number;
+  forecastSavings: number;
+  byPhase: DashboardChartDatum[];
+  byCategory: DashboardChartDatum[];
+  monthlyTrend: DashboardForecastDatum[];
+  topProjects: DashboardProjectRow[];
+};
+
+type DashboardDataWarning = {
+  hasInvalidSavings: boolean;
+  hasInvalidDates: boolean;
+};
+
+type ChartState = "loading" | "empty" | "error" | "ready";
+
+function isDevelopment() {
+  return process.env.NODE_ENV !== "production";
+}
+
+function normalizeDashboardNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeDashboardLabel(value: unknown, fallback: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
+}
+
+function resolveDashboardMonthBucket(value: unknown) {
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      month: "Unknown timing",
+      sortValue: Number.MAX_SAFE_INTEGER,
+    };
   }
 
-  return (
-    <div className="space-y-6">
-      {showRampUpState ? (
-        <DashboardRampUpCard
-          readiness={readiness}
-          cardCount={data.cards.length}
-          configuredCollections={configuredCollections}
-          nextActions={nextActions}
-        />
-      ) : null}
-
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div className="space-y-1">
-            <CardTitle>Portfolio Filters</CardTitle>
-            <CardDescription>Refine the dashboard by driver, implementation effort, or qualification stage.</CardDescription>
-          </div>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
-            <Filter className="h-4 w-4 text-[var(--muted-foreground)]" />
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <Select value={filters.savingDriver} onChange={(event) => setFilters((current) => ({ ...current, savingDriver: event.target.value }))}>
-            <option value="">All saving drivers</option>
-            {savingDrivers.map((driver) => (
-              <option key={driver} value={driver}>
-                {driver}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filters.implementationComplexity}
-            onChange={(event) => setFilters((current) => ({ ...current, implementationComplexity: event.target.value }))}
-          >
-            <option value="">All implementation complexity</option>
-            {implementationComplexities.map((complexity) => (
-              <option key={complexity} value={complexity}>
-                {complexity}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filters.qualificationStatus}
-            onChange={(event) => setFilters((current) => ({ ...current, qualificationStatus: event.target.value }))}
-          >
-            <option value="">All qualification statuses</option>
-            {qualificationStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </Select>
-        </CardContent>
-      </Card>
-
-      {!filteredCards.length ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No cards match the active filters</CardTitle>
-            <CardDescription>
-              Clear the filters to return to the live portfolio view and restore KPI, forecast, and portfolio analysis.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <div className="text-sm text-[var(--muted-foreground)]">
-              The dashboard still has {data.cards.length} saving card{data.cards.length === 1 ? "" : "s"} in this workspace, but none match the current filter combination.
-            </div>
-            {hasActiveFilters ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setFilters({
-                    savingDriver: "",
-                    implementationComplexity: "",
-                    qualificationStatus: ""
-                  })
-                }
-              >
-                Clear filters
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-          return (
-            <Card key={kpi.label}>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="rounded-xl bg-blue-50 p-2 text-[var(--primary)]">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-foreground)]">KPI</span>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[32px] font-semibold leading-none tracking-tight text-[var(--foreground)]">{formatCurrency(kpi.value, "EUR")}</p>
-                  <p className="text-[13px] font-medium text-[var(--muted-foreground)]">{kpi.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <ChartCard title="Savings by Category" description="Contribution by procurement category." data={metrics.byCategory} color="#2563EB" />
-        <ChartCard title="Savings by Driver" description="Savings grouped by initiative driver." data={metrics.byDriver} color="#1D4ED8" />
-        <ForecastCard data={metrics.monthlyTrend} />
-      </div>
-
-      <TableCard
-        title="Top Saving Projects"
-        description="Highest-value saving cards in the current filtered portfolio."
-        rows={metrics.topProjects}
-      />
-        </>
-      )}
-    </div>
-  );
-}
-
-function DashboardZeroState({
-  readiness,
-  configuredCollections,
-  nextActions,
-  viewer,
-}: {
-  readiness?: WorkspaceReadiness | null;
-  configuredCollections: number;
-  nextActions: string[];
-  viewer: {
-    organizationMembershipRole: OrganizationRole;
-  };
-}) {
-  const totalCollections = readiness?.masterData.length ?? 0;
-  const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
-
-  return (
-    <div className="space-y-6">
-      <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
-        <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-4">
-            <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
-              Workspace Launch
-            </div>
-            <div>
-              <h2 className="text-3xl font-semibold tracking-tight">
-                No live saving cards yet.
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                This dashboard becomes the operating view once the first initiatives are created. Start by confirming shared setup, then create the first saving card so pipeline, forecast, and portfolio analytics have real data to build on.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-                Create first saving card
-              </Link>
-              <Link href="/admin" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-white/20 bg-white/10 text-white hover:bg-white/20")}>
-                Review setup
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <LaunchMetric
-              label="Setup Completeness"
-              value={`${readiness?.coverage.overallPercent ?? 0}%`}
-              detail="Combined master-data and workflow readiness."
-            />
-            <LaunchMetric
-              label="Master Data"
-              value={`${configuredCollections}/${totalCollections || 6}`}
-              detail="Configured master-data collections ready for card creation."
-            />
-            <LaunchMetric
-              label="Workflow Coverage"
-              value={`${workflowCoverageReady}/${readiness?.workflowCoverage.length ?? 3}`}
-              detail="Approval roles currently assigned in this workspace."
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Next Actions</CardTitle>
-            <CardDescription>Focus on the few steps that move the workspace from setup into live portfolio management.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {nextActions.map((item) => (
-              <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
-                {item}
-              </div>
-              ))}
-            </CardContent>
-          </Card>
-
-        <FirstValueLaunchpad
-          viewerMembershipRole={viewer.organizationMembershipRole}
-        />
-      </div>
-    </div>
-  );
-}
-
-function DashboardRampUpCard({
-  readiness,
-  cardCount,
-  configuredCollections,
-  nextActions,
-}: {
-  readiness?: WorkspaceReadiness | null;
-  cardCount: number;
-  configuredCollections: number;
-  nextActions: string[];
-}) {
-  const totalCollections = readiness?.masterData.length ?? 6;
-  const workflowReady = readiness?.isWorkflowReady ?? false;
-
-  return (
-    <Card className="border-dashed">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>
-            {readiness?.isWorkspaceReady
-              ? "Dashboard is live and still ramping up"
-              : "Dashboard is live, but setup is still in progress"}
-          </CardTitle>
-          <CardDescription>
-            {readiness?.isWorkspaceReady
-              ? `You currently have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live. Trends and portfolio views will become more reliable as more initiatives move through the workflow.`
-              : `You already have ${cardCount} saving card${cardCount === 1 ? "" : "s"} live, but some shared setup still needs attention to keep the workspace standardized.`}
-          </CardDescription>
-        </div>
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
-          <Settings className="h-4 w-4 text-[var(--muted-foreground)]" />
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="grid gap-3 md:grid-cols-3">
-          <LaunchMetric
-            label="Live Saving Cards"
-            value={String(cardCount)}
-            detail="Current portfolio size"
-          />
-          <LaunchMetric
-            label="Master Data"
-            value={`${configuredCollections}/${totalCollections}`}
-            detail="Configured collections"
-          />
-          <LaunchMetric
-            label="Workflow Coverage"
-            value={workflowReady ? "Ready" : "Needs setup"}
-            detail="Approval-role coverage"
-          />
-        </div>
-        <div className="space-y-2">
-          {nextActions.slice(0, 3).map((item) => (
-            <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
-              {item}
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LaunchMetric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
-      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
-    </div>
-  );
-}
-
-function ChartCard({
-  title,
-  description,
-  data,
-  color
-}: {
-  title: string;
-  description: string;
-  data: Array<{ label: string; savings: number }>;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value)} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <Tooltip
-              cursor={{ fill: "rgba(37, 99, 235, 0.06)" }}
-              contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-              formatter={(value: number) => formatCurrency(value, "EUR")}
-            />
-            <Bar dataKey="savings" fill={color} radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ForecastCard({ data }: { data: Array<{ month: string; savings: number; forecast: number }> }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Savings Forecast</CardTitle>
-        <CardDescription>Current savings run-rate versus forecast pipeline contribution.</CardDescription>
-      </CardHeader>
-      <CardContent className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value)} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <Tooltip
-              cursor={{ stroke: "#2563EB", strokeOpacity: 0.18 }}
-              contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-              formatter={(value: number) => formatCurrency(value, "EUR")}
-            />
-            <Legend wrapperStyle={{ fontSize: 12, color: "#6B7280" }} />
-            <Line type="monotone" dataKey="savings" name="Savings" stroke="#2563EB" strokeWidth={3} dot={false} />
-            <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#16A34A" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TableCard({
-  title,
-  description,
-  rows
-}: {
-  title: string;
-  description: string;
-  rows: Array<{ title: string; category: string; phase: string; value: number }>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <Table>
-          <TableHead>
-            <tr>
-              <TableHeaderCell>Project</TableHeaderCell>
-              <TableHeaderCell>Category</TableHeaderCell>
-              <TableHeaderCell>Phase</TableHeaderCell>
-              <TableHeaderCell className="text-right">Value</TableHeaderCell>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {rows.length ? (
-              rows.map((row) => (
-                <TableRow key={`${row.title}-${row.phase}`}>
-                  <TableCell className="font-medium">{row.title}</TableCell>
-                  <TableCell>{row.category}</TableCell>
-                  <TableCell>{row.phase}</TableCell>
-                  <TableCell className="text-right font-semibold">{formatCurrency(row.value, "EUR")}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell className="py-8 text-[var(--muted-foreground)]" colSpan={4}>
-                  No saving cards match the active filters.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function deriveDashboardMetrics(cards: DashboardData["cards"]) {
-  const pipelineSavings = cards.filter((card) => card.phase !== "CANCELLED").reduce((sum, card) => sum + card.calculatedSavings, 0);
-  const realisedSavings = cards.filter((card) => card.phase === "REALISED").reduce((sum, card) => sum + card.calculatedSavings, 0);
-  const achievedSavings = cards.filter((card) => card.phase === "ACHIEVED").reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-  const monthlyTrend = Object.values(
-    cards.reduce<Record<string, { month: string; savings: number; forecast: number }>>((acc, card) => {
-      const key = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(new Date(card.impactStartDate));
-      acc[key] ??= { month: key, savings: 0, forecast: 0 };
-      acc[key].savings += card.calculatedSavings;
-      acc[key].forecast += card.calculatedSavings * getForecastFactor(card.frequency);
-      return acc;
-    }, {})
-  );
-
   return {
-    pipelineSavings,
-    realisedSavings,
-    achievedSavings,
-    forecastSavings: monthlyTrend.reduce((sum, item) => sum + item.forecast, 0),
-    monthlyTrend,
-    byCategory: groupSavings(cards, (card) => card.category.name),
-    byDriver: groupSavings(cards, (card) => card.savingDriver ?? "Unspecified"),
-    topProjects: [...cards]
-      .sort((a, b) => b.calculatedSavings - a.calculatedSavings)
-      .slice(0, 5)
-      .map((card) => ({
-        title: card.title,
-        category: card.category.name,
-        phase: phaseLabels[card.phase],
-        value: card.calculatedSavings
-      }))
+    month: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      year: "numeric",
+    }).format(date),
+    sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
   };
 }
 
-function groupSavings(cards: DashboardData["cards"], getLabel: (card: DashboardData["cards"][number]) => string) {
-  return Object.values(
-    cards.reduce<Record<string, { label: string; savings: number }>>((acc, card) => {
-      const key = getLabel(card);
-      acc[key] ??= { label: key, savings: 0 };
-      acc[key].savings += card.calculatedSavings;
-      return acc;
-    }, {})
-  );
-}
-
-function getForecastFactor(frequency: DashboardData["cards"][number]["frequency"]) {
+function getForecastFactor(frequency: DashboardCardSummary["frequency"]) {
   switch (frequency) {
     case "ONE_TIME":
       return 1;
@@ -532,26 +121,571 @@ function getForecastFactor(frequency: DashboardData["cards"][number]["frequency"
   }
 }
 
-function buildDashboardNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {
-  const actions: string[] = [];
+function buildSavingsBreakdown(
+  cards: DashboardData["cards"],
+  getLabel: (card: DashboardCardSummary) => string
+) {
+  return Object.values(
+    cards.reduce<Record<string, DashboardChartDatum>>((acc, card) => {
+      const label = normalizeDashboardLabel(getLabel(card), "Unspecified");
+      acc[label] ??= {
+        label,
+        savings: 0,
+      };
+      acc[label].savings += normalizeDashboardNumber(card.calculatedSavings);
+      return acc;
+    }, {})
+  );
+}
 
-  if (!cardCount) {
-    actions.push("Create the first saving card to activate live KPI, forecast, and portfolio reporting.");
-  } else if (cardCount < 3) {
-    actions.push("Add more saving cards so trends and portfolio views become more representative.");
+export function deriveDashboardMetrics(cards: DashboardData["cards"]): DashboardMetrics {
+  const pipelineSavings = cards
+    .filter((card) => card.phase !== "CANCELLED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+  const realisedSavings = cards
+    .filter((card) => card.phase === "REALISED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+  const achievedSavings = cards
+    .filter((card) => card.phase === "ACHIEVED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+
+  const monthlyTrend = Object.values(
+    cards.reduce<
+      Record<
+        string,
+        DashboardForecastDatum & {
+          sortValue: number;
+        }
+      >
+    >((acc, card) => {
+      const bucket = resolveDashboardMonthBucket(card.impactStartDate);
+      const key = `${bucket.sortValue}:${bucket.month}`;
+      const savings = normalizeDashboardNumber(card.calculatedSavings);
+
+      acc[key] ??= {
+        month: bucket.month,
+        savings: 0,
+        forecast: 0,
+        sortValue: bucket.sortValue,
+      };
+      acc[key].savings += savings;
+      acc[key].forecast += savings * getForecastFactor(card.frequency);
+      return acc;
+    }, {})
+  )
+    .sort((left, right) => left.sortValue - right.sortValue)
+    .map(({ sortValue, ...item }) => item);
+
+  return {
+    pipelineSavings,
+    realisedSavings,
+    achievedSavings,
+    forecastSavings: monthlyTrend.reduce(
+      (sum, item) => sum + normalizeDashboardNumber(item.forecast),
+      0
+    ),
+    byPhase: phases.map((phase) => ({
+      label:
+        phaseLabels[phase] ?? normalizeDashboardLabel(phase, "Unknown phase"),
+      savings: cards
+        .filter((card) => card.phase === phase)
+        .reduce(
+          (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+          0
+        ),
+    })),
+    byCategory: buildSavingsBreakdown(
+      cards,
+      (card) => card.category?.name ?? "Uncategorized"
+    )
+      .sort((left, right) => right.savings - left.savings)
+      .slice(0, 6),
+    monthlyTrend: monthlyTrend.slice(-6),
+    topProjects: [...cards]
+      .sort(
+        (left, right) =>
+          normalizeDashboardNumber(right.calculatedSavings) -
+          normalizeDashboardNumber(left.calculatedSavings)
+      )
+      .slice(0, 5)
+      .map((card) => ({
+        title: normalizeDashboardLabel(card.title, "Untitled saving card"),
+        category: normalizeDashboardLabel(
+          card.category?.name,
+          "Uncategorized"
+        ),
+        phase:
+          phaseLabels[card.phase] ??
+          normalizeDashboardLabel(card.phase, "Unknown phase"),
+        value: normalizeDashboardNumber(card.calculatedSavings),
+      })),
+  };
+}
+
+function inspectDashboardData(cards: DashboardData["cards"]): DashboardDataWarning {
+  return {
+    hasInvalidSavings: cards.some(
+      (card) =>
+        typeof card.calculatedSavings !== "number" ||
+        !Number.isFinite(card.calculatedSavings)
+    ),
+    hasInvalidDates: cards.some((card) => {
+      if (card.impactStartDate instanceof Date) {
+        return Number.isNaN(card.impactStartDate.getTime());
+      }
+
+      return Number.isNaN(
+        new Date(String(card.impactStartDate ?? "")).getTime()
+      );
+    }),
+  };
+}
+
+function resolveChartState(input: {
+  error: string | null;
+  points: ReadonlyArray<Record<string, unknown>>;
+  keys: readonly string[];
+}) {
+  if (input.error) {
+    return "error" as const;
   }
 
-  readiness?.missingCoreSetup.forEach((item) => {
-    actions.push(`Add ${item} in Settings to standardize card creation and portfolio reporting.`);
-  });
+  const hasData = input.points.some((point) =>
+    input.keys.some((key) => normalizeDashboardNumber(point[key]) > 0)
+  );
 
-  readiness?.missingWorkflowCoverage.forEach((item) => {
-    actions.push(`Assign at least one ${item} user so phase approvals route cleanly.`);
-  });
+  return hasData ? ("ready" as const) : ("empty" as const);
+}
 
-  if (!actions.length) {
-    actions.push("Create and progress saving cards through the workflow to deepen trend accuracy and portfolio coverage.");
+export function DashboardClient({
+  data,
+  readiness,
+  viewer: _viewer,
+  loadState,
+}: {
+  data: DashboardData;
+  readiness?: WorkspaceReadiness | null;
+  viewer: {
+    organizationMembershipRole: OrganizationRole;
+  };
+  loadState?: DashboardClientLoadState;
+}) {
+  const dataError = loadState?.dataError?.trim() || null;
+  const readinessError = loadState?.readinessError?.trim() || null;
+  const metrics = deriveDashboardMetrics(data.cards);
+  const debugInfo = inspectDashboardData(data.cards);
+  const showDevWarning =
+    isDevelopment() && (debugInfo.hasInvalidDates || debugInfo.hasInvalidSavings);
+
+  if (dataError) {
+    return (
+      <div className="space-y-4">
+        {readinessError ? (
+          <InlineNotice
+            title="Workspace setup status is temporarily unavailable"
+            description={readinessError}
+          />
+        ) : null}
+        <StateCard
+          title="Dashboard charts are unavailable"
+          description={dataError}
+          action={
+            <Link
+              href="/dashboard"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Refresh dashboard
+            </Link>
+          }
+        />
+      </div>
+    );
   }
 
-  return actions.slice(0, 4);
+  if (!data.cards.length) {
+    return (
+      <div className="space-y-4">
+        {readinessError ? (
+          <InlineNotice
+            title="Workspace setup status is temporarily unavailable"
+            description={readinessError}
+          />
+        ) : null}
+        <StateCard
+          title="No live saving cards yet."
+          description="Create the first saving card to populate the dashboard with real portfolio data."
+          action={
+            <Link
+              href="/saving-cards/new"
+              className={buttonVariants({ size: "sm" })}
+            >
+              Create saving card
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {readinessError ? (
+        <InlineNotice
+          title="Workspace setup status is temporarily unavailable"
+          description={readinessError}
+        />
+      ) : null}
+      {showDevWarning ? (
+        <InlineNotice
+          title="Development data warning"
+          description="Some dashboard inputs were invalid and were normalized locally so the charts can still render."
+        />
+      ) : null}
+      {readiness && !readiness.isWorkspaceReady ? (
+        <InlineNotice
+          title="Workspace setup is still in progress"
+          description="The dashboard is live, but reporting will become more reliable as setup and card coverage improve."
+        />
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Pipeline Savings"
+          value={formatCurrency(metrics.pipelineSavings, "EUR")}
+          icon={CircleDollarSign}
+        />
+        <MetricCard
+          label="Realised Savings"
+          value={formatCurrency(metrics.realisedSavings, "EUR")}
+          icon={TrendingUp}
+        />
+        <MetricCard
+          label="Achieved Savings"
+          value={formatCurrency(metrics.achievedSavings, "EUR")}
+          icon={Target}
+        />
+        <MetricCard
+          label="Savings Forecast"
+          value={formatCurrency(metrics.forecastSavings, "EUR")}
+          icon={ArrowUpRight}
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <ChartCard
+          title="Savings by Phase"
+          description="Current portfolio value by workflow phase."
+          status={resolveChartState({
+            error: null,
+            points: metrics.byPhase,
+            keys: ["savings"],
+          })}
+          heightClassName="h-80"
+          emptyMessage="No phase savings are available yet."
+        >
+          <PhaseBarChart data={metrics.byPhase} />
+        </ChartCard>
+
+        <ChartCard
+          title="Savings by Category"
+          description="Top procurement categories by savings contribution."
+          status={resolveChartState({
+            error: null,
+            points: metrics.byCategory,
+            keys: ["savings"],
+          })}
+          heightClassName="h-80"
+          emptyMessage="No category savings are available yet."
+        >
+          <CategoryBarChart data={metrics.byCategory} />
+        </ChartCard>
+
+        <ChartCard
+          title="Savings Forecast"
+          description="Current savings and forecast by month."
+          status={resolveChartState({
+            error: null,
+            points: metrics.monthlyTrend,
+            keys: ["savings", "forecast"],
+          })}
+          heightClassName="h-80"
+          emptyMessage="No savings forecast data is available yet."
+        >
+          <ForecastAreaChart data={metrics.monthlyTrend} />
+        </ChartCard>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Saving Projects</CardTitle>
+          <CardDescription>
+            Highest-value saving cards in the current portfolio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {metrics.topProjects.map((project) => (
+            <div
+              key={`${project.title}-${project.phase}`}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {project.title}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {project.category} · {project.phase}
+                </p>
+              </div>
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {formatCurrency(project.value, "EUR")}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="rounded-xl bg-blue-50 p-2 text-[var(--primary)]">
+            <Icon className="h-5 w-5" />
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-foreground)]">
+            KPI
+          </span>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[32px] font-semibold leading-none tracking-tight text-[var(--foreground)]">
+            {value}
+          </p>
+          <p className="text-[13px] font-medium text-[var(--muted-foreground)]">
+            {label}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartCard({
+  title,
+  description,
+  status,
+  heightClassName,
+  emptyMessage,
+  children,
+}: {
+  title: string;
+  description: string;
+  status: ChartState;
+  heightClassName: string;
+  emptyMessage: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className={heightClassName}>
+        {status === "loading" ? (
+          <ChartStateMessage message="Loading chart..." />
+        ) : status === "error" ? (
+          <ChartStateMessage message="This chart is unavailable right now." />
+        ) : status === "empty" ? (
+          <ChartStateMessage message={emptyMessage} />
+        ) : (
+          children
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartStateMessage({ message }: { message: string }) {
+  return (
+    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/30 px-6 text-center text-sm text-[var(--muted-foreground)]">
+      {message}
+    </div>
+  );
+}
+
+function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
+  return (
+    <div className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number) => [
+              formatCurrency(value, "EUR"),
+              "Savings",
+            ]}
+          />
+          <Bar dataKey="savings" fill="#2563EB" radius={[8, 8, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
+  return (
+    <div className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 0, right: 8, bottom: 0, left: 12 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+          <XAxis
+            type="number"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <YAxis
+            type="category"
+            dataKey="label"
+            width={92}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number) => [
+              formatCurrency(value, "EUR"),
+              "Savings",
+            ]}
+          />
+          <Bar dataKey="savings" fill="#0F766E" radius={[0, 8, 8, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
+  return (
+    <div className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+          <XAxis
+            dataKey="month"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number, name: string) => [
+              formatCurrency(value, "EUR"),
+              name === "forecast" ? "Forecast" : "Savings",
+            ]}
+          />
+          <Area
+            type="monotone"
+            dataKey="savings"
+            name="Savings"
+            stroke="#2563EB"
+            fill="#93C5FD"
+            fillOpacity={0.55}
+          />
+          <Area
+            type="monotone"
+            dataKey="forecast"
+            name="Forecast"
+            stroke="#16A34A"
+            fill="#86EFAC"
+            fillOpacity={0.35}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function StateCard({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/80">
+      <CardHeader>
+        <CardTitle className="text-amber-950">{title}</CardTitle>
+        <CardDescription className="text-amber-900">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      {action ? <CardContent className="pt-0">{action}</CardContent> : null}
+    </Card>
+  );
+}
+
+function InlineNotice({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/80">
+      <CardContent className="space-y-1 py-4">
+        <p className="text-sm font-semibold text-amber-950">{title}</p>
+        <p className="text-sm text-amber-900">{description}</p>
+      </CardContent>
+    </Card>
+  );
 }

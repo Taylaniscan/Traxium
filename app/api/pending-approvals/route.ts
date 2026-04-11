@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getPendingApprovals } from "@/lib/data";
 
 function jsonError(error: string, status: number) {
@@ -7,17 +7,18 @@ function jsonError(error: string, status: number) {
 }
 
 export async function GET() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const approvals = await getPendingApprovals(user.id, user.organizationId);
 
     return NextResponse.json(approvals);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     return jsonError(
       error instanceof Error ? error.message : "Unable to load pending approvals.",
       500

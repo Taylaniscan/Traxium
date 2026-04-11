@@ -1,8 +1,10 @@
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createAuthGuardJsonResponse } from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
 const requirePermissionMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
 const RateLimitExceededErrorMock = vi.hoisted(
@@ -61,19 +63,9 @@ const EvidenceStorageNotFoundErrorMock = vi.hoisted(
 );
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
   requirePermission: requirePermissionMock,
-  createAuthGuardErrorResponse: (error: unknown) => {
-    if (error && typeof error === "object" && "status" in error && "code" in error) {
-      const authError = error as { status: number; code: string };
-      return Response.json(
-        { error: authError.code === "FORBIDDEN" ? "Forbidden." : "Unauthorized." },
-        { status: authError.status }
-      );
-    }
-
-    return null;
-  },
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -169,13 +161,15 @@ function buildReferenceData() {
 
 describe("import and evidence API routes", () => {
   beforeEach(() => {
-    getCurrentUserMock.mockResolvedValue({
+    vi.clearAllMocks();
+    requireUserMock.mockResolvedValue({
       id: "user-1",
       name: "Test User",
       email: "user@example.com",
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
     requirePermissionMock.mockResolvedValue({
       id: "user-1",
       name: "Test User",
@@ -348,7 +342,12 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/upload/evidence/route.ts", () => {
     it("returns 401 JSON for unauthenticated uploads", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      createAuthGuardErrorResponseMock.mockReturnValueOnce(
+        Response.json({ error: "Unauthorized." }, { status: 401 })
+      );
+      requireUserMock.mockRejectedValueOnce(
+        new Error("Authenticated session is required.")
+      );
 
       const response = await postEvidenceUploadRoute(
         createFormDataRequest(createUploadForm({ savingCardId: "card-1", files: [createWorkbookFile("pdf", "evidence.pdf", "application/pdf")] }))
@@ -480,7 +479,12 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/evidence/[id]/download/route.ts", () => {
     it("returns 401 JSON for unauthenticated download requests", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      createAuthGuardErrorResponseMock.mockReturnValueOnce(
+        Response.json({ error: "Unauthorized." }, { status: 401 })
+      );
+      requireUserMock.mockRejectedValueOnce(
+        new Error("Authenticated session is required.")
+      );
 
       const response = await getEvidenceDownloadRoute(new Request("http://localhost"), {
         params: Promise.resolve({ id: "evidence-1" }),

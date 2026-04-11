@@ -69,6 +69,31 @@ describe("auth bootstrap route", () => {
     });
   });
 
+  it("returns 402 when the authenticated workspace is billing-blocked", async () => {
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: false,
+      code: "BILLING_REQUIRED",
+      message:
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+      accessState: {
+        accessState: "blocked_unpaid",
+        reasonCode: "unpaid",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+      code: "BILLING_REQUIRED",
+      accessState: "blocked_unpaid",
+      reasonCode: "unpaid",
+      billingRequiredPath: "/billing-required",
+    });
+  });
+
   it("returns the resolved workspace user when bootstrap succeeds", async () => {
     bootstrapCurrentUserMock.mockResolvedValueOnce({
       ok: true,

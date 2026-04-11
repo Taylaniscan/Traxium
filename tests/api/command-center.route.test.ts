@@ -1,11 +1,17 @@
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MockAuthGuardError,
+  createAuthGuardJsonResponse,
+} from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const getCommandCenterDataMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -16,22 +22,41 @@ import { GET as getCommandCenterRoute } from "@/app/api/command-center/route";
 
 describe("command center API route", () => {
   beforeEach(() => {
-    getCurrentUserMock.mockResolvedValue({
+    vi.clearAllMocks();
+    requireUserMock.mockResolvedValue({
       id: "user-1",
       name: "Test User",
       email: "user@example.com",
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
   });
 
-  it("returns 401 JSON for unauthenticated requests", async () => {
-    getCurrentUserMock.mockResolvedValueOnce(null);
+  it("returns 402 JSON for billing-blocked requests", async () => {
+    requireUserMock.mockRejectedValueOnce(
+      new MockAuthGuardError(
+        "Your workspace subscription is past due. Update billing before product access can continue.",
+        402,
+        "BILLING_REQUIRED",
+        {
+          accessState: "blocked_past_due",
+          reasonCode: "past_due_blocked",
+        }
+      )
+    );
 
     const response = await getCommandCenterRoute(new Request("http://localhost/api/command-center"));
 
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "Unauthorized." });
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Your workspace subscription is past due. Update billing before product access can continue.",
+      code: "BILLING_REQUIRED",
+      accessState: "blocked_past_due",
+      reasonCode: "past_due_blocked",
+      billingRequiredPath: "/billing-required",
+    });
     expect(getCommandCenterDataMock).not.toHaveBeenCalled();
   });
 

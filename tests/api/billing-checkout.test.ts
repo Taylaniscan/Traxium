@@ -144,6 +144,20 @@ function createCheckoutRequest(body: Record<string, unknown>) {
   });
 }
 
+function clearStripeBillingEnv() {
+  delete process.env.STRIPE_SECRET_KEY;
+  delete process.env.STRIPE_WEBHOOK_SECRET;
+  delete process.env.STRIPE_PORTAL_RETURN_URL;
+  delete process.env.STRIPE_CHECKOUT_SUCCESS_URL;
+  delete process.env.STRIPE_CHECKOUT_CANCEL_URL;
+  delete process.env.STRIPE_STARTER_PRODUCT_ID;
+  delete process.env.STRIPE_STARTER_BASE_PRICE_ID;
+  delete process.env.STRIPE_STARTER_METERED_PRICE_ID;
+  delete process.env.STRIPE_GROWTH_PRODUCT_ID;
+  delete process.env.STRIPE_GROWTH_BASE_PRICE_ID;
+  delete process.env.STRIPE_GROWTH_METERED_PRICE_ID;
+}
+
 describe("billing checkout routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -267,6 +281,10 @@ describe("billing checkout routes", () => {
         email: "buyer@atlas.example",
       }),
     ]);
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
+      redirectTo: null,
+      allowBillingBlocked: true,
+    });
   });
 
   it("rejects unauthorized checkout requests with the shared auth guard response", async () => {
@@ -300,6 +318,26 @@ describe("billing checkout routes", () => {
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual({
       error: "Requested billing price is invalid.",
+    });
+    expect(customersCreateMock).not.toHaveBeenCalled();
+    expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+    expect(prismaState.billingCustomers).toHaveLength(0);
+  });
+
+  it("returns a controlled local-development error when Stripe billing is not configured for checkout", async () => {
+    clearStripeBillingEnv();
+
+    const response = await billingCheckoutRoute(
+      createCheckoutRequest({
+        planCode: "starter",
+        priceId: "price_localdevstartermonthly2026",
+      })
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Billing is not configured for local development yet. Add the local Stripe settings before starting a subscription.",
     });
     expect(customersCreateMock).not.toHaveBeenCalled();
     expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
@@ -374,15 +412,21 @@ describe("billing checkout routes", () => {
     });
     expect(customersCreateMock).not.toHaveBeenCalled();
     expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
+      redirectTo: null,
+      allowBillingBlocked: true,
+    });
   });
 
   it("returns a controlled 404 when the organization has no billing customer for portal access", async () => {
+    clearStripeBillingEnv();
+
     const response = await billingPortalRoute();
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
       error:
-        "Billing portal is unavailable because the organization does not have a billing customer.",
+        "Billing portal is unavailable because this workspace does not have a billing customer yet. Start a subscription first.",
     });
     expect(billingPortalSessionsCreateMock).not.toHaveBeenCalled();
   });

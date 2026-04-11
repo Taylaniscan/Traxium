@@ -1,13 +1,14 @@
 import { Role } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   createEvidenceSignedUrl,
   EvidenceStorageNotFoundError,
   isManagedEvidenceStorageLocation,
 } from "@/lib/uploads";
+import type { AuthenticatedUser } from "@/lib/types";
 
 const GLOBAL_ACCESS_ROLES = new Set<Role>([
   Role.HEAD_OF_GLOBAL_PROCUREMENT,
@@ -39,7 +40,10 @@ function errorResponse(error: string, status: number) {
   );
 }
 
-function buildEvidenceAccessWhere(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, evidenceId: string) {
+function buildEvidenceAccessWhere(
+  user: AuthenticatedUser,
+  evidenceId: string
+) {
   return {
     id: evidenceId,
     savingCard: {
@@ -60,13 +64,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return errorResponse("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const { id } = evidenceParamsSchema.parse(await params);
 
     const evidence = await prisma.savingCardEvidence.findFirst({
@@ -113,6 +112,12 @@ export async function GET(
 
     return NextResponse.redirect(signedUrl);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof ZodError) {
       return errorResponse(error.issues[0]?.message ?? "Evidence id is invalid.", 422);
     }

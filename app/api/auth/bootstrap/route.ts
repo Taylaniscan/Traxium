@@ -16,7 +16,12 @@ export async function POST(request: Request) {
     const result = await bootstrapCurrentUser();
 
     if (!result.ok) {
-      const status = result.code === "UNAUTHENTICATED" ? 401 : 403;
+      const status =
+        result.code === "UNAUTHENTICATED"
+          ? 401
+          : result.code === "BILLING_REQUIRED"
+            ? 402
+            : 403;
 
       trackServerEvent(
         {
@@ -32,10 +37,18 @@ export async function POST(request: Request) {
       );
 
       return NextResponse.json(
-        {
-          error: result.message,
-          code: result.code,
-        },
+        result.code === "BILLING_REQUIRED"
+          ? {
+              error: result.message,
+              code: result.code,
+              accessState: result.accessState?.accessState ?? null,
+              reasonCode: result.accessState?.reasonCode ?? null,
+              billingRequiredPath: "/billing-required",
+            }
+          : {
+              error: result.message,
+              code: result.code,
+            },
         {
           status,
         }

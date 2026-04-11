@@ -158,6 +158,10 @@ function mapSubscriptionStatus(
       return SubscriptionStatus.UNPAID;
     case "paused":
       return SubscriptionStatus.PAUSED;
+    default:
+      throw new Error(
+        `Unsupported Stripe subscription status "${status}". Update the billing sync before processing this event.`
+      );
   }
 }
 

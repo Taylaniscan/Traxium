@@ -35,9 +35,9 @@ function createDeployEnv(
       ref: projectRef,
     }),
     STRIPE_SECRET_KEY:
-      "sk_test_previewcibillingsecretkey000000000000000000000000",
+      "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
-      "whsec_previewcibillingwebhooksecret000000000000000000000000",
+      "whsec_FAKE",
     STRIPE_PORTAL_RETURN_URL: "https://preview-traxium.vercel.app/admin/settings",
     STRIPE_CHECKOUT_SUCCESS_URL:
       "https://preview-traxium.vercel.app/admin/settings?checkout=success",
@@ -100,13 +100,14 @@ describe("deploy guard", () => {
       )
     ).toEqual({
       appEnvironment: "preview",
-      hostingEnvironment: "preview",
-      appHost: "preview-traxium.vercel.app",
-      supabaseProjectRef: "previewproj",
-      databaseHost: "aws-1-eu-central-1.pooler.supabase.com",
-      directHost: "aws-1-eu-central-1.pooler.supabase.com",
-      productionAliasHost: "app.traxium.com",
-    });
+        hostingEnvironment: "preview",
+        appHost: "preview-traxium.vercel.app",
+        supabaseProjectRef: "previewproj",
+        databaseHost: "aws-1-eu-central-1.pooler.supabase.com",
+        directHost: "aws-1-eu-central-1.pooler.supabase.com",
+        productionAliasHost: "app.traxium.com",
+        stripeKeyMode: "test",
+      });
 
     expect(() =>
       assertPredeployConfiguration(
@@ -115,6 +116,51 @@ describe("deploy guard", () => {
         })
       )
     ).toThrow("Preview deployments must not use the production application domain.");
+  });
+
+  it("fails production deploys that still use Stripe test keys and passes with live keys", () => {
+    expect(() =>
+      assertPredeployConfiguration(
+        createDeployEnv({
+          APP_ENV: "production",
+          VERCEL_ENV: "production",
+          NEXT_PUBLIC_APP_URL: "https://app.traxium.com",
+          PROJECT_REF: "prodproj",
+          STRIPE_SECRET_KEY:
+            "sk_test_FAKE",
+        })
+      )
+    ).toThrow(
+      "STRIPE_SECRET_KEY uses a Stripe test key (sk_test_) while APP_ENV=production. Replace it with a live secret key (sk_live_) before deploying."
+    );
+
+    expect(
+      assertPredeployConfiguration(
+        createDeployEnv({
+          APP_ENV: "production",
+          VERCEL_ENV: "production",
+          NEXT_PUBLIC_APP_URL: "https://app.traxium.com",
+          PROJECT_REF: "prodproj",
+          STRIPE_SECRET_KEY:
+            "sk_live_FAKE",
+          STRIPE_STARTER_PRODUCT_ID: "prod_1starterlivecatalog2026",
+          STRIPE_STARTER_BASE_PRICE_ID: "price_1starterlivecatalog2026",
+          STRIPE_STARTER_METERED_PRICE_ID: "price_1starterlivelogusage2026",
+          STRIPE_GROWTH_PRODUCT_ID: "prod_1growthlivecatalog2026",
+          STRIPE_GROWTH_BASE_PRICE_ID: "price_1growthlivecatalog2026",
+          STRIPE_GROWTH_METERED_PRICE_ID: "price_1growthlivelogusage2026",
+        })
+      )
+    ).toEqual({
+      appEnvironment: "production",
+      hostingEnvironment: "production",
+      appHost: "app.traxium.com",
+      supabaseProjectRef: "prodproj",
+      databaseHost: "aws-1-eu-central-1.pooler.supabase.com",
+      directHost: "aws-1-eu-central-1.pooler.supabase.com",
+      productionAliasHost: "app.traxium.com",
+      stripeKeyMode: "live",
+    });
   });
 
   it("keeps migrate deploy as the documented release strategy", () => {

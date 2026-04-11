@@ -1,7 +1,7 @@
 import { Role, UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import {
   MAX_EVIDENCE_FILE_SIZE,
   isAllowedEvidenceFileName,
@@ -18,6 +18,7 @@ import {
   UsageQuotaExceededError,
 } from "@/lib/usage";
 import { storeEvidenceFile } from "@/lib/uploads";
+import type { AuthenticatedUser } from "@/lib/types";
 
 const GLOBAL_ACCESS_ROLES = new Set<Role>([
   Role.HEAD_OF_GLOBAL_PROCUREMENT,
@@ -124,7 +125,10 @@ function getFileValidationError(file: File) {
   return null;
 }
 
-function buildSavingCardAccessWhere(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, savingCardId: string) {
+function buildSavingCardAccessWhere(
+  user: AuthenticatedUser,
+  savingCardId: string
+) {
   return {
     id: savingCardId,
     organizationId: user.organizationId,
@@ -140,13 +144,8 @@ function buildSavingCardAccessWhere(user: NonNullable<Awaited<ReturnType<typeof 
 }
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return errorResponse("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     await enforceRateLimit({
       policy: "evidenceUpload",
       request,
@@ -299,6 +298,12 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     if (error instanceof RateLimitExceededError) {
       return createRateLimitErrorResponse(error);
     }

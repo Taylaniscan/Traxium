@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getCommandCenterData } from "@/lib/data";
 import type { CommandCenterData, CommandCenterFilters } from "@/lib/types";
 import { commandCenterFilterKeys } from "@/lib/types";
@@ -23,13 +23,8 @@ function normalizeFilterValue(value: string | null) {
 }
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized.", 401);
-  }
-
   try {
+    const user = await requireUser({ redirectTo: null });
     const { searchParams } = new URL(request.url);
     const duplicateKey = commandCenterFilterKeys.find((key) => searchParams.getAll(key).length > 1);
 
@@ -51,6 +46,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json<CommandCenterData>(data);
   } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
     return jsonError(
       error instanceof Error ? error.message : "Unable to load command center.",
       500

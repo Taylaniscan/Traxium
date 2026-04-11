@@ -20,6 +20,7 @@ const redirectMock = vi.hoisted(() =>
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const updateUserByIdMock = vi.hoisted(() => vi.fn());
+const getOrganizationAccessStateMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
   user: {
@@ -35,6 +36,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("@/lib/billing/access", () => ({
+  getOrganizationAccessState: getOrganizationAccessStateMock,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -131,6 +136,17 @@ describe("lib/auth guards", () => {
     mockResolvedUserRecord();
     mockPrisma.user.findMany.mockResolvedValue([]);
     mockPrisma.user.update.mockResolvedValue(createResolvedUserRecord());
+    getOrganizationAccessStateMock.mockResolvedValue({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subscriptionId: "sub_1",
+      stripeSubscriptionId: "sub_1",
+      rawSubscriptionStatus: "ACTIVE",
+      accessState: "active",
+      isBlocked: false,
+      reasonCode: "active",
+      currentPeriodEnd: new Date("2026-04-01T00:00:00.000Z"),
+      plan: null,
+    });
     updateUserByIdMock.mockResolvedValue({
       data: { user: null },
       error: null,
@@ -210,18 +226,154 @@ describe("lib/auth guards", () => {
     });
   });
 
-  it("rejects access when the user's active organization is not an active membership", async () => {
+  it("checks billing access against the active organization only when multiple memberships exist", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        app_metadata: {
+          userId: DEFAULT_USER_ID,
+          activeOrganizationId: OTHER_ORGANIZATION_ID,
+          organizationId: OTHER_ORGANIZATION_ID,
+        },
+      })
+    );
+    mockResolvedUserRecord({
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      memberships: [
+        createMembership(DEFAULT_ORGANIZATION_ID),
+        createMembership(OTHER_ORGANIZATION_ID),
+      ],
+    });
+
+    await expect(requireOrganization({ redirectTo: null })).resolves.toMatchObject({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganization: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+      },
+    });
+    expect(getOrganizationAccessStateMock).toHaveBeenCalledWith(
+      DEFAULT_ORGANIZATION_ID
+    );
+  });
+
+  it("blocks access when the active organization is switched to a blocked workspace membership", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        app_metadata: {
+          userId: DEFAULT_USER_ID,
+          activeOrganizationId: OTHER_ORGANIZATION_ID,
+          organizationId: OTHER_ORGANIZATION_ID,
+        },
+      })
+    );
+    mockResolvedUserRecord({
+      activeOrganizationId: OTHER_ORGANIZATION_ID,
+      memberships: [
+        createMembership(DEFAULT_ORGANIZATION_ID),
+        createMembership(OTHER_ORGANIZATION_ID),
+      ],
+    });
+    getOrganizationAccessStateMock.mockResolvedValueOnce({
+      organizationId: OTHER_ORGANIZATION_ID,
+      subscriptionId: "sub_other",
+      stripeSubscriptionId: "sub_other",
+      rawSubscriptionStatus: "CANCELED",
+      accessState: "blocked_canceled",
+      isBlocked: true,
+      reasonCode: "canceled",
+      currentPeriodEnd: new Date("2026-03-01T00:00:00.000Z"),
+      plan: null,
+    });
+
+    await expect(
+      requireOrganization({ redirectTo: null })
+    ).rejects.toMatchObject({
+      name: "AuthGuardError",
+      status: 402,
+      code: "BILLING_REQUIRED",
+      accessState: expect.objectContaining({
+        organizationId: OTHER_ORGANIZATION_ID,
+        accessState: "blocked_canceled",
+        reasonCode: "canceled",
+      }),
+    } satisfies Partial<AuthGuardError>);
+    expect(getOrganizationAccessStateMock).toHaveBeenCalledWith(
+      OTHER_ORGANIZATION_ID
+    );
+  });
+
+  it("falls back to the first active membership when the stored active organization is stale", async () => {
     mockResolvedUserRecord({
       activeOrganizationId: OTHER_ORGANIZATION_ID,
       memberships: [createMembership(DEFAULT_ORGANIZATION_ID)],
     });
 
-    await expect(getCurrentUser()).resolves.toBeNull();
-    await expect(requireOrganization({ redirectTo: null })).rejects.toMatchObject({
+    await expect(getCurrentUser()).resolves.toMatchObject({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganization: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+      },
+    });
+    await expect(requireOrganization({ redirectTo: null })).resolves.toMatchObject({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+    });
+  });
+
+  it("redirects blocked billing access to the billing-required page by default", async () => {
+    getOrganizationAccessStateMock.mockResolvedValueOnce({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subscriptionId: "sub_1",
+      stripeSubscriptionId: "sub_1",
+      rawSubscriptionStatus: "PAST_DUE",
+      accessState: "blocked_past_due",
+      isBlocked: true,
+      reasonCode: "past_due_blocked",
+      currentPeriodEnd: new Date("2026-03-01T00:00:00.000Z"),
+      plan: null,
+    });
+
+    await expect(requireUser()).rejects.toThrow(
+      "NEXT_REDIRECT:/billing-required"
+    );
+    expect(redirectMock).toHaveBeenCalledWith("/billing-required");
+  });
+
+  it("returns a structured billing guard error for blocked API access and allows explicit recovery paths", async () => {
+    getOrganizationAccessStateMock.mockResolvedValue({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subscriptionId: null,
+      stripeSubscriptionId: null,
+      rawSubscriptionStatus: null,
+      accessState: "no_subscription",
+      isBlocked: true,
+      reasonCode: "no_subscription",
+      currentPeriodEnd: null,
+      plan: null,
+    });
+
+    await expect(
+      requireOrganization({ redirectTo: null })
+    ).rejects.toMatchObject({
       name: "AuthGuardError",
-      status: 401,
-      code: "UNAUTHENTICATED",
+      status: 402,
+      code: "BILLING_REQUIRED",
+      accessState: expect.objectContaining({
+        accessState: "no_subscription",
+        reasonCode: "no_subscription",
+      }),
     } satisfies Partial<AuthGuardError>);
+
+    await expect(
+      requireOrganization({
+        redirectTo: null,
+        allowBillingBlocked: true,
+      })
+    ).resolves.toMatchObject({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+    });
   });
 
   it("enforces role and permission checks against the active organization context", async () => {
@@ -317,19 +469,8 @@ describe("lib/auth guards", () => {
         name: true,
         email: true,
         role: true,
+        organizationId: true,
         activeOrganizationId: true,
-        memberships: {
-          where: {
-            status: MembershipStatus.ACTIVE,
-          },
-          select: {
-            id: true,
-            organizationId: true,
-            role: true,
-            status: true,
-          },
-          orderBy: [{ createdAt: "asc" }, { organizationId: "asc" }],
-        },
       },
       orderBy: [{ id: "asc" }],
       take: 2,
@@ -400,6 +541,78 @@ describe("lib/auth guards", () => {
     });
   });
 
+  it("continues bootstrap with the resolved membership when persisting the active organization repair fails", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        app_metadata: {
+          userId: DEFAULT_USER_ID,
+          activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        },
+      })
+    );
+    mockResolvedUserRecord({
+      activeOrganizationId: OTHER_ORGANIZATION_ID,
+      memberships: [createMembership(DEFAULT_ORGANIZATION_ID)],
+    });
+    mockPrisma.user.update.mockRejectedValueOnce(
+      new Error("Unable to update the active Traxium organization.")
+    );
+
+    await expect(bootstrapCurrentUser()).resolves.toEqual({
+      ok: true,
+      repaired: false,
+      user: {
+        id: DEFAULT_USER_ID,
+        name: "Test User",
+        email: "user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: `membership-${DEFAULT_ORGANIZATION_ID}`,
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      },
+    });
+  });
+
+  it("continues bootstrap when auth metadata sync fails but the resolved membership is valid", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        app_metadata: {},
+      })
+    );
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.findMany.mockResolvedValueOnce([createResolvedUserRecord()]);
+    updateUserByIdMock.mockResolvedValueOnce({
+      data: { user: null },
+      error: {
+        message: "Service role metadata sync failed.",
+      },
+    });
+
+    await expect(bootstrapCurrentUser()).resolves.toEqual({
+      ok: true,
+      repaired: false,
+      user: {
+        id: DEFAULT_USER_ID,
+        name: "Test User",
+        email: "user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: `membership-${DEFAULT_ORGANIZATION_ID}`,
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      },
+    });
+  });
+
   it("rejects bootstrap when the email maps to multiple app users", async () => {
     mockAuthenticatedSession(
       createAuthSessionUser({
@@ -424,5 +637,30 @@ describe("lib/auth guards", () => {
         "Your account matches multiple Traxium users. Contact an administrator to complete workspace consolidation.",
     });
     expect(updateUserByIdMock).not.toHaveBeenCalled();
+  });
+
+  it("returns billing-required during bootstrap when the active workspace is blocked", async () => {
+    getOrganizationAccessStateMock.mockResolvedValueOnce({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subscriptionId: "sub_1",
+      stripeSubscriptionId: "sub_1",
+      rawSubscriptionStatus: "UNPAID",
+      accessState: "blocked_unpaid",
+      isBlocked: true,
+      reasonCode: "unpaid",
+      currentPeriodEnd: new Date("2026-03-01T00:00:00.000Z"),
+      plan: null,
+    });
+
+    await expect(bootstrapCurrentUser()).resolves.toEqual({
+      ok: false,
+      code: "BILLING_REQUIRED",
+      message:
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+      accessState: expect.objectContaining({
+        accessState: "blocked_unpaid",
+        reasonCode: "unpaid",
+      }),
+    });
   });
 });

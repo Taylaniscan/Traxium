@@ -13,10 +13,14 @@ describe("runtime baseline", () => {
 
     expect(runtimeBaseline).toContain("| Distributed rate-limit policy behavior | Verified |");
     expect(runtimeBaseline).toContain("| HTTP security header contract | Verified |");
+    expect(runtimeBaseline).toContain(
+      "| Subscription gating, billing recovery UX, and Stripe deploy safety | Verified |"
+    );
     expect(runtimeBaseline).toContain("tests/api/rate-limit.test.ts");
     expect(runtimeBaseline).toContain("tests/lib/rate-limit.test.ts");
     expect(runtimeBaseline).toContain("tests/config/http-security-headers.test.ts");
     expect(runtimeBaseline).toContain("tests/api/export.route.test.ts");
+    expect(runtimeBaseline).toContain("tests/integration/subscription-gating-regression.test.ts");
   });
 
   it("includes an operational note for the shared rate-limit backend and a manual deployed-header smoke step", () => {
@@ -34,6 +38,7 @@ describe("runtime baseline", () => {
 
     expect(runtimeBaseline).toContain("/forgot-password");
     expect(runtimeBaseline).toContain("/reset-password");
+    expect(runtimeBaseline).toContain("/billing-required");
     expect(runtimeBaseline).toContain("/admin/members");
     expect(runtimeBaseline).toContain("/admin/settings");
     expect(runtimeBaseline).toContain("/admin/insights");
@@ -49,5 +54,14 @@ describe("runtime baseline", () => {
 
     expect(manualSmokeSection).toBeTruthy();
     expect(manualSmokeSection).not.toContain("- Status: `Verified`");
+  });
+
+  it("includes a manual blocked-billing recovery check with concrete routes", () => {
+    const runtimeBaseline = readProjectFile("docs/runtime-baseline.md");
+
+    expect(runtimeBaseline).toContain("Blocked billing and recovery");
+    expect(runtimeBaseline).toContain("/billing-required");
+    expect(runtimeBaseline).toContain("/api/auth/bootstrap");
+    expect(runtimeBaseline).toContain("/settings/billing");
   });
 });

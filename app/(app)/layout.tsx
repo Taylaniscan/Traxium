@@ -11,6 +11,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       redirect("/onboarding");
     }
 
+    if (session.code === "BILLING_REQUIRED") {
+      redirect("/billing-required");
+    }
+
     redirect("/login");
   }
 

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MockAuthGuardError,
+  createAuthGuardJsonResponse,
+} from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
 const mapSavingCardsForExportMock = vi.hoisted(() => vi.fn());
@@ -22,7 +27,8 @@ const appendSheetMock = vi.hoisted(() => vi.fn());
 const writeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -52,10 +58,11 @@ import { GET as getExportRoute } from "@/app/api/export/route";
 describe("export route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getCurrentUserMock.mockResolvedValue({
+    requireUserMock.mockResolvedValue({
       id: "user-1",
       organizationId: "org-1",
     });
+    createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
     enforceRateLimitMock.mockResolvedValue(undefined);
     createRateLimitErrorResponseMock.mockImplementation(
       (error: { message: string; status?: number }) =>
@@ -99,16 +106,31 @@ describe("export route", () => {
     writeMock.mockReturnValue(Buffer.from("xlsx-bytes"));
   });
 
-  it("returns 401 for unauthenticated export requests", async () => {
-    getCurrentUserMock.mockResolvedValueOnce(null);
+  it("returns 402 for billing-blocked export requests", async () => {
+    requireUserMock.mockRejectedValueOnce(
+      new MockAuthGuardError(
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+        402,
+        "BILLING_REQUIRED",
+        {
+          accessState: "blocked_unpaid",
+          reasonCode: "unpaid",
+        }
+      )
+    );
 
     const response = await getExportRoute(
       new Request("http://localhost/api/export")
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(402);
     await expect(response.json()).resolves.toEqual({
-      error: "Unauthorized.",
+      error:
+        "Your workspace subscription is unpaid. Resolve billing before product access can continue.",
+      code: "BILLING_REQUIRED",
+      accessState: "blocked_unpaid",
+      reasonCode: "unpaid",
+      billingRequiredPath: "/billing-required",
     });
   });
 

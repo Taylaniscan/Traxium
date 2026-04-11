@@ -8,6 +8,7 @@ import {
   BillingCheckoutError,
   createBillingPortalSessionForOrganization,
 } from "@/lib/billing/checkout";
+import { canManageOrganizationMembers } from "@/lib/organizations";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -15,7 +16,18 @@ function jsonError(error: string, status: number) {
 
 export async function POST() {
   try {
-    const user = await requireOrganization({ redirectTo: null });
+    const user = await requireOrganization({
+      redirectTo: null,
+      allowBillingBlocked: true,
+    });
+
+    if (!canManageOrganizationMembers(user.activeOrganization.membershipRole)) {
+      return jsonError(
+        "Only workspace admins and owners can manage billing recovery.",
+        403
+      );
+    }
+
     const session = await createBillingPortalSessionForOrganization({
       organizationId: user.activeOrganization.organizationId,
     });

@@ -1,7 +1,12 @@
 import { Phase, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MockAuthGuardError,
+  createAuthGuardJsonResponse,
+} from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const createSavingCardMock = vi.hoisted(() => vi.fn());
 const getSavingCardMock = vi.hoisted(() => vi.fn());
@@ -40,7 +45,8 @@ const UsageQuotaExceededErrorMock = vi.hoisted(
 );
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
@@ -122,13 +128,15 @@ function createJsonRequest(url: string, method: string, body: unknown) {
 
 describe("saving card API routes", () => {
   beforeEach(() => {
-    getCurrentUserMock.mockResolvedValue({
+    vi.clearAllMocks();
+    requireUserMock.mockResolvedValue({
       id: "user-1",
       name: "Workflow User",
       email: "user@example.com",
       role: Role.GLOBAL_CATEGORY_LEADER,
       organizationId: "org-1",
     });
+    createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
     canApprovePhaseMock.mockReturnValue(true);
     canLockFinanceMock.mockReturnValue(true);
     enforceRateLimitMock.mockResolvedValue(undefined);
@@ -144,12 +152,45 @@ describe("saving card API routes", () => {
 
   describe("app/api/saving-cards/route.ts", () => {
     it("returns 401 JSON for unauthenticated GET requests", async () => {
-      getCurrentUserMock.mockResolvedValueOnce(null);
+      requireUserMock.mockRejectedValueOnce(
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
+      );
 
       const response = await getSavingCardsRoute();
 
       expect(response.status).toBe(401);
       await expect(response.json()).resolves.toEqual({ error: "Unauthorized." });
+      expect(getSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 402 JSON for billing-blocked GET requests", async () => {
+      requireUserMock.mockRejectedValueOnce(
+        new MockAuthGuardError(
+          "Your workspace subscription is past due. Update billing before product access can continue.",
+          402,
+          "BILLING_REQUIRED",
+          {
+            accessState: "blocked_past_due",
+            reasonCode: "past_due_blocked",
+          }
+        )
+      );
+
+      const response = await getSavingCardsRoute();
+
+      expect(response.status).toBe(402);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Your workspace subscription is past due. Update billing before product access can continue.",
+        code: "BILLING_REQUIRED",
+        accessState: "blocked_past_due",
+        reasonCode: "past_due_blocked",
+        billingRequiredPath: "/billing-required",
+      });
       expect(getSavingCardsMock).not.toHaveBeenCalled();
     });
 

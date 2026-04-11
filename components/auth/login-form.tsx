@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,28 +13,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  captureException,
-  trackClientEvent,
-} from "@/lib/observability";
-import {
-  trackSuccessfulLogin,
-} from "@/lib/analytics";
+  resolveInviteNextPath,
+  resolveLoginErrorMessage,
+} from "@/lib/auth-navigation";
 import { Label } from "@/components/ui/label";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-function resolveInviteNextPath(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const normalized = value.trim();
-
-  if (!normalized || normalized.startsWith("//") || !normalized.startsWith("/invite/")) {
-    return null;
-  }
-
-  return normalized;
-}
 
 function resolveMessage(value: string | null) {
   switch (value) {
@@ -57,130 +38,48 @@ function resolvePrefilledEmail(value: string | null) {
   return normalized;
 }
 
+type LoginFormQueryState = {
+  email: string;
+  message: string | null;
+  nextPath: string | null;
+};
+
+export function resolveLoginFormQueryState(
+  search: string | null | undefined
+): LoginFormQueryState {
+  const normalizedSearch = search?.startsWith("?")
+    ? search.slice(1)
+    : search ?? "";
+  const params = new URLSearchParams(normalizedSearch);
+
+  return {
+    email: resolvePrefilledEmail(params.get("email")),
+    message: params.get("message"),
+    nextPath: resolveInviteNextPath(params.get("next")),
+  };
+}
+
 export function LoginForm() {
-  const searchParams = useSearchParams();
-  const [email, setEmail] = useState(() =>
-    resolvePrefilledEmail(searchParams.get("email"))
-  );
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [queryState, setQueryState] = useState<LoginFormQueryState>({
+    email: "",
+    message: null,
+    nextPath: null,
+  });
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const notice = resolveMessage(searchParams.get("message"));
+  const nextPath = queryState.nextPath;
+  const notice = resolveMessage(queryState.message);
+  const error = resolveLoginErrorMessage(queryState.message);
   const forgotPasswordHref = `/forgot-password${
     email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ""
   }`;
 
-  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    const nextPath = resolveInviteNextPath(searchParams.get("next"));
+  useEffect(() => {
+    const nextQueryState = resolveLoginFormQueryState(window.location.search);
 
-    try {
-      const supabase = createSupabaseBrowserClient();
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        trackClientEvent(
-          {
-            event: "auth.login.rejected",
-            message: signInError.message,
-            payload: {
-              hasInviteNextPath: Boolean(nextPath),
-            },
-          },
-          "warn"
-        );
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      const bootstrapResponse = await fetch("/api/auth/bootstrap", {
-        method: "POST",
-      });
-
-      if (!bootstrapResponse.ok) {
-        const bootstrapPayload = (await bootstrapResponse.json().catch(() => null)) as
-          | { error?: string; code?: string }
-          | null;
-
-        if (bootstrapPayload?.code === "ORGANIZATION_ACCESS_REQUIRED") {
-          trackClientEvent(
-            {
-              event: "auth.login.requires_workspace",
-              payload: {
-                hasInviteNextPath: Boolean(nextPath),
-              },
-            },
-            "warn"
-          );
-          window.location.assign(nextPath ?? "/onboarding");
-          return;
-        }
-
-        await supabase.auth.signOut();
-        trackClientEvent(
-          {
-            event: "auth.bootstrap.rejected",
-            message:
-              bootstrapPayload?.error ??
-              "Your account could not be connected to a Traxium workspace.",
-            payload: {
-              code: bootstrapPayload?.code ?? null,
-              hasInviteNextPath: Boolean(nextPath),
-            },
-          },
-          "warn"
-        );
-        setError(
-          bootstrapPayload?.error ??
-            "Your account could not be connected to a Traxium workspace."
-        );
-        setLoading(false);
-        return;
-      }
-
-      const bootstrapPayload = (await bootstrapResponse.json()) as {
-        user?: {
-          id: string;
-          role: string;
-          activeOrganization: {
-            organizationId: string;
-            membershipRole: string;
-          };
-        };
-      };
-
-      if (bootstrapPayload.user) {
-        await trackSuccessfulLogin({
-          runtime: "client",
-          userId: bootstrapPayload.user.id,
-          organizationId: bootstrapPayload.user.activeOrganization.organizationId,
-          appRole: bootstrapPayload.user.role,
-          membershipRole: bootstrapPayload.user.activeOrganization.membershipRole,
-          hasInviteNextPath: Boolean(nextPath),
-          destination: nextPath !== null ? "invite" : "dashboard",
-        });
-      }
-
-      window.location.assign(nextPath ?? "/dashboard");
-    } catch (error) {
-      captureException(error, {
-        event: "auth.login.failed",
-        runtime: "client",
-        payload: {
-          hasInviteNextPath: Boolean(nextPath),
-        },
-      });
-      setError(error instanceof Error ? error.message : "Login failed");
-      setLoading(false);
-    }
-  }
+    setQueryState(nextQueryState);
+    setEmail((currentEmail) => currentEmail || nextQueryState.email);
+  }, []);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
@@ -193,17 +92,32 @@ export function LoginForm() {
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form
+            action="/api/auth/login"
+            method="post"
+            className="space-y-4"
+            onSubmit={() => setLoading(true)}
+          >
             {notice ? (
               <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                 {notice}
               </div>
             ) : null}
 
+            {nextPath ? (
+              <input
+                type="hidden"
+                name="next"
+                value={nextPath}
+                readOnly
+              />
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -225,9 +139,8 @@ export function LoginForm() {
               </div>
               <Input
                 id="password"
+                name="password"
                 type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
                 placeholder="Enter your password"
                 required
                 autoComplete="current-password"

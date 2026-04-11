@@ -28,6 +28,7 @@ export type PredeployCheckResult = {
   databaseHost: string;
   directHost: string;
   productionAliasHost: string | null;
+  stripeKeyMode: "live" | "test";
 };
 
 function normalizeValue(value?: string) {
@@ -231,7 +232,7 @@ export function assertPredeployConfiguration(
 ): PredeployCheckResult {
   const appEnvironment = ensureDeployEnvironment(source);
   assertEnvironmentConfiguration(source);
-  assertStripeBillingConfiguration(source);
+  const billing = assertStripeBillingConfiguration(source);
   const appUrl = parseAbsoluteUrl(
     "NEXT_PUBLIC_APP_URL",
     getPublicAppUrl(source)
@@ -295,6 +296,7 @@ export function assertPredeployConfiguration(
     databaseHost: databaseUrl.hostname.toLowerCase(),
     directHost: directUrl.hostname.toLowerCase(),
     productionAliasHost,
+    stripeKeyMode: billing.secretKeyMode,
   };
 }
 

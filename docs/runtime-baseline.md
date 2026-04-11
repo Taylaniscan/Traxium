@@ -51,6 +51,7 @@ This baseline is the current operational checklist for local, preview, and produ
 | Import / evidence download and upload route contracts | Verified | `tests/api/import-and-evidence.route.test.ts` |
 | Export workbook route contract | Verified | `tests/api/export.route.test.ts` |
 | Billing and webhook route contracts | Verified | `tests/api/billing-checkout.test.ts`, `tests/api/stripe-webhook.test.ts` |
+| Subscription gating, billing recovery UX, and Stripe deploy safety | Verified | `tests/lib/billing-access.test.ts`, `tests/lib/auth-guards.test.ts`, `tests/integration/first-login-onboarding-provisioning.test.ts`, `tests/integration/subscription-gating-regression.test.ts`, `tests/app/billing-required.page.test.ts`, `tests/api/billing-recover.route.test.ts`, `tests/lib/stripe-billing-safety.test.ts`, `tests/ci/deploy-guard.test.ts` |
 | Distributed rate-limit policy behavior | Verified | `tests/api/rate-limit.test.ts`, `tests/lib/rate-limit.test.ts` |
 | HTTP security header contract | Verified | `tests/config/http-security-headers.test.ts` |
 
@@ -257,6 +258,28 @@ This baseline is the current operational checklist for local, preview, and produ
   - Security headers are present on the primary authenticated app shell and match the contract enforced by `next.config.ts`.
 - Failure Interpretation:
   - Missing or empty headers indicate deployment config drift, proxy/header stripping, or an unexpected Next config regression even if local contract tests are still green.
+
+### 15. Blocked billing and recovery
+
+- Status: `Pending Manual Verification`
+- Target: Preview, Production
+- Steps:
+  1. Use a validation workspace that is already in a blocked billing state such as `UNPAID`, blocked `PAST_DUE`, `CANCELED`, or no completed subscription.
+  2. Sign in as an admin and open `/dashboard`.
+  3. Confirm the app redirects to `/billing-required`.
+  4. Submit `POST /api/auth/bootstrap` from the authenticated browser session or network panel and confirm the response is `402` with `billingRequiredPath: "/billing-required"`.
+  5. On `/billing-required`, confirm the copy matches the blocked state and the admin can launch billing recovery.
+  6. Sign in as a normal member for the same workspace and confirm the page limits recovery to contact-admin guidance.
+  7. Complete recovery in Stripe, land on `/settings/billing`, then refresh until the workspace re-enters `/dashboard`.
+- Expected Result:
+  - Protected app routes stay blocked while billing is unresolved.
+  - Admins can reach Stripe recovery without raw error pages.
+  - Members never receive privileged billing controls.
+  - Once billing is restored, the paywall clears and the app becomes reachable again.
+- Failure Interpretation:
+  - A protected route rendering normally while the org is blocked indicates guard regression.
+  - Missing admin CTAs, raw `402` pages, or recovery loops indicate billing recovery regressions.
+  - A member seeing portal or checkout actions indicates role-isolation regression.
 
 ## Current Blockers
 

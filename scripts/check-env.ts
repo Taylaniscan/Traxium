@@ -1,7 +1,10 @@
 import { pathToFileURL } from "node:url";
 
 import { assertEnvironmentConfiguration } from "../lib/env";
-import { assertStripeBillingConfiguration } from "../lib/billing/config";
+import {
+  assertStripeBillingConfiguration,
+  hasAnyStripeBillingValue,
+} from "../lib/billing/config";
 import { resolveAppEnvironment } from "../lib/env";
 
 type EnvSource = Record<string, string | undefined>;
@@ -11,24 +14,6 @@ export type CliEnvironmentCheckResult = ReturnType<
 > & {
   billing: ReturnType<typeof assertStripeBillingConfiguration> | null;
 };
-
-const stripeEnvKeys = [
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "STRIPE_PORTAL_RETURN_URL",
-  "STRIPE_CHECKOUT_SUCCESS_URL",
-  "STRIPE_CHECKOUT_CANCEL_URL",
-  "STRIPE_STARTER_PRODUCT_ID",
-  "STRIPE_STARTER_BASE_PRICE_ID",
-  "STRIPE_STARTER_METERED_PRICE_ID",
-  "STRIPE_GROWTH_PRODUCT_ID",
-  "STRIPE_GROWTH_BASE_PRICE_ID",
-  "STRIPE_GROWTH_METERED_PRICE_ID",
-] as const;
-
-function hasAnyStripeBillingValue(source: EnvSource) {
-  return stripeEnvKeys.some((key) => Boolean(source[key]?.trim()));
-}
 
 export function assertCliEnvironmentConfiguration(
   source: EnvSource = process.env

@@ -7,12 +7,14 @@ import {
   createSessionUser,
 } from "../helpers/security-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const loadFirstValueSampleDataMock = vi.hoisted(() => vi.fn());
 const trackEventMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/first-value", () => ({
@@ -40,10 +42,11 @@ import { POST } from "@/app/api/onboarding/sample-data/route";
 describe("sample data telemetry route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createAuthGuardErrorResponseMock.mockReturnValue(null);
   });
 
   it("emits workspace.sample_data_loaded with tenant-scoped metadata", async () => {
-    getCurrentUserMock.mockResolvedValueOnce(
+    requireUserMock.mockResolvedValueOnce(
       createSessionUser({
         id: DEFAULT_USER_ID,
         organizationId: DEFAULT_ORGANIZATION_ID,

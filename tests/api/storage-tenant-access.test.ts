@@ -9,7 +9,7 @@ import {
   createSignedUrlResult,
 } from "../helpers/tenant-access-fixtures";
 
-const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const createSignedUrlMock = vi.hoisted(() => vi.fn());
 const uploadMock = vi.hoisted(() => vi.fn());
@@ -24,7 +24,8 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  requireUser: requireUserMock,
+  createAuthGuardErrorResponse: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -44,7 +45,7 @@ describe("storage tenant access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    getCurrentUserMock.mockResolvedValue(createAdminUser());
+    requireUserMock.mockResolvedValue(createAdminUser());
     createSignedUrlMock.mockResolvedValue(createSignedUrlResult());
     uploadMock.mockResolvedValue({
       data: { path: "uploaded" },

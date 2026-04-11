@@ -1,18 +1,23 @@
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
-import type { MembershipStatus } from "@prisma/client";
+import type { MembershipStatus, OrganizationRole } from "@prisma/client";
 
 import {
   acceptOrganizationInvitation,
   type InvitationAcceptanceResult,
 } from "@/lib/invitations";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
+import {
+  getOrganizationAccessState,
+  type OrganizationAccessStateResult,
+} from "@/lib/billing/access";
 import { prisma } from "@/lib/prisma";
 import {
   createInitialWorkspaceForAuthenticatedUser,
   createInitialWorkspaceForUser,
 } from "@/lib/organizations";
+import { resolveLegacyMembershipRole } from "@/lib/organization-membership-backfill";
 import { hasAnyRole, hasPermission } from "@/lib/permissions";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
@@ -22,13 +27,6 @@ import type {
   AuthGuardOptions,
 } from "@/lib/types";
 
-const sessionMembershipSelect = {
-  id: true,
-  organizationId: true,
-  role: true,
-  status: true,
-} as const;
-
 const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
 
 const sessionUserSelect = {
@@ -36,21 +34,24 @@ const sessionUserSelect = {
   name: true,
   email: true,
   role: true,
+  organizationId: true,
   activeOrganizationId: true,
-  memberships: {
-    where: {
-      status: ACTIVE_MEMBERSHIP_STATUS,
-    },
-    select: sessionMembershipSelect,
-    orderBy: [{ createdAt: "asc" as const }, { organizationId: "asc" as const }],
-  },
 } satisfies Prisma.UserSelect;
 
-type SessionUserRecord = Prisma.UserGetPayload<{
+type BaseSessionUserRecord = Prisma.UserGetPayload<{
   select: typeof sessionUserSelect;
 }>;
 
-type SessionMembershipRecord = SessionUserRecord["memberships"][number];
+type SessionMembershipRecord = {
+  id: string;
+  organizationId: string;
+  role: OrganizationRole;
+  status: MembershipStatus;
+};
+
+type SessionUserRecord = BaseSessionUserRecord & {
+  memberships?: SessionMembershipRecord[] | null;
+};
 
 export type SessionUser = AuthenticatedUser;
 
@@ -87,8 +88,10 @@ export type SessionBootstrapResult =
         | "UNAUTHENTICATED"
         | "AMBIGUOUS_USER"
         | "ORGANIZATION_ACCESS_REQUIRED"
+        | "BILLING_REQUIRED"
         | "SESSION_REPAIR_FAILED";
       message: string;
+      accessState?: OrganizationAccessStateResult;
     };
 
 export type WorkspaceOnboardingStateResult =
@@ -131,8 +134,9 @@ export type WorkspaceOnboardingResult = {
 export class AuthGuardError extends Error {
   constructor(
     message: string,
-    readonly status: 401 | 403,
-    readonly code: AuthFailureCode
+    readonly status: 401 | 402 | 403,
+    readonly code: AuthFailureCode,
+    readonly accessState?: OrganizationAccessStateResult
   ) {
     super(message);
     this.name = "AuthGuardError";
@@ -146,6 +150,19 @@ export function isAuthGuardError(error: unknown): error is AuthGuardError {
 export function createAuthGuardErrorResponse(error: unknown) {
   if (!isAuthGuardError(error)) {
     return null;
+  }
+
+  if (error.code === "BILLING_REQUIRED") {
+    return NextResponse.json(
+      {
+        error: error.message,
+        code: error.code,
+        accessState: error.accessState?.accessState ?? null,
+        reasonCode: error.accessState?.reasonCode ?? null,
+        billingRequiredPath: "/billing-required",
+      },
+      { status: error.status }
+    );
   }
 
   return NextResponse.json(
@@ -243,6 +260,55 @@ async function getAuthenticatedSessionUser(): Promise<AuthSessionUser | null> {
   return authUser as AuthSessionUser;
 }
 
+async function resolveAuthenticatedAppUserFromAuthUser(
+  authUser: AuthSessionUser
+): Promise<AuthenticatedAppUserResult> {
+  const email = normalizeEmail(authUser.email);
+
+  if (!email) {
+    return {
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authenticated session is missing an email address.",
+    };
+  }
+
+  const authUserId = getAuthUserId(authUser);
+
+  if (authUserId) {
+    const user = await findSessionUserById(authUserId);
+
+    if (user && hasMatchingSessionEmail(user, email)) {
+      return {
+        ok: true,
+        authUser,
+        email,
+        name: user.name,
+        user,
+      };
+    }
+  }
+
+  const candidates = await findSessionUsersByEmail(email);
+
+  if (candidates.length > 1) {
+    return {
+      ok: false,
+      code: "AMBIGUOUS_USER",
+      message:
+        "Your account matches multiple Traxium users. Contact an administrator to complete workspace consolidation.",
+    };
+  }
+
+  return {
+    ok: true,
+    authUser,
+    email,
+    name: candidates[0]?.name ?? resolveSessionDisplayName(authUser, email),
+    user: candidates[0] ?? null,
+  };
+}
+
 async function findSessionUserById(userId: string): Promise<SessionUserRecord | null> {
   return prisma.user.findUnique({
     where: { id: userId },
@@ -310,17 +376,20 @@ function hasMatchingSessionEmail(user: SessionUserRecord, email: string) {
 
 function getActiveMembership(user: SessionUserRecord): SessionMembershipRecord | null {
   const activeOrganizationId = normalizeString(user.activeOrganizationId);
+  const memberships = getSessionMemberships(user);
 
   if (!activeOrganizationId) {
-    return null;
+    return memberships[0] ?? null;
   }
 
   return (
-    user.memberships.find(
+    memberships.find(
       (membership) =>
         membership.organizationId === activeOrganizationId &&
         membership.status === ACTIVE_MEMBERSHIP_STATUS
-    ) ?? null
+    ) ??
+    memberships[0] ??
+    null
   );
 }
 
@@ -328,8 +397,10 @@ function getMembershipByOrganizationId(
   user: SessionUserRecord,
   organizationId: string
 ): SessionMembershipRecord | null {
+  const memberships = getSessionMemberships(user);
+
   return (
-    user.memberships.find(
+    memberships.find(
       (membership) =>
         membership.organizationId === organizationId &&
         membership.status === ACTIVE_MEMBERSHIP_STATUS
@@ -339,12 +410,42 @@ function getMembershipByOrganizationId(
 
 function getPreferredActiveOrganizationId(user: SessionUserRecord): string | null {
   const activeMembership = getActiveMembership(user);
+  const memberships = getSessionMemberships(user);
 
   if (activeMembership) {
     return activeMembership.organizationId;
   }
 
-  return user.memberships[0]?.organizationId ?? null;
+  return memberships[0]?.organizationId ?? null;
+}
+
+function getSessionMemberships(user: SessionUserRecord): SessionMembershipRecord[] {
+  if (Array.isArray(user.memberships)) {
+    return user.memberships.filter(
+      (membership): membership is SessionMembershipRecord =>
+        Boolean(
+          normalizeString(membership.id) &&
+          normalizeString(membership.organizationId) &&
+          normalizeString(membership.role) &&
+          normalizeString(membership.status)
+        )
+    );
+  }
+
+  const legacyOrganizationId = normalizeString(user.organizationId);
+
+  if (!legacyOrganizationId) {
+    return [];
+  }
+
+  return [
+    {
+      id: `legacy-membership-${user.id}-${legacyOrganizationId}`,
+      organizationId: legacyOrganizationId,
+      role: resolveLegacyMembershipRole(user.role),
+      status: ACTIVE_MEMBERSHIP_STATUS,
+    },
+  ];
 }
 
 function mapSessionUser(
@@ -367,6 +468,58 @@ function mapSessionUser(
   };
 }
 
+function getBillingRequiredMessage(accessState: OrganizationAccessStateResult) {
+  switch (accessState.reasonCode) {
+    case "past_due_grace_period":
+      return "Your workspace billing needs attention soon. Complete billing recovery to keep access uninterrupted.";
+    case "past_due_blocked":
+      return "Your workspace subscription is past due. Update billing before product access can continue.";
+    case "unpaid":
+      return "Your workspace subscription is unpaid. Resolve billing before product access can continue.";
+    case "canceled":
+      return "Your workspace subscription has been canceled. Reactivate billing before product access can continue.";
+    case "paused":
+      return "Your workspace subscription is paused. Resume billing before product access can continue.";
+    case "incomplete":
+    case "incomplete_expired":
+    case "no_subscription":
+      return "Your workspace does not have an active subscription yet. Complete billing setup before product access can continue.";
+    case "unknown":
+      return "Your workspace billing state could not be verified safely. Complete billing recovery before product access can continue.";
+    case "active":
+    case "trialing":
+      return "Your workspace billing access is active.";
+  }
+}
+
+async function assertBillingAccess(
+  user: SessionUser,
+  options: AuthGuardOptions = {}
+) {
+  if (options.allowBillingBlocked) {
+    return user;
+  }
+
+  const accessState = await getOrganizationAccessState(
+    user.activeOrganization.organizationId
+  );
+
+  if (!accessState.isBlocked) {
+    return user;
+  }
+
+  if (options.billingRedirectTo !== null && options.redirectTo !== null) {
+    redirect(options.billingRedirectTo ?? "/billing-required");
+  }
+
+  throw new AuthGuardError(
+    getBillingRequiredMessage(accessState),
+    402,
+    "BILLING_REQUIRED",
+    accessState
+  );
+}
+
 async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult> {
   const authUser = await getAuthenticatedSessionUser();
 
@@ -378,50 +531,7 @@ async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult
     };
   }
 
-  const email = normalizeEmail(authUser.email);
-
-  if (!email) {
-    return {
-      ok: false,
-      code: "UNAUTHENTICATED",
-      message: "Authenticated session is missing an email address.",
-    };
-  }
-
-  const authUserId = getAuthUserId(authUser);
-
-  if (authUserId) {
-    const user = await findSessionUserById(authUserId);
-
-    if (user && hasMatchingSessionEmail(user, email)) {
-      return {
-        ok: true,
-        authUser,
-        email,
-        name: user.name,
-        user,
-      };
-    }
-  }
-
-  const candidates = await findSessionUsersByEmail(email);
-
-  if (candidates.length > 1) {
-    return {
-      ok: false,
-      code: "AMBIGUOUS_USER",
-      message:
-        "Your account matches multiple Traxium users. Contact an administrator to complete workspace consolidation.",
-    };
-  }
-
-  return {
-    ok: true,
-    authUser,
-    email,
-    name: candidates[0]?.name ?? resolveSessionDisplayName(authUser, email),
-    user: candidates[0] ?? null,
-  };
+  return resolveAuthenticatedAppUserFromAuthUser(authUser);
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
@@ -447,6 +557,12 @@ export async function bootstrapCurrentUser(): Promise<SessionBootstrapResult> {
     return resolved;
   }
 
+  return bootstrapResolvedAuthenticatedAppUser(resolved);
+}
+
+async function bootstrapResolvedAuthenticatedAppUser(
+  resolved: Extract<AuthenticatedAppUserResult, { ok: true }>
+): Promise<SessionBootstrapResult> {
   if (!resolved.user) {
     return {
       ok: false,
@@ -473,14 +589,10 @@ export async function bootstrapCurrentUser(): Promise<SessionBootstrapResult> {
     try {
       user = await updateUserActiveOrganization(user.id, preferredActiveOrganizationId);
       repaired = true;
-    } catch (error) {
-      return {
-        ok: false,
-        code: "SESSION_REPAIR_FAILED",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to update the active Traxium organization.",
+    } catch {
+      user = {
+        ...user,
+        activeOrganizationId: preferredActiveOrganizationId,
       };
     }
   }
@@ -505,23 +617,48 @@ export async function bootstrapCurrentUser(): Promise<SessionBootstrapResult> {
         activeOrganizationId: activeMembership.organizationId,
       });
       repaired = true;
-    } catch (error) {
-      return {
-        ok: false,
-        code: "SESSION_REPAIR_FAILED",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to update account workspace context.",
-      };
+    } catch {
+      // Allow the current request to continue with the resolved membership.
+      // Route-level guards can still authorize safely even if metadata sync lags.
     }
+  }
+
+  const sessionUser = mapSessionUser(user, activeMembership);
+  const accessState = await getOrganizationAccessState(
+    sessionUser.activeOrganization.organizationId
+  );
+
+  if (accessState.isBlocked) {
+    return {
+      ok: false,
+      code: "BILLING_REQUIRED",
+      message: getBillingRequiredMessage(accessState),
+      accessState,
+    };
   }
 
   return {
     ok: true,
     repaired,
-    user: mapSessionUser(user, activeMembership),
+    user: sessionUser,
   };
+}
+
+export async function bootstrapCurrentUserFromAuthUser(
+  authUser: {
+    id: string;
+    email?: string | null;
+    app_metadata?: unknown;
+    user_metadata?: unknown;
+  }
+): Promise<SessionBootstrapResult> {
+  const resolved = await resolveAuthenticatedAppUserFromAuthUser(authUser);
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return bootstrapResolvedAuthenticatedAppUser(resolved);
 }
 
 export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboardingStateResult> {
@@ -533,7 +670,7 @@ export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboarding
 
   return {
     ok: true,
-    needsWorkspace: !resolved.user || resolved.user.memberships.length === 0,
+    needsWorkspace: !resolved.user || getSessionMemberships(resolved.user).length === 0,
     user: {
       id: resolved.user?.id ?? resolved.authUser.id,
       name: resolved.user?.name ?? resolved.name,
@@ -705,7 +842,8 @@ export async function switchCurrentOrganization(
 function failAuthGuard(
   code: AuthFailureCode,
   message: string,
-  options: AuthGuardOptions = {}
+  options: AuthGuardOptions = {},
+  accessState?: OrganizationAccessStateResult
 ): never {
   if (
     (code === "UNAUTHENTICATED" || code === "ORGANIZATION_REQUIRED") &&
@@ -714,7 +852,16 @@ function failAuthGuard(
     redirect(options.redirectTo ?? "/login");
   }
 
-  throw new AuthGuardError(message, code === "FORBIDDEN" ? 403 : 401, code);
+  if (code === "BILLING_REQUIRED" && options.billingRedirectTo !== null) {
+    redirect(options.billingRedirectTo ?? "/billing-required");
+  }
+
+  throw new AuthGuardError(
+    message,
+    code === "FORBIDDEN" ? 403 : code === "BILLING_REQUIRED" ? 402 : 401,
+    code,
+    accessState
+  );
 }
 
 export async function requireUser(options: AuthGuardOptions = {}): Promise<SessionUser> {
@@ -724,7 +871,7 @@ export async function requireUser(options: AuthGuardOptions = {}): Promise<Sessi
     failAuthGuard("UNAUTHENTICATED", "Authenticated session is required.", options);
   }
 
-  return user;
+  return assertBillingAccess(user, options);
 }
 
 export async function requireOrganization(
