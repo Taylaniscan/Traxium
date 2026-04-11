@@ -2,6 +2,8 @@
 
 This document defines how tenant isolation is enforced in the current Traxium codebase after the 5.1, 5.2, and 5.3 hardening steps.
 
+`lib/data.ts` remains as a compatibility facade. Current ownership lives in the domain modules listed below.
+
 ## Core Rules
 
 1. Every organization-owned query must receive a `TenantContextSource`.
@@ -26,22 +28,22 @@ This document defines how tenant isolation is enforced in the current Traxium co
 
 | Data Type | Scope Requirement | Current Enforcement |
 |---|---|---|
-| `SavingCard` | Must be filtered by `organizationId` | `lib/data.ts`, `lib/volume.ts` |
-| `Buyer` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `Supplier` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `Material` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `Category` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `Plant` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `BusinessUnit` | Must be filtered by `organizationId` | `lib/data.ts` |
-| `AnnualTarget` | Must be filtered by `organizationId` | `lib/data.ts` |
+| `SavingCard` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/mutations.ts`, `lib/dashboard/data.ts`, `lib/command-center/data.ts`, `lib/workflow/service.ts`, `lib/volume.ts` |
+| `Buyer` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/command-center/data.ts`, `lib/workspace/readiness.ts` |
+| `Supplier` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/command-center/data.ts`, `lib/workspace/readiness.ts` |
+| `Material` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/workspace/readiness.ts` |
+| `Category` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/command-center/data.ts`, `lib/workspace/readiness.ts` |
+| `Plant` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/command-center/data.ts`, `lib/workspace/readiness.ts` |
+| `BusinessUnit` | Must be filtered by `organizationId` | `lib/saving-cards/queries.ts`, `lib/saving-cards/shared.ts`, `lib/command-center/data.ts`, `lib/workspace/readiness.ts` |
+| `AnnualTarget` | Must be filtered by `organizationId` | `lib/saving-cards/shared.ts` |
 | `MaterialConsumptionForecast` | Must be scoped through owning `SavingCard` | `lib/volume.ts` |
 | `MaterialConsumptionActual` | Must be scoped through owning `SavingCard` | `lib/volume.ts` |
-| `SavingCardAlternativeSupplier` | Must be scoped through owning `SavingCard` | `lib/data.ts` |
-| `SavingCardAlternativeMaterial` | Must be scoped through owning `SavingCard` | `lib/data.ts` |
-| `PhaseChangeRequest` | Must be scoped through owning `SavingCard` | `lib/data.ts` |
-| `PhaseChangeRequestApproval` | Must be scoped through `phaseChangeRequest.savingCard` | `lib/data.ts` |
+| `SavingCardAlternativeSupplier` | Must be scoped through owning `SavingCard` | `lib/saving-cards/mutations.ts`, `lib/saving-cards/shared.ts` |
+| `SavingCardAlternativeMaterial` | Must be scoped through owning `SavingCard` | `lib/saving-cards/mutations.ts`, `lib/saving-cards/shared.ts` |
+| `PhaseChangeRequest` | Must be scoped through owning `SavingCard` | `lib/workflow/service.ts` |
+| `PhaseChangeRequestApproval` | Must be scoped through `phaseChangeRequest.savingCard` | `lib/workflow/service.ts` |
 | `SavingCardEvidence` metadata | Must be scoped through owning `SavingCard.organizationId` and evidence access rules | `app/api/evidence/[id]/download/route.ts`, `app/api/upload/evidence/route.ts` |
-| `User` organization lists | Must be scoped through active memberships, not legacy org assumptions | `lib/organizations.ts`, `lib/data.ts` |
+| `User` organization lists | Must be scoped through active memberships, not legacy org assumptions | `lib/organizations.ts`, `lib/saving-cards/queries.ts`, `lib/workspace/readiness.ts`, `lib/workflow/service.ts` |
 
 ## Routes That Require Ownership Validation
 
@@ -119,4 +121,4 @@ When adding a new query or mutation:
 | Cross-tenant mutation blocking on related resources | `tests/api/tenant-scope-mutations.test.ts` |
 | Cross-tenant file access blocking and same-tenant signed URL success | `tests/api/storage-tenant-access.test.ts` |
 
-Keep this document aligned with `lib/tenant-scope.ts`, `lib/data.ts`, `lib/volume.ts`, `lib/uploads.ts`, and the route files listed above.
+Keep this document aligned with `lib/tenant-scope.ts`, `lib/saving-cards/*`, `lib/workflow/service.ts`, `lib/workspace/*`, `lib/dashboard/data.ts`, `lib/command-center/data.ts`, `lib/volume.ts`, `lib/uploads.ts`, and the route files listed above.

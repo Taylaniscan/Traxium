@@ -27,9 +27,9 @@ function createBaseEnv(overrides: Record<string, string | undefined> = {}) {
 function createBillingEnv(overrides: Record<string, string | undefined> = {}) {
   return createBaseEnv({
     STRIPE_SECRET_KEY:
-      "sk_test_localdevbillingsecretkey000000000000000000000000",
+      "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
-      "whsec_localdevbillingwebhooksecret000000000000000000000000",
+      "whsec_FAKE",
     STRIPE_PORTAL_RETURN_URL: "http://localhost:3000/settings/billing",
     STRIPE_CHECKOUT_SUCCESS_URL:
       "http://localhost:3000/settings/billing?checkout=success",

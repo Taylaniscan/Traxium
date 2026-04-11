@@ -10,8 +10,18 @@ import {
 
 const queuePasswordRecoveryEmailJobSafelyMock = vi.hoisted(() => vi.fn());
 const getCurrentUserMock = vi.hoisted(() => vi.fn());
+const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn(() => null));
 const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const createSavingCardMock = vi.hoisted(() => vi.fn());
+const WorkflowErrorMock = vi.hoisted(
+  () =>
+    class WorkflowError extends Error {
+      constructor(message: string, readonly status = 409) {
+        super(message);
+        this.name = "WorkflowError";
+      }
+    }
+);
 const enforceUsageQuotaMock = vi.hoisted(() => vi.fn());
 const recordUsageEventMock = vi.hoisted(() => vi.fn());
 const UsageQuotaExceededErrorMock = vi.hoisted(
@@ -36,11 +46,14 @@ vi.mock("@/lib/auth-email", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: getCurrentUserMock,
+  requireUser: getCurrentUserMock,
+  createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
 vi.mock("@/lib/data", () => ({
   getSavingCards: getSavingCardsMock,
   createSavingCard: createSavingCardMock,
+  WorkflowError: WorkflowErrorMock,
 }));
 
 vi.mock("@/lib/prisma", () => ({

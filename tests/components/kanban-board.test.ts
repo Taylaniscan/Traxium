@@ -171,11 +171,14 @@ describe("kanban board", () => {
       }),
     ]);
 
-    expect(columns.IDEA.map((card) => card.id)).toEqual(["idea-card"]);
+    expect(columns.IDEA.map((card) => card.id)).toEqual([
+      "idea-card",
+      "pending-card",
+    ]);
     expect(columns.VALIDATED.map((card) => card.id)).toEqual([
       "validated-card",
     ]);
-    expect(columns.REALISED.map((card) => card.id)).toEqual(["pending-card"]);
+    expect(columns.REALISED.map((card) => card.id)).toEqual([]);
   });
 
   it("reorders cards within the same column", () => {
@@ -261,7 +264,7 @@ describe("kanban board", () => {
     );
   });
 
-  it("drops a card into an empty column", () => {
+  it("does not preview invalid phase jumps across columns", () => {
     const snapshot = buildKanbanColumns([createSavingCard()]);
     const preview = previewKanbanCrossColumnMove(
       snapshot,
@@ -269,8 +272,7 @@ describe("kanban board", () => {
       "column:ACHIEVED"
     );
 
-    expect(preview.ACHIEVED).toHaveLength(1);
-    expect(preview.IDEA).toHaveLength(0);
+    expect(preview).toEqual(snapshot);
   });
 
   it("shows a clear blocked-move outcome when workflow rules prevent a phase change", () => {
@@ -300,7 +302,25 @@ describe("kanban board", () => {
       type: "blocked",
       nextColumns: snapshot,
       message:
-        "This saving card already has a pending phase change request. Wait for that request to finish before moving it again.",
+        "Packaging renegotiation remains in Idea while approval is pending for Validated. Wait for that request to finish before moving it again.",
+    });
+  });
+
+  it("shows a clear blocked-move outcome for invalid phase jumps", () => {
+    const snapshot = buildKanbanColumns([createSavingCard()]);
+
+    expect(
+      resolveKanbanMoveOutcome({
+        snapshot,
+        columns: snapshot,
+        activeId: "card:card-1",
+        overId: "column:ACHIEVED",
+      })
+    ).toEqual({
+      type: "blocked",
+      nextColumns: snapshot,
+      message:
+        "Cannot move from Idea to Achieved. You can only request Validated or Cancelled.",
     });
   });
 
@@ -351,12 +371,43 @@ describe("kanban board", () => {
   });
 
   it("exposes fallback move options for non-dnd recovery", () => {
-    expect(buildKanbanMoveOptions("IDEA")).toEqual([
-      "VALIDATED",
+    expect(buildKanbanMoveOptions("IDEA")).toEqual(["VALIDATED", "CANCELLED"]);
+    expect(buildKanbanMoveOptions("VALIDATED")).toEqual([
       "REALISED",
+      "CANCELLED",
+    ]);
+    expect(buildKanbanMoveOptions("REALISED")).toEqual([
       "ACHIEVED",
       "CANCELLED",
     ]);
+  });
+
+  it("renders pending requests without relocating the card", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(KanbanBoard, {
+        initialCards: [
+          createSavingCard({
+            phase: "IDEA",
+            phaseChangeRequests: [
+              {
+                id: "request-1",
+                approvalStatus: "PENDING",
+                requestedPhase: "VALIDATED",
+                requestedBy: {
+                  id: "user-1",
+                  name: "Casey Buyer",
+                },
+              },
+            ],
+          }),
+        ],
+        readiness: null,
+      })
+    );
+
+    expect(markup).toContain("Pending approval");
+    expect(markup).toContain("Pending move to Validated.");
+    expect(markup).toContain("Card remains in Idea until approval completes.");
   });
 
   it("renders a visible error state when kanban data loading fails", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ApprovalStatus } from "@prisma/client";
+import { ApprovalStatus, Phase } from "@prisma/client";
 import {
   closestCenter,
   DndContext,
@@ -44,6 +44,7 @@ import { phaseLabels, phases } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { getAllowedPhaseTransitions } from "@/lib/workflow";
 
 type KanbanPhase = SavingCardPortfolio["phase"];
 type KanbanColumns = Record<KanbanPhase, SavingCardPortfolio[]>;
@@ -144,13 +145,13 @@ export function getPendingKanbanPhaseChangeRequest(card: SavingCardPortfolio) {
 }
 
 export function getVisibleKanbanPhase(card: SavingCardPortfolio): KanbanPhase {
-  return getPendingKanbanPhaseChangeRequest(card)?.requestedPhase ?? card.phase;
+  return card.phase;
 }
 
 export function buildKanbanColumns(cards: SavingCardPortfolio[]): KanbanColumns {
   return cards.reduce<KanbanColumns>(
     (columns, card) => {
-      columns[getVisibleKanbanPhase(card)].push(card);
+      columns[card.phase].push(card);
       return columns;
     },
     {
@@ -174,7 +175,53 @@ export function cloneKanbanColumns(columns: KanbanColumns): KanbanColumns {
 }
 
 export function buildKanbanMoveOptions(currentPhase: KanbanPhase) {
-  return phases.filter((phase) => phase !== currentPhase);
+  return getAllowedPhaseTransitions(currentPhase as Phase) as KanbanPhase[];
+}
+
+function isKanbanMoveAllowed(
+  currentPhase: KanbanPhase,
+  targetPhase: KanbanPhase
+) {
+  return buildKanbanMoveOptions(currentPhase).includes(targetPhase);
+}
+
+function formatKanbanPhaseList(availablePhases: KanbanPhase[]) {
+  const labels = availablePhases.map((phase) => phaseLabels[phase]);
+
+  if (labels.length <= 1) {
+    return labels[0] ?? "";
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]} or ${labels[1]}`;
+  }
+
+  return `${labels.slice(0, -1).join(", ")}, or ${labels.at(-1)}`;
+}
+
+function buildKanbanInvalidMoveMessage(
+  currentPhase: KanbanPhase,
+  targetPhase: KanbanPhase
+) {
+  const allowedTransitions = buildKanbanMoveOptions(currentPhase);
+
+  if (!allowedTransitions.length) {
+    return `${phaseLabels[currentPhase]} cards cannot be moved from the Kanban board.`;
+  }
+
+  return `Cannot move from ${phaseLabels[currentPhase]} to ${phaseLabels[targetPhase]}. You can only request ${formatKanbanPhaseList(
+    allowedTransitions
+  )}.`;
+}
+
+function buildPendingRequestBlockedMessage(card: SavingCardPortfolio) {
+  const pendingRequest = getPendingKanbanPhaseChangeRequest(card);
+
+  if (!pendingRequest) {
+    return "This saving card already has a pending phase change request. Wait for that request to finish before moving it again.";
+  }
+
+  return `${card.title} remains in ${phaseLabels[card.phase]} while approval is pending for ${phaseLabels[pendingRequest.requestedPhase]}. Wait for that request to finish before moving it again.`;
 }
 
 type KanbanColumnsUpdater =
@@ -318,7 +365,8 @@ function reorderKanbanWithinColumn(
 export function previewKanbanCrossColumnMove(
   columns: KanbanColumns,
   activeId: string,
-  overId: string | null
+  overId: string | null,
+  sourceColumns?: KanbanColumns
 ) {
   if (!overId) {
     return columns;
@@ -326,17 +374,24 @@ export function previewKanbanCrossColumnMove(
 
   const activeCardId = parseKanbanCardDragId(activeId);
   const activeLocation = findKanbanCardLocation(columns, activeCardId);
+  const sourceLocation = findKanbanCardLocation(
+    sourceColumns ?? columns,
+    activeCardId
+  );
   const targetPhase = findKanbanPhaseForDragId(columns, overId);
 
   if (!activeLocation || !targetPhase || activeLocation.phase === targetPhase) {
     return columns;
   }
 
+  const sourceCard = sourceLocation?.card ?? activeLocation.card;
+
   if (
-    getPendingKanbanPhaseChangeRequest(activeLocation.card) ||
-    targetPhase === "CANCELLED"
+    getPendingKanbanPhaseChangeRequest(sourceCard) ||
+    targetPhase === "CANCELLED" ||
+    !isKanbanMoveAllowed(sourceCard.phase, targetPhase)
   ) {
-    return columns;
+    return cloneKanbanColumns(sourceColumns ?? columns);
   }
 
   const overColumnPhase = parseKanbanColumnId(overId);
@@ -405,8 +460,18 @@ export function resolveKanbanMoveOutcome(input: {
     return {
       type: "blocked",
       nextColumns: cloneKanbanColumns(input.snapshot),
-      message:
-        "This saving card already has a pending phase change request. Wait for that request to finish before moving it again.",
+      message: buildPendingRequestBlockedMessage(originalLocation.card),
+    };
+  }
+
+  if (!isKanbanMoveAllowed(originalLocation.card.phase, targetPhase)) {
+    return {
+      type: "blocked",
+      nextColumns: cloneKanbanColumns(input.snapshot),
+      message: buildKanbanInvalidMoveMessage(
+        originalLocation.card.phase,
+        targetPhase
+      ),
     };
   }
 
@@ -475,7 +540,7 @@ function applySavedKanbanMove(
 
   const displayPhase =
     result.approvalStatus === ApprovalStatus.PENDING
-      ? targetPhase
+      ? location.card.phase
       : result.savingCard?.phase ?? result.requestedPhase;
   const requestSummaries =
     result.approvalStatus === ApprovalStatus.PENDING
@@ -509,10 +574,11 @@ function applySavedKanbanMove(
 
 function buildKanbanMoveSuccessMessage(
   cardTitle: string,
+  currentPhase: KanbanPhase,
   result: KanbanPhaseChangeRouteResult
 ) {
   if (result.approvalStatus === ApprovalStatus.PENDING) {
-    return `${cardTitle} moved to ${phaseLabels[result.requestedPhase]} and is awaiting approval.`;
+    return `${cardTitle} remains in ${phaseLabels[currentPhase]} while approval is pending for ${phaseLabels[result.requestedPhase]}.`;
   }
 
   return `${cardTitle} moved to ${phaseLabels[result.requestedPhase]}.`;
@@ -671,7 +737,10 @@ export function KanbanBoard({
           | null;
 
         setColumns(cloneKanbanColumns(input.snapshot));
-        showNotice("error", payload?.error ?? "This move could not be saved.");
+        showNotice(
+          response.status >= 500 ? "error" : "warning",
+          payload?.error ?? "This move could not be saved."
+        );
         setSavingCardId(null);
         return;
       }
@@ -683,7 +752,11 @@ export function KanbanBoard({
       );
       showNotice(
         "success",
-        buildKanbanMoveSuccessMessage(input.card.title, result)
+        buildKanbanMoveSuccessMessage(
+          input.card.title,
+          input.card.phase,
+          result
+        )
       );
       setSavingCardId(null);
     } catch (error) {
@@ -730,7 +803,7 @@ export function KanbanBoard({
       return;
     }
 
-    setColumns(outcome.nextColumns);
+    setColumns(cloneKanbanColumns(snapshot));
     void persistMove({
       snapshot,
       card: outcome.card,
@@ -758,7 +831,8 @@ export function KanbanBoard({
       previewKanbanCrossColumnMove(
         current,
         String(event.active.id),
-        overId
+        overId,
+        dragSnapshotRef.current ?? current
       )
     );
   }
@@ -925,6 +999,7 @@ export function KanbanBoard({
       ) : null}
 
       <DndContext
+        id="kanban-board-dnd"
         sensors={sensors}
         collisionDetection={collisionDetectionStrategy}
         onDragStart={handleDragStart}
@@ -1001,16 +1076,6 @@ export function KanbanBoard({
                     setCancellationReason("");
                     return;
                   }
-
-                  const nextColumns = applyKanbanMove(
-                    columnsRef.current,
-                    cancellationDraft.cardId,
-                    cancellationDraft.targetPhase,
-                    columnsRef.current[cancellationDraft.targetPhase].length,
-                    {
-                      optimistic: true,
-                    }
-                  );
                   const card = findKanbanCardLocation(
                     snapshot,
                     cancellationDraft.cardId
@@ -1022,7 +1087,7 @@ export function KanbanBoard({
                     return;
                   }
 
-                  setColumns(nextColumns);
+                  setColumns(cloneKanbanColumns(snapshot));
                   setCancellationDraft(null);
                   setCancellationReason("");
                   void persistMove({
@@ -1170,9 +1235,6 @@ function SortableKanbanCard({
         isSaving={isSaving}
         isGhost={isActiveDrag || isDragging}
         onFallbackMove={onFallbackMove}
-        dragRegionRef={setActivatorNodeRef}
-        dragAttributes={attributes}
-        dragListeners={listeners}
         dragHandle={
           <div
             className="flex items-start justify-between gap-3"
@@ -1185,9 +1247,18 @@ function SortableKanbanCard({
                 {card.supplier.name} · {card.material.name}
               </p>
             </div>
-            <span className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted-foreground)]">
+            <button
+              type="button"
+              ref={setActivatorNodeRef}
+              aria-label={`Drag ${card.title}`}
+              data-kanban-drag-handle={card.id}
+              className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing"
+              style={{ touchAction: "none" }}
+              {...attributes}
+              {...listeners}
+            >
               <GripVertical className="h-4 w-4" />
-            </span>
+            </button>
           </div>
         }
       />
@@ -1230,9 +1301,6 @@ function KanbanCardBody({
   isSaving,
   isGhost,
   onFallbackMove,
-  dragRegionRef,
-  dragAttributes,
-  dragListeners,
   dragHandle,
 }: {
   card: SavingCardPortfolio;
@@ -1240,22 +1308,14 @@ function KanbanCardBody({
   isSaving: boolean;
   isGhost: boolean;
   onFallbackMove: (cardId: string, targetPhase: KanbanPhase) => void;
-  dragRegionRef?: (element: HTMLElement | null) => void;
-  dragAttributes?: Record<string, any>;
-  dragListeners?: Record<string, any>;
   dragHandle: ReactNode;
 }) {
   const pendingRequest = getPendingKanbanPhaseChangeRequest(card);
+  const moveOptions = buildKanbanMoveOptions(currentPhase);
 
   return (
     <div className={cn("p-1", isGhost && "pointer-events-none")}>
-      <div
-        ref={dragRegionRef}
-        className="cursor-grab rounded-xl border border-transparent px-3 py-2 transition hover:border-[var(--border)] hover:bg-[var(--muted)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
-        style={{ touchAction: "none" }}
-        {...dragAttributes}
-        {...dragListeners}
-      >
+      <div className="rounded-xl border border-transparent px-3 py-2">
         {dragHandle}
 
         <div className="space-y-2 pt-2 text-sm">
@@ -1274,13 +1334,15 @@ function KanbanCardBody({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-3">
-          {pendingRequest ? <Badge tone="amber">Pending</Badge> : null}
-          {isSaving ? <Badge tone="blue">Saving...</Badge> : null}
+          <Badge tone="slate">{phaseLabels[card.phase]}</Badge>
+          {pendingRequest ? <Badge tone="amber">Pending approval</Badge> : null}
+          {isSaving ? <Badge tone="blue">Requesting...</Badge> : null}
         </div>
 
         {pendingRequest ? (
           <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Waiting to move to {phaseLabels[pendingRequest.requestedPhase]}.
+            Pending move to {phaseLabels[pendingRequest.requestedPhase]}. Card
+            remains in {phaseLabels[card.phase]} until approval completes.
           </div>
         ) : null}
       </div>
@@ -1290,7 +1352,7 @@ function KanbanCardBody({
           key={`${card.id}-${currentPhase}`}
           aria-label={`Move ${card.title} to`}
           defaultValue=""
-          disabled={Boolean(pendingRequest) || isSaving}
+          disabled={Boolean(pendingRequest) || isSaving || !moveOptions.length}
           className="h-9 flex-1 rounded-lg border border-[var(--input)] bg-white px-3 text-sm text-[var(--foreground)] outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
           onPointerDown={(event) => event.stopPropagation()}
           onChange={(event) => {
@@ -1305,7 +1367,7 @@ function KanbanCardBody({
           }}
         >
           <option value="">Move to...</option>
-          {buildKanbanMoveOptions(currentPhase).map((phase) => (
+          {moveOptions.map((phase) => (
             <option key={phase} value={phase}>
               {phaseLabels[phase]}
             </option>

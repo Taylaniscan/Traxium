@@ -7,10 +7,20 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn(),
   },
 }));
+const invalidateScopedCacheMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
 }));
+
+vi.mock("@/lib/cache", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/cache")>("@/lib/cache");
+
+  return {
+    ...actual,
+    invalidateScopedCache: invalidateScopedCacheMock,
+  };
+});
 
 import {
   WorkflowError,
@@ -55,6 +65,7 @@ describe("lib/data workflow flows", () => {
   let tx: ReturnType<typeof createWorkflowTransactionMock>;
 
   beforeEach(() => {
+    invalidateScopedCacheMock.mockReset();
     tx = createWorkflowTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (typeof callback !== "function") {
@@ -77,8 +88,13 @@ describe("lib/data workflow flows", () => {
     tx.user.findMany.mockResolvedValue([
       {
         id: "approver-1",
-        name: "Global Category Leader",
-        role: Role.GLOBAL_CATEGORY_LEADER,
+        name: "Head of Global Procurement",
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+      },
+      {
+        id: "approver-2",
+        name: "Financial Controller",
+        role: Role.FINANCIAL_CONTROLLER,
       },
     ]);
     tx.phaseChangeRequest.findUnique.mockResolvedValue({
@@ -101,11 +117,21 @@ describe("lib/data workflow flows", () => {
         {
           id: "approval-1",
           approverId: "approver-1",
-          role: Role.GLOBAL_CATEGORY_LEADER,
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
           status: ApprovalStatus.PENDING,
           approver: {
             id: "approver-1",
-            name: "Global Category Leader",
+            name: "Head of Global Procurement",
+          },
+        },
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
           },
         },
       ],
@@ -116,12 +142,14 @@ describe("lib/data workflow flows", () => {
       Phase.VALIDATED,
       "requester-1",
       "org-1",
-      "Need category leader approval"
+      "Need validated approval"
     );
 
     expect(tx.user.findMany).toHaveBeenCalledWith({
       where: {
-        role: { in: [Role.GLOBAL_CATEGORY_LEADER] },
+        role: {
+          in: [Role.HEAD_OF_GLOBAL_PROCUREMENT, Role.FINANCIAL_CONTROLLER],
+        },
         memberships: {
           some: {
             organizationId: "org-1",
@@ -142,7 +170,11 @@ describe("lib/data workflow flows", () => {
             create: [
               {
                 approverId: "approver-1",
-                role: Role.GLOBAL_CATEGORY_LEADER,
+                role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+              },
+              {
+                approverId: "approver-2",
+                role: Role.FINANCIAL_CONTROLLER,
               },
             ],
           },
@@ -150,6 +182,7 @@ describe("lib/data workflow flows", () => {
       })
     );
     expect(tx.notification.createMany).toHaveBeenCalledTimes(1);
+    expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
         id: "request-1",
@@ -157,6 +190,180 @@ describe("lib/data workflow flows", () => {
         requestedPhase: Phase.VALIDATED,
       })
     );
+  });
+
+  it("rejects non-sequential phase jumps", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      title: "Resin renegotiation",
+      phase: Phase.IDEA,
+      phaseChangeRequests: [],
+    });
+
+    await expect(
+      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip ahead")
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 409,
+      message: "Cannot move a saving card directly from IDEA to ACHIEVED.",
+    } satisfies Partial<WorkflowError>);
+
+    expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a validated card to request realised with finance approval", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      title: "Resin renegotiation",
+      phase: Phase.VALIDATED,
+      phaseChangeRequests: [],
+    });
+    tx.user.findMany.mockResolvedValue([
+      {
+        id: "approver-2",
+        name: "Financial Controller",
+        role: Role.FINANCIAL_CONTROLLER,
+      },
+    ]);
+    tx.phaseChangeRequest.findUnique.mockResolvedValue({
+      id: "request-2",
+      savingCardId: "card-1",
+      currentPhase: Phase.VALIDATED,
+      requestedPhase: Phase.REALISED,
+      approvalStatus: ApprovalStatus.PENDING,
+      requestedById: "requester-1",
+      savingCard: {
+        id: "card-1",
+        organizationId: "org-1",
+        title: "Resin renegotiation",
+      },
+      requestedBy: {
+        id: "requester-1",
+        name: "Requester",
+      },
+      approvals: [
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
+          },
+        },
+      ],
+    });
+
+    const result = await createPhaseChangeRequest(
+      "card-1",
+      Phase.REALISED,
+      "requester-1",
+      "org-1",
+      "Ready for finance confirmation"
+    );
+
+    expect(tx.user.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: [Role.FINANCIAL_CONTROLLER] },
+        memberships: {
+          some: {
+            organizationId: "org-1",
+            status: MembershipStatus.ACTIVE,
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        requestedPhase: Phase.REALISED,
+        approvalStatus: ApprovalStatus.PENDING,
+      })
+    );
+  });
+
+  it("allows a realised card to request achieved", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      title: "Resin renegotiation",
+      phase: Phase.REALISED,
+      phaseChangeRequests: [],
+    });
+    tx.user.findMany.mockResolvedValue([
+      {
+        id: "approver-2",
+        name: "Financial Controller",
+        role: Role.FINANCIAL_CONTROLLER,
+      },
+    ]);
+    tx.phaseChangeRequest.findUnique.mockResolvedValue({
+      id: "request-3",
+      savingCardId: "card-1",
+      currentPhase: Phase.REALISED,
+      requestedPhase: Phase.ACHIEVED,
+      approvalStatus: ApprovalStatus.PENDING,
+      requestedById: "requester-1",
+      savingCard: {
+        id: "card-1",
+        organizationId: "org-1",
+        title: "Resin renegotiation",
+      },
+      requestedBy: {
+        id: "requester-1",
+        name: "Requester",
+      },
+      approvals: [
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
+          },
+        },
+      ],
+    });
+
+    const result = await createPhaseChangeRequest(
+      "card-1",
+      Phase.ACHIEVED,
+      "requester-1",
+      "org-1",
+      "Finalise achieved savings"
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        requestedPhase: Phase.ACHIEVED,
+        approvalStatus: ApprovalStatus.PENDING,
+      })
+    );
+  });
+
+  it("rejects validated to achieved skips", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      title: "Resin renegotiation",
+      phase: Phase.VALIDATED,
+      phaseChangeRequests: [],
+    });
+
+    await expect(
+      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip realised")
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 409,
+      message: "Cannot move a saving card directly from VALIDATED to ACHIEVED.",
+    } satisfies Partial<WorkflowError>);
+
+    expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it("prevents duplicate pending phase change requests for the same saving card", async () => {
@@ -178,6 +385,102 @@ describe("lib/data workflow flows", () => {
     expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
+  it("requires a cancellation reason and keeps cancelled requests pending approval", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      title: "Resin renegotiation",
+      phase: Phase.VALIDATED,
+      phaseChangeRequests: [],
+    });
+
+    await expect(
+      createPhaseChangeRequest("card-1", Phase.CANCELLED, "requester-1", "org-1")
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 400,
+      message: "Cancellation reason is required.",
+    } satisfies Partial<WorkflowError>);
+
+    tx.user.findMany.mockResolvedValue([
+      {
+        id: "approver-1",
+        name: "Head of Global Procurement",
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+      },
+      {
+        id: "approver-2",
+        name: "Financial Controller",
+        role: Role.FINANCIAL_CONTROLLER,
+      },
+    ]);
+    tx.phaseChangeRequest.findUnique.mockResolvedValue({
+      id: "request-1",
+      savingCardId: "card-1",
+      currentPhase: Phase.VALIDATED,
+      requestedPhase: Phase.CANCELLED,
+      approvalStatus: ApprovalStatus.PENDING,
+      requestedById: "requester-1",
+      savingCard: {
+        id: "card-1",
+        organizationId: "org-1",
+        title: "Resin renegotiation",
+      },
+      requestedBy: {
+        id: "requester-1",
+        name: "Requester",
+      },
+      approvals: [
+        {
+          id: "approval-1",
+          approverId: "approver-1",
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-1",
+            name: "Head of Global Procurement",
+          },
+        },
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
+          },
+        },
+      ],
+    });
+
+    const result = await createPhaseChangeRequest(
+      "card-1",
+      Phase.CANCELLED,
+      "requester-1",
+      "org-1",
+      "Supplier exited the bid",
+      "Supplier exited the bid"
+    );
+
+    expect(tx.phaseChangeRequest.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requestedPhase: Phase.CANCELLED,
+          cancellationReason: "Supplier exited the bid",
+          approvalStatus: ApprovalStatus.PENDING,
+        }),
+      })
+    );
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({
+        approvalStatus: ApprovalStatus.PENDING,
+        requestedPhase: Phase.CANCELLED,
+      })
+    );
+  });
+
   it("finalizes a phase change after the last approval and records completion audit entries", async () => {
     const pendingRequest = {
       id: "request-1",
@@ -196,11 +499,21 @@ describe("lib/data workflow flows", () => {
         {
           id: "approval-1",
           approverId: "approver-1",
-          role: Role.GLOBAL_CATEGORY_LEADER,
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
           status: ApprovalStatus.PENDING,
           approver: {
             id: "approver-1",
-            name: "Global Category Leader",
+            name: "Head of Global Procurement",
+          },
+        },
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.APPROVED,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
           },
         },
       ],
@@ -217,6 +530,7 @@ describe("lib/data workflow flows", () => {
             ...pendingRequest.approvals[0],
             status: ApprovalStatus.APPROVED,
           },
+          pendingRequest.approvals[1],
         ],
       });
 
@@ -248,7 +562,84 @@ describe("lib/data workflow flows", () => {
     const auditActions = tx.auditLog.create.mock.calls.map(([call]) => call.data.action);
     expect(auditActions).toContain("phase_change.approved");
     expect(auditActions).toContain("phase_change.completed");
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "dashboard-data",
+      organizationId: "org-1",
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "workspace-readiness",
+      organizationId: "org-1",
+    });
     expect(result).toEqual(expect.objectContaining({ approvalStatus: ApprovalStatus.APPROVED }));
+  });
+
+  it("does not invalidate dashboard caches while approval is still pending", async () => {
+    const pendingRequest = {
+      id: "request-1",
+      savingCardId: "card-1",
+      currentPhase: Phase.IDEA,
+      requestedPhase: Phase.VALIDATED,
+      approvalStatus: ApprovalStatus.PENDING,
+      requestedById: "requester-1",
+      savingCard: {
+        id: "card-1",
+        organizationId: "org-1",
+        title: "Resin renegotiation",
+        cancellationReason: null,
+      },
+      approvals: [
+        {
+          id: "approval-1",
+          approverId: "approver-1",
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-1",
+            name: "Head of Global Procurement",
+          },
+        },
+        {
+          id: "approval-2",
+          approverId: "approver-2",
+          role: Role.FINANCIAL_CONTROLLER,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-2",
+            name: "Financial Controller",
+          },
+        },
+      ],
+    };
+
+    tx.phaseChangeRequest.findUnique
+      .mockResolvedValueOnce(pendingRequest)
+      .mockResolvedValueOnce({
+        ...pendingRequest,
+        approvals: [
+          {
+            ...pendingRequest.approvals[0],
+            status: ApprovalStatus.APPROVED,
+          },
+          pendingRequest.approvals[1],
+        ],
+      });
+    tx.phaseChangeRequestApproval.count.mockResolvedValueOnce(1);
+
+    const result = await approvePhaseChangeRequest(
+      "request-1",
+      "approver-1",
+      "org-1",
+      true,
+      "First approval"
+    );
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
+    expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({
+        approvalStatus: ApprovalStatus.PENDING,
+      })
+    );
   });
 
   it("rejects double-processing when the assigned approver already acted on the request", async () => {
@@ -269,11 +660,11 @@ describe("lib/data workflow flows", () => {
         {
           id: "approval-1",
           approverId: "approver-1",
-          role: Role.GLOBAL_CATEGORY_LEADER,
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
           status: ApprovalStatus.PENDING,
           approver: {
             id: "approver-1",
-            name: "Global Category Leader",
+            name: "Head of Global Procurement",
           },
         },
       ],

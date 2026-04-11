@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { createSavingCard } from "@/lib/data";
+import {
+  createSavingCard,
+  invalidatePortfolioSurfaceCaches,
+} from "@/lib/data";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
 import type { TenantContextSource } from "@/lib/types";
 
@@ -159,13 +162,17 @@ export async function loadFirstValueSampleData(
   }> = [];
 
   for (const payload of SAMPLE_SAVING_CARDS) {
-    const card = await createSavingCard(payload, actorId, scope.organizationId);
+    const card = await createSavingCard(payload, actorId, scope.organizationId, {
+      skipViewInvalidation: true,
+    });
     createdSavingCards.push({
       id: card.id,
       title: card.title,
       phase: card.phase,
     });
   }
+
+  invalidatePortfolioSurfaceCaches(scope.organizationId);
 
   return {
     organizationId: scope.organizationId,

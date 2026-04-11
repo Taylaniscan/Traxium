@@ -13,6 +13,13 @@ import {
   createSessionUser,
 } from "../helpers/security-fixtures";
 
+const ACTIVE_INVITATION_EXPIRES_AT = new Date("2099-04-02T12:00:00.000Z");
+const ACTIVE_INVITATION_EXPIRES_AT_ISO =
+  ACTIVE_INVITATION_EXPIRES_AT.toISOString();
+const RESENT_INVITATION_EXPIRES_AT = new Date("2099-04-05T12:00:00.000Z");
+const RESENT_INVITATION_EXPIRES_AT_ISO =
+  RESENT_INVITATION_EXPIRES_AT.toISOString();
+
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
@@ -124,7 +131,7 @@ function createInvitationRecord(
     role: OrganizationRole.MEMBER,
     token: "token-123",
     status: InvitationStatus.PENDING,
-    expiresAt: new Date("2026-04-02T12:00:00.000Z"),
+    expiresAt: ACTIVE_INVITATION_EXPIRES_AT,
     invitedByUserId: DEFAULT_USER_ID,
     createdAt: new Date("2026-03-26T12:00:00.000Z"),
     updatedAt: new Date("2026-03-26T12:00:00.000Z"),
@@ -370,7 +377,7 @@ describe("admin member lifecycle routes", () => {
         email: "new.member@example.com",
         role: OrganizationRole.MEMBER,
         status: InvitationStatus.REVOKED,
-        expiresAt: "2026-04-02T12:00:00.000Z",
+        expiresAt: ACTIVE_INVITATION_EXPIRES_AT_ISO,
         createdAt: "2026-03-26T12:00:00.000Z",
         updatedAt: "2026-03-26T12:30:00.000Z",
         invitedBy: {
@@ -403,7 +410,7 @@ describe("admin member lifecycle routes", () => {
     tx.user.findFirst.mockResolvedValueOnce(null);
     tx.invitation.update.mockResolvedValueOnce(
       createInvitationRecord({
-        expiresAt: new Date("2026-04-05T12:00:00.000Z"),
+        expiresAt: RESENT_INVITATION_EXPIRES_AT,
         updatedAt: new Date("2026-03-26T12:45:00.000Z"),
       })
     );
@@ -422,7 +429,7 @@ describe("admin member lifecycle routes", () => {
         email: "new.member@example.com",
         role: OrganizationRole.MEMBER,
         status: InvitationStatus.PENDING,
-        expiresAt: "2026-04-05T12:00:00.000Z",
+        expiresAt: RESENT_INVITATION_EXPIRES_AT_ISO,
         createdAt: "2026-03-26T12:00:00.000Z",
         updatedAt: "2026-03-26T12:45:00.000Z",
         invitedBy: {
@@ -484,7 +491,7 @@ describe("admin member lifecycle routes", () => {
     tx.user.findFirst.mockResolvedValueOnce(null);
     tx.invitation.update.mockResolvedValueOnce(
       createInvitationRecord({
-        expiresAt: new Date("2026-04-05T12:00:00.000Z"),
+        expiresAt: RESENT_INVITATION_EXPIRES_AT,
         updatedAt: new Date("2026-03-26T12:45:00.000Z"),
       })
     );
@@ -507,7 +514,7 @@ describe("admin member lifecycle routes", () => {
         email: "new.member@example.com",
         role: OrganizationRole.MEMBER,
         status: InvitationStatus.PENDING,
-        expiresAt: "2026-04-05T12:00:00.000Z",
+        expiresAt: RESENT_INVITATION_EXPIRES_AT_ISO,
         createdAt: "2026-03-26T12:00:00.000Z",
         updatedAt: "2026-03-26T12:45:00.000Z",
         invitedBy: {

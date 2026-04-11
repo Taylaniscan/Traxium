@@ -364,16 +364,23 @@ describe("async email and telemetry flows", () => {
       status: 500,
     });
 
+    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
     expect(enqueueJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "analytics.track",
         organizationId: DEFAULT_ORGANIZATION_ID,
-      })
-    );
-    expect(enqueueJobMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "observability.exception",
-        organizationId: DEFAULT_ORGANIZATION_ID,
+        idempotencyKey: null,
+        payload: expect.objectContaining({
+          event: "workspace.sample_data_loaded",
+          type: "track",
+          runtime: "server",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          userId: DEFAULT_USER_ID,
+          properties: expect.objectContaining({
+            createdCardsCount: 2,
+          }),
+          occurredAt: expect.any(String),
+        }),
       })
     );
     expect(sentryState.captureException).not.toHaveBeenCalled();

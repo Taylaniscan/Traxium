@@ -8,12 +8,29 @@ const mockPrisma = vi.hoisted(() => ({
     findFirst: vi.fn(),
   },
 }));
+const invalidateScopedCacheMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
 }));
 
-import { createSavingCard, getSavingCard, getSavingCards, updateSavingCard } from "@/lib/data";
+vi.mock("@/lib/cache", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/cache")>("@/lib/cache");
+
+  return {
+    ...actual,
+    invalidateScopedCache: invalidateScopedCacheMock,
+  };
+});
+
+import {
+  createSavingCard,
+  getSavingCard,
+  getSavingCards,
+  importSavingCards,
+  updateSavingCard,
+  WorkflowError,
+} from "@/lib/data";
 
 function createSavingCardInput(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -106,6 +123,7 @@ describe("lib/data saving card flows", () => {
   let tx: ReturnType<typeof createSavingCardTransactionMock>;
 
   beforeEach(() => {
+    invalidateScopedCacheMock.mockReset();
     tx = createSavingCardTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (typeof callback !== "function") {
@@ -149,6 +167,32 @@ describe("lib/data saving card flows", () => {
     expect(tx.user.findUnique).not.toHaveBeenCalled();
     expect(tx.user.create).not.toHaveBeenCalled();
     expect(result).toEqual({ id: "card-1", title: "Resin renegotiation", phase: Phase.IDEA });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "dashboard-data",
+      organizationId: "org-1",
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "workspace-readiness",
+      organizationId: "org-1",
+    });
+  });
+
+  it("rejects creating a saving card outside the initial workflow phase", async () => {
+    await expect(
+      createSavingCard(
+        createSavingCardInput({
+          phase: Phase.VALIDATED,
+        }),
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 409,
+      message: "New saving cards must start in IDEA phase.",
+    } satisfies Partial<WorkflowError>);
+
+    expect(tx.savingCard.create).not.toHaveBeenCalled();
   });
 
   it("updates only cards in the current organization and preserves finance-locked financial fields", async () => {
@@ -213,6 +257,67 @@ describe("lib/data saving card flows", () => {
       ],
     });
     expect(tx.phaseHistory.create).not.toHaveBeenCalled();
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "dashboard-data",
+      organizationId: "org-1",
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "workspace-readiness",
+      organizationId: "org-1",
+    });
+  });
+
+  it("rejects direct phase changes during saving card updates", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      phase: Phase.VALIDATED,
+      financeLocked: false,
+      baselinePrice: 15,
+      newPrice: 12,
+      annualVolume: 250,
+      currency: Currency.USD,
+      impactStartDate: new Date("2025-03-01T00:00:00.000Z"),
+      impactEndDate: new Date("2025-12-01T00:00:00.000Z"),
+      cancellationReason: null,
+    });
+
+    await expect(
+      updateSavingCard(
+        "card-1",
+        createSavingCardInput({
+          phase: Phase.REALISED,
+        }),
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 409,
+      message:
+        "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval.",
+    } satisfies Partial<WorkflowError>);
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
+  });
+
+  it("invalidates dashboard and readiness caches once after a bulk import", async () => {
+    await importSavingCards(
+      [createSavingCardInput(), createSavingCardInput({ title: "Second card" })],
+      "actor-1",
+      "org-1"
+    );
+
+    expect(tx.savingCard.create).toHaveBeenCalledTimes(2);
+    expect(invalidateScopedCacheMock).toHaveBeenCalledTimes(2);
+    expect(invalidateScopedCacheMock).toHaveBeenNthCalledWith(1, {
+      namespace: "dashboard-data",
+      organizationId: "org-1",
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenNthCalledWith(2, {
+      namespace: "workspace-readiness",
+      organizationId: "org-1",
+    });
   });
 
   it("retrieves saving card lists with organization-scoped lean portfolio data", async () => {

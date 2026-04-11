@@ -13,6 +13,8 @@ import {
   createSessionUser,
 } from "../helpers/security-fixtures";
 
+const ACTIVE_INVITATION_EXPIRES_AT = new Date("2099-03-31T12:00:00.000Z");
+
 const trackEventMock = vi.hoisted(() => vi.fn());
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
@@ -123,7 +125,7 @@ function createInvitationRecord(
     role: OrganizationRole.MEMBER,
     token: "token-123",
     status: InvitationStatus.PENDING,
-    expiresAt: new Date("2026-03-31T12:00:00.000Z"),
+    expiresAt: ACTIVE_INVITATION_EXPIRES_AT,
     invitedByUserId: DEFAULT_USER_ID,
     createdAt: new Date("2026-03-24T12:00:00.000Z"),
     updatedAt: new Date("2026-03-24T12:00:00.000Z"),

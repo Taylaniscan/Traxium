@@ -47,7 +47,10 @@ This baseline is the current operational checklist for local, preview, and produ
 | Invitation creation / acceptance / account setup | Verified | `tests/api/invitations.test.ts`, `tests/api/invitation-acceptance.test.ts`, `tests/api/invitation-account-setup.test.ts` |
 | Password recovery + reset route contracts | Verified | `tests/api/password-recovery.test.ts`, `tests/components/auth-recovery-and-loading-ui.test.ts` |
 | Admin members / settings / audit / jobs / insights RBAC | Verified | `tests/api/admin-member-lifecycle.test.ts`, `tests/api/member-role-update.test.ts`, `tests/api/admin-settings-audit.test.ts`, `tests/api/admin-jobs.test.ts`, `tests/api/admin-insights.test.ts`, `tests/api/admin-rbac.test.ts` |
-| Saving-card create / update / workflow actions | Verified | `tests/api/saving-cards.route.test.ts`, `tests/api/quota-enforcement.test.ts` |
+| Saving-card create / update route contracts | Verified | `tests/api/saving-cards.route.test.ts`, `tests/api/quota-enforcement.test.ts` |
+| Workflow lifecycle, approver matrix, and direct-phase bypass protection | Verified | `tests/lib/workflow-definition.test.ts`, `tests/lib/data.workflow.test.ts`, `tests/api/workflow.route.test.ts` |
+| Dashboard runtime rendering and malformed-data protection | Verified | `tests/components/dashboard-client.runtime.test.ts`, `tests/components/dashboard-client.test.ts`, `tests/app/dashboard.page.test.ts` |
+| Kanban persisted-truth rendering and interaction guardrails | Verified | `tests/components/kanban-board.runtime.test.ts`, `tests/components/kanban-board.test.ts`, `tests/app/kanban.page.test.ts` |
 | Import / evidence download and upload route contracts | Verified | `tests/api/import-and-evidence.route.test.ts` |
 | Export workbook route contract | Verified | `tests/api/export.route.test.ts` |
 | Billing and webhook route contracts | Verified | `tests/api/billing-checkout.test.ts`, `tests/api/stripe-webhook.test.ts` |
@@ -100,11 +103,28 @@ This baseline is the current operational checklist for local, preview, and produ
   2. Open `/dashboard` and `/saving-cards`.
 - Expected Result:
   - Sample saving cards appear only inside the active organization.
-  - Dashboard counts and command-center summaries reflect the inserted tenant data.
+  - Dashboard charts, Kanban columns, and command-center summaries reflect the inserted tenant data.
 - Failure Interpretation:
   - Missing cards means seed pipeline failed; cross-tenant data indicates tenant scoping regression.
 
-### 4. Saving-card create
+### 4. Dashboard and Kanban runtime
+
+- Status: `Pending Manual Verification`
+- Target: Local, Preview, Production
+- Steps:
+  1. Open `/dashboard` and `/kanban` in a workspace with seeded or real saving cards.
+  2. Confirm dashboard chart sections render.
+  3. Confirm Kanban columns group cards by persisted phase.
+  4. If a pending phase request exists, confirm the card still stays in its persisted column and shows pending metadata instead of appearing moved.
+- Expected Result:
+  - Dashboard does not fall back to a global empty state when usable data exists.
+  - Kanban does not treat a pending request as completed movement.
+  - Invalid jumps are not offered as normal move options.
+- Failure Interpretation:
+  - Missing charts with valid data indicates dashboard runtime or normalization regression.
+  - A card appearing in the requested destination column before approval indicates a persisted-vs-pending regression.
+
+### 5. Saving-card create and freshness
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview, Production
@@ -112,13 +132,33 @@ This baseline is the current operational checklist for local, preview, and produ
   1. Open `/saving-cards/new`.
   2. Create a valid saving card with real master-data selections.
   3. Return to `/saving-cards` and open the detail page.
+  4. Refresh `/dashboard` and `/kanban`.
 - Expected Result:
   - Card appears in the active organization list immediately.
   - The detail page opens and updated metrics render.
+  - Dashboard and Kanban reflect the persisted post-mutation state instead of stale pre-mutation data.
 - Failure Interpretation:
   - 422 responses indicate validation issues; missing list refresh suggests client-state or query invalidation regression; 429/503 means throttling or quota conditions should be reviewed.
 
-### 5. Evidence upload
+### 6. Workflow move and rejection visibility
+
+- Status: `Pending Manual Verification`
+- Target: Local, Preview
+- Steps:
+  1. On `/kanban` or the saving-card workflow controls, request one valid next-step move.
+  2. If a safe non-production rejection path exists, also trigger one invalid or rejected move path.
+  3. Refresh `/kanban`, `/dashboard`, and the affected saving-card detail page.
+- Expected Result:
+  - Valid requests follow the canonical lifecycle order.
+  - Rejected or blocked moves show visible feedback.
+  - Pending requests remain pending metadata while persisted phase stays unchanged.
+  - Cross-page state remains coherent after refresh.
+- Failure Interpretation:
+  - Skipped transitions or direct phase movement indicate workflow drift.
+  - Silent failure on rejection indicates a Kanban feedback regression.
+  - Cross-page mismatch indicates stale-data invalidation or refresh regression.
+
+### 7. Evidence upload
 
 - Status: `Pending Manual Verification`
 - Target: Preview, Production
@@ -132,7 +172,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Upload failure usually points to Supabase storage or quota issues; 404 on download after upload indicates storage path validation mismatch.
 
-### 6. Import and volume import
+### 8. Import and volume import
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview
@@ -145,7 +185,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Generic 500 responses usually point to workbook parsing or reference-data lookup regressions; 429/503 means the shared rate limiter is correctly active but thresholds may need operational review.
 
-### 7. Export
+### 9. Export
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview, Production
@@ -159,7 +199,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Empty workbook with real data present indicates query or export-mapping regression; repeated 429s indicate the export limiter is functioning and should be reviewed against operator expectations.
 
-### 8. Invitation flow
+### 10. Invitation flow
 
 - Status: `Pending Manual Verification`
 - Target: Preview, Production
@@ -176,7 +216,7 @@ This baseline is the current operational checklist for local, preview, and produ
   - Wrong-email rejection is expected and confirms isolation.
   - Missing email with successful pending invite indicates async delivery or worker failure, not route-layer validation failure.
 
-### 9. Password reset flow
+### 11. Password reset flow
 
 - Status: `Pending Manual Verification`
 - Target: Preview, Production
@@ -192,7 +232,7 @@ This baseline is the current operational checklist for local, preview, and produ
   - Missing email indicates provider or queue failure.
   - 401 on reset indicates an expired or invalid recovery session.
 
-### 10. Admin members
+### 12. Admin members
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview, Production
@@ -206,7 +246,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Cross-tenant member rows indicate a critical tenant-scope regression.
 
-### 11. Admin settings
+### 13. Admin settings
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview, Production
@@ -220,7 +260,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - No persisted change means organization update path regressed; wrong-tenant change is a critical isolation failure.
 
-### 12. Admin insights
+### 14. Admin insights
 
 - Status: `Pending Manual Verification`
 - Target: Local, Preview, Production
@@ -232,7 +272,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Cross-tenant counts or impossible totals indicate aggregation or tenant-filter regression.
 
-### 13. Admin jobs
+### 15. Admin jobs
 
 - Status: `Pending Manual Verification`
 - Target: Preview, Production
@@ -246,7 +286,7 @@ This baseline is the current operational checklist for local, preview, and produ
 - Failure Interpretation:
   - Missing jobs indicates ingestion or retention issue; retry doing nothing on a failed job suggests job state transition regression.
 
-### 14. Security headers
+### 16. Security headers
 
 - Status: `Pending Manual Verification`
 - Target: Preview, Production

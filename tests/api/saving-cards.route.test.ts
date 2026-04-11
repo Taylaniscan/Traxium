@@ -11,10 +11,20 @@ const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const createSavingCardMock = vi.hoisted(() => vi.fn());
 const getSavingCardMock = vi.hoisted(() => vi.fn());
 const updateSavingCardMock = vi.hoisted(() => vi.fn());
-const addApprovalMock = vi.hoisted(() => vi.fn());
 const setFinanceLockMock = vi.hoisted(() => vi.fn());
-const canApprovePhaseMock = vi.hoisted(() => vi.fn());
 const canLockFinanceMock = vi.hoisted(() => vi.fn());
+const WorkflowErrorMock = vi.hoisted(
+  () =>
+    class WorkflowError extends Error {
+      status: number;
+
+      constructor(message: string, status = 400) {
+        super(message);
+        this.name = "WorkflowError";
+        this.status = status;
+      }
+    }
+);
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
 const RateLimitExceededErrorMock = vi.hoisted(
@@ -54,12 +64,11 @@ vi.mock("@/lib/data", () => ({
   createSavingCard: createSavingCardMock,
   getSavingCard: getSavingCardMock,
   updateSavingCard: updateSavingCardMock,
-  addApproval: addApprovalMock,
   setFinanceLock: setFinanceLockMock,
+  WorkflowError: WorkflowErrorMock,
 }));
 
 vi.mock("@/lib/permissions", () => ({
-  canApprovePhase: canApprovePhaseMock,
   canLockFinance: canLockFinanceMock,
 }));
 
@@ -137,7 +146,6 @@ describe("saving card API routes", () => {
       organizationId: "org-1",
     });
     createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
-    canApprovePhaseMock.mockReturnValue(true);
     canLockFinanceMock.mockReturnValue(true);
     enforceRateLimitMock.mockResolvedValue(undefined);
     createRateLimitErrorResponseMock.mockImplementation((error: { message: string; status?: number }) =>
@@ -253,6 +261,25 @@ describe("saving card API routes", () => {
         buyer: { id: "buyer-1", name: "Strategic Buyer" },
       });
     });
+
+    it("returns workflow conflicts from the create flow", async () => {
+      createSavingCardMock.mockRejectedValueOnce(
+        new WorkflowErrorMock("New saving cards must start in IDEA phase.", 409)
+      );
+
+      const response = await postSavingCardsRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards",
+          "POST",
+          createValidSavingCardPayload({ phase: Phase.VALIDATED })
+        )
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "New saving cards must start in IDEA phase.",
+      });
+    });
   });
 
   describe("app/api/saving-cards/[id]/route.ts", () => {
@@ -286,9 +313,39 @@ describe("saving card API routes", () => {
       });
     });
 
-    it("returns 403 when an approve action is forbidden for the current role", async () => {
+    it("returns workflow conflicts when PUT payloads attempt to force a phase jump", async () => {
       getSavingCardMock.mockResolvedValueOnce({ id: "card-1", title: "Resin renegotiation" });
-      canApprovePhaseMock.mockReturnValueOnce(false);
+      updateSavingCardMock.mockRejectedValueOnce(
+        new WorkflowErrorMock(
+          "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval.",
+          409
+        )
+      );
+
+      const response = await putSavingCardRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1",
+          "PUT",
+          createValidSavingCardPayload({ phase: Phase.REALISED })
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+
+      expect(updateSavingCardMock).toHaveBeenCalledWith(
+        "card-1",
+        expect.objectContaining({ phase: Phase.REALISED }),
+        "user-1",
+        "org-1"
+      );
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval.",
+      });
+    });
+
+    it("returns 409 when direct approve actions are disabled", async () => {
+      getSavingCardMock.mockResolvedValueOnce({ id: "card-1", title: "Resin renegotiation" });
 
       const response = await postSavingCardActionRoute(
         createJsonRequest("http://localhost/api/saving-cards/card-1", "POST", {
@@ -299,11 +356,11 @@ describe("saving card API routes", () => {
         { params: Promise.resolve({ id: "card-1" }) }
       );
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
-        error: "You are not allowed to approve this phase.",
+        error:
+          "Direct approval actions are disabled. Use /api/approve-phase-change for assigned workflow requests.",
       });
-      expect(addApprovalMock).not.toHaveBeenCalled();
     });
 
     it("returns 422 for invalid action payloads", async () => {
@@ -321,32 +378,26 @@ describe("saving card API routes", () => {
           error: expect.any(String),
         })
       );
-      expect(addApprovalMock).not.toHaveBeenCalled();
     });
 
-    it("returns the approval result for valid approve actions", async () => {
+    it("returns workflow conflicts from finance lock mutations", async () => {
       getSavingCardMock.mockResolvedValueOnce({ id: "card-1", title: "Resin renegotiation" });
-      addApprovalMock.mockResolvedValueOnce({
-        id: "approval-1",
-        phase: Phase.VALIDATED,
-        approved: true,
-      });
+      setFinanceLockMock.mockRejectedValueOnce(
+        new WorkflowErrorMock("Finance lock can only be enabled for validated savings.", 409)
+      );
 
       const response = await postSavingCardActionRoute(
         createJsonRequest("http://localhost/api/saving-cards/card-1", "POST", {
-          action: "approve",
-          phase: Phase.VALIDATED,
-          comment: "Approved",
+          action: "finance-lock",
+          locked: true,
         }),
         { params: Promise.resolve({ id: "card-1" }) }
       );
 
-      expect(addApprovalMock).toHaveBeenCalledWith("card-1", Phase.VALIDATED, "user-1", true, "Approved");
-      expect(response.status).toBe(200);
+      expect(setFinanceLockMock).toHaveBeenCalledWith("card-1", "user-1", true, "org-1");
+      expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
-        id: "approval-1",
-        phase: Phase.VALIDATED,
-        approved: true,
+        error: "Finance lock can only be enabled for validated savings.",
       });
     });
   });

@@ -1,6 +1,9 @@
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createAuthGuardJsonResponse } from "../helpers/security-fixtures";
+import {
+  createAuthGuardJsonResponse,
+  MockAuthGuardError,
+} from "../helpers/security-fixtures";
 
 const requireUserMock = vi.hoisted(() => vi.fn());
 const requirePermissionMock = vi.hoisted(() => vi.fn());
@@ -201,11 +204,13 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/import/route.ts", () => {
     it("returns 401 JSON for unauthenticated import requests", async () => {
-      requirePermissionMock.mockRejectedValueOnce({
-        name: "AuthGuardError",
-        status: 401,
-        code: "UNAUTHENTICATED",
-      });
+      requirePermissionMock.mockRejectedValueOnce(
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
+      );
 
       const response = await postImportRoute(createFormDataRequest(createImportForm(createWorkbookFile())));
 
@@ -342,11 +347,12 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/upload/evidence/route.ts", () => {
     it("returns 401 JSON for unauthenticated uploads", async () => {
-      createAuthGuardErrorResponseMock.mockReturnValueOnce(
-        Response.json({ error: "Unauthorized." }, { status: 401 })
-      );
       requireUserMock.mockRejectedValueOnce(
-        new Error("Authenticated session is required.")
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
       );
 
       const response = await postEvidenceUploadRoute(
@@ -355,7 +361,6 @@ describe("import and evidence API routes", () => {
 
       expect(response.status).toBe(401);
       await expect(response.json()).resolves.toEqual({
-        success: false,
         error: "Unauthorized.",
       });
     });
@@ -479,11 +484,12 @@ describe("import and evidence API routes", () => {
 
   describe("app/api/evidence/[id]/download/route.ts", () => {
     it("returns 401 JSON for unauthenticated download requests", async () => {
-      createAuthGuardErrorResponseMock.mockReturnValueOnce(
-        Response.json({ error: "Unauthorized." }, { status: 401 })
-      );
       requireUserMock.mockRejectedValueOnce(
-        new Error("Authenticated session is required.")
+        new MockAuthGuardError(
+          "Authenticated session is required.",
+          401,
+          "UNAUTHENTICATED"
+        )
       );
 
       const response = await getEvidenceDownloadRoute(new Request("http://localhost"), {
@@ -492,7 +498,6 @@ describe("import and evidence API routes", () => {
 
       expect(response.status).toBe(401);
       await expect(response.json()).resolves.toEqual({
-        success: false,
         error: "Unauthorized.",
       });
     });

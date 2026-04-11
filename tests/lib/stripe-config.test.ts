@@ -28,9 +28,9 @@ function createBillingEnv(
   return {
     APP_ENV: "development",
     STRIPE_SECRET_KEY:
-      "sk_test_localdevbillingsecretkey000000000000000000000000",
+      "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
-      "whsec_localdevbillingwebhooksecret000000000000000000000000",
+      "whsec_FAKE",
     STRIPE_PORTAL_RETURN_URL: "http://localhost:3000/settings/billing",
     STRIPE_CHECKOUT_SUCCESS_URL:
       "http://localhost:3000/settings/billing?checkout=success",
@@ -73,9 +73,9 @@ describe("Stripe billing config", () => {
 
     expect(config).toEqual({
       appEnvironment: "development",
-      secretKey: "sk_test_localdevbillingsecretkey000000000000000000000000",
+      secretKey: "sk_test_FAKE",
       webhookSecret:
-        "whsec_localdevbillingwebhooksecret000000000000000000000000",
+        "whsec_FAKE",
       portalReturnUrl: "http://localhost:3000/settings/billing",
       checkoutSuccessUrl:
         "http://localhost:3000/settings/billing?checkout=success",

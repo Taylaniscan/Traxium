@@ -17,6 +17,7 @@ import {
 import {
   buildLoginHref,
   executePostLoginBootstrap,
+  resolveInviteNextPath,
   type LoginBootstrapPayload,
   type PostLoginBootstrapResult,
   resolvePostLoginTransitionAction,
@@ -39,10 +40,17 @@ type ResolvedPostLoginBootstrapResult = Awaited<
   ReturnType<typeof executePostLoginBootstrap>
 >;
 
+type SuccessfulBootstrapUser = NonNullable<LoginBootstrapPayload["user"]>;
+
 function waitForDelay(delayMs: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function readNonEmptyString(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 async function fetchBootstrapResult(): Promise<PostLoginBootstrapResult> {
@@ -74,14 +82,18 @@ async function fetchBootstrapResult(): Promise<PostLoginBootstrapResult> {
 }
 
 export function buildSuccessfulLoginAnalyticsInput(input: {
-  user?: LoginBootstrapPayload["user"];
   nextPath: string | null;
+  user: SuccessfulBootstrapUser | null | undefined;
 }): SuccessfulLoginAnalyticsInput | null {
-  const userId = input.user?.id?.trim();
-  const appRole = input.user?.role?.trim();
-  const organizationId = input.user?.activeOrganization?.organizationId?.trim();
-  const membershipRole =
-    input.user?.activeOrganization?.membershipRole?.trim();
+  const userId = readNonEmptyString(input.user?.id);
+  const appRole = readNonEmptyString(input.user?.role);
+  const organizationId = readNonEmptyString(
+    input.user?.activeOrganization?.organizationId
+  );
+  const membershipRole = readNonEmptyString(
+    input.user?.activeOrganization?.membershipRole
+  );
+  const inviteNextPath = resolveInviteNextPath(input.nextPath);
 
   if (!userId || !appRole || !organizationId || !membershipRole) {
     return null;
@@ -93,8 +105,8 @@ export function buildSuccessfulLoginAnalyticsInput(input: {
     organizationId,
     appRole,
     membershipRole,
-    hasInviteNextPath: Boolean(input.nextPath),
-    destination: input.nextPath !== null ? "invite" : "dashboard",
+    hasInviteNextPath: Boolean(inviteNextPath),
+    destination: inviteNextPath ? "invite" : "dashboard",
   };
 }
 

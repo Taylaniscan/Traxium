@@ -1,4 +1,4 @@
-import { Currency } from "@prisma/client";
+import { Currency, Phase } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -9,10 +9,20 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
+const invalidateScopedCacheMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
 }));
+
+vi.mock("@/lib/cache", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/cache")>("@/lib/cache");
+
+  return {
+    ...actual,
+    invalidateScopedCache: invalidateScopedCacheMock,
+  };
+});
 
 import {
   deleteAlternativeMaterial,
@@ -70,6 +80,7 @@ function createTenantScopeTransactionMock() {
       update: vi.fn().mockResolvedValue({
         id: "card-1",
         organizationId: DEFAULT_ORGANIZATION_ID,
+        phase: Phase.VALIDATED,
         financeLocked: true,
       }),
     },
@@ -104,6 +115,7 @@ describe("tenant-scoped mutations", () => {
   let tx: ReturnType<typeof createTenantScopeTransactionMock>;
 
   beforeEach(() => {
+    invalidateScopedCacheMock.mockReset();
     tx = createTenantScopeTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (typeof callback !== "function") {
@@ -204,6 +216,57 @@ describe("tenant-scoped mutations", () => {
       id: "alt-supplier-1",
       savingCardId: "card-1",
       supplierId: "supplier-2",
+    });
+  });
+
+  it("invalidates dashboard and readiness caches when a selected alternative supplier changes savings", async () => {
+    tx.savingCardAlternativeSupplier.findFirst
+      .mockResolvedValueOnce({
+        id: "alt-supplier-1",
+        savingCardId: "card-1",
+        supplierId: "supplier-1",
+      })
+      .mockResolvedValueOnce({
+        id: "alt-supplier-1",
+        savingCardId: "card-1",
+        supplierId: "supplier-2",
+        supplierNameManual: null,
+        quotedPrice: 7.5,
+        currency: Currency.EUR,
+      });
+    tx.savingCard.findFirst.mockResolvedValueOnce({
+      id: "card-1",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      supplierId: "supplier-1",
+      alternativeSupplierId: null,
+      baselinePrice: 10,
+      annualVolume: 100,
+    });
+
+    await updateAlternativeSupplier(
+      "alt-supplier-1",
+      createAlternativeSupplierInput({
+        isSelected: true,
+      }),
+      DEFAULT_USER_ID,
+      DEFAULT_ORGANIZATION_ID
+    );
+
+    expect(tx.savingCard.update).toHaveBeenCalledWith({
+      where: { id: "card-1" },
+      data: expect.objectContaining({
+        supplierId: "supplier-2",
+        calculatedSavings: 250,
+        calculatedSavingsUSD: 250,
+      }),
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "dashboard-data",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+    });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "workspace-readiness",
+      organizationId: DEFAULT_ORGANIZATION_ID,
     });
   });
 
@@ -359,6 +422,7 @@ describe("tenant-scoped mutations", () => {
     tx.savingCard.findFirst.mockResolvedValueOnce({
       id: "card-1",
       organizationId: DEFAULT_ORGANIZATION_ID,
+      phase: Phase.VALIDATED,
     });
 
     const result = await setFinanceLock(
@@ -383,7 +447,39 @@ describe("tenant-scoped mutations", () => {
     expect(result).toEqual({
       id: "card-1",
       organizationId: DEFAULT_ORGANIZATION_ID,
+      phase: Phase.VALIDATED,
       financeLocked: true,
     });
+    expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
+      namespace: "workspace-readiness",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+    });
+    expect(invalidateScopedCacheMock).not.toHaveBeenCalledWith({
+      namespace: "dashboard-data",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+    });
+  });
+
+  it("rejects finance lock changes outside the validated phase", async () => {
+    const disallowedPhases = [
+      Phase.IDEA,
+      Phase.REALISED,
+      Phase.ACHIEVED,
+      Phase.CANCELLED,
+    ];
+
+    for (const phase of disallowedPhases) {
+      tx.savingCard.findFirst.mockResolvedValueOnce({
+        id: "card-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        phase,
+      });
+
+      await expect(
+        setFinanceLock("card-1", DEFAULT_USER_ID, true, DEFAULT_ORGANIZATION_ID)
+      ).rejects.toThrow("Finance lock can only be enabled for validated savings.");
+    }
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
   });
 });

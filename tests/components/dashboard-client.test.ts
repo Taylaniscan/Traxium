@@ -91,6 +91,8 @@ describe("dashboard client", () => {
     expect(markup).toContain("Savings by Category");
     expect(markup).toContain("Savings Forecast");
     expect(markup).toContain("h-80");
+    expect(markup).toContain('data-dashboard-chart-frame="Savings by Phase"');
+    expect(markup).toContain("min-h-[20rem]");
     expect(markup).not.toContain("Dashboard charts are unavailable");
   });
 
@@ -152,6 +154,67 @@ describe("dashboard client", () => {
     expect(markup).toContain("No phase savings are available yet.");
     expect(markup).toContain("No category savings are available yet.");
     expect(markup).toContain("No savings forecast data is available yet.");
+  });
+
+  it("treats valid negative savings as chart data instead of misclassifying the dashboard as empty", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(DashboardClient, {
+        data: {
+          cards: [
+            createDashboardCard({
+              calculatedSavings: -25000,
+              phase: "VALIDATED",
+            }),
+          ],
+        },
+        readiness: null,
+        viewer: {
+          organizationMembershipRole: OrganizationRole.ADMIN,
+        },
+      })
+    );
+
+    expect(markup).toContain("Savings by Phase");
+    expect(markup).toContain("Savings by Category");
+    expect(markup).toContain("Savings Forecast");
+    expect(markup).not.toContain("No phase savings are available yet.");
+    expect(markup).not.toContain("No category savings are available yet.");
+    expect(markup).not.toContain("No savings forecast data is available yet.");
+  });
+
+  it("keeps chart sections available when malformed records are mixed with usable dashboard data", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(DashboardClient, {
+        data: {
+          cards: [
+            createDashboardCard({
+              title: "Valid card",
+              calculatedSavings: 50000,
+              impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
+            }),
+            createDashboardCard({
+              title: "Malformed card",
+              calculatedSavings: Number.NaN,
+              impactStartDate: "not-a-real-date",
+              category: {
+                name: "",
+              },
+            }),
+          ],
+        },
+        readiness: null,
+        viewer: {
+          organizationMembershipRole: OrganizationRole.ADMIN,
+        },
+      })
+    );
+
+    expect(markup).toContain("Savings by Phase");
+    expect(markup).toContain("Savings by Category");
+    expect(markup).toContain("Savings Forecast");
+    expect(markup).not.toContain("No phase savings are available yet.");
+    expect(markup).not.toContain("No category savings are available yet.");
+    expect(markup).not.toContain("No savings forecast data is available yet.");
   });
 
   it("normalizes invalid dashboard chart inputs instead of throwing", () => {

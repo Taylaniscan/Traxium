@@ -117,6 +117,43 @@ describe("workflow API routes", () => {
       });
     });
 
+    it("returns 422 when cancellation is requested without a reason", async () => {
+      const response = await postPhaseChangeRequestRoute(
+        createJsonRequest("http://localhost/api/phase-change-request", {
+          savingCardId: "card-1",
+          requestedPhase: Phase.CANCELLED,
+        })
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        error: "Cancellation reason is required.",
+      });
+      expect(createPhaseChangeRequestMock).not.toHaveBeenCalled();
+    });
+
+    it("preserves skipped-transition workflow conflicts", async () => {
+      createPhaseChangeRequestMock.mockRejectedValueOnce(
+        new WorkflowErrorMock(
+          "Cannot move a saving card directly from IDEA to ACHIEVED.",
+          409
+        )
+      );
+
+      const response = await postPhaseChangeRequestRoute(
+        createJsonRequest("http://localhost/api/phase-change-request", {
+          savingCardId: "card-1",
+          requestedPhase: Phase.ACHIEVED,
+          comment: "Skip ahead",
+        })
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "Cannot move a saving card directly from IDEA to ACHIEVED.",
+      });
+    });
+
     it("returns 201 with the created phase change request on success", async () => {
       createPhaseChangeRequestMock.mockResolvedValueOnce({
         id: "request-1",
@@ -144,6 +181,38 @@ describe("workflow API routes", () => {
       await expect(response.json()).resolves.toEqual({
         id: "request-1",
         requestedPhase: Phase.VALIDATED,
+        approvalStatus: "PENDING",
+      });
+    });
+
+    it("passes cancellation reasons through on valid cancellation requests", async () => {
+      createPhaseChangeRequestMock.mockResolvedValueOnce({
+        id: "request-2",
+        requestedPhase: Phase.CANCELLED,
+        approvalStatus: "PENDING",
+      });
+
+      const response = await postPhaseChangeRequestRoute(
+        createJsonRequest("http://localhost/api/phase-change-request", {
+          savingCardId: "card-1",
+          requestedPhase: Phase.CANCELLED,
+          comment: "Stop the initiative",
+          cancellationReason: "Supplier withdrew",
+        })
+      );
+
+      expect(createPhaseChangeRequestMock).toHaveBeenCalledWith(
+        "card-1",
+        Phase.CANCELLED,
+        "user-1",
+        "org-1",
+        "Stop the initiative",
+        "Supplier withdrew"
+      );
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({
+        id: "request-2",
+        requestedPhase: Phase.CANCELLED,
         approvalStatus: "PENDING",
       });
     });

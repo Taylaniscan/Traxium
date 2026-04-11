@@ -2,8 +2,8 @@ import { Phase } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
-import { addApproval, getSavingCard, setFinanceLock, updateSavingCard } from "@/lib/data";
-import { canApprovePhase, canLockFinance } from "@/lib/permissions";
+import { getSavingCard, setFinanceLock, updateSavingCard, WorkflowError } from "@/lib/data";
+import { canLockFinance } from "@/lib/permissions";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -99,6 +99,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
     }
 
+    if (error instanceof WorkflowError) {
+      return jsonError(error.message, error.status);
+    }
+
     if (error instanceof RateLimitExceededError) {
       return createRateLimitErrorResponse(error);
     }
@@ -177,12 +181,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (payload.data.action === "approve") {
-      const phase = payload.data.phase;
-      if (!canApprovePhase(user.role, phase)) {
-        return jsonError("You are not allowed to approve this phase.", 403);
-      }
-      const result = await addApproval(card.id, phase, user.id, true, payload.data.comment);
-      return NextResponse.json(result);
+      return jsonError(
+        "Direct approval actions are disabled. Use /api/approve-phase-change for assigned workflow requests.",
+        409
+      );
     }
 
     if (payload.data.action === "finance-lock") {
@@ -203,6 +205,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Action payload is invalid.", 422);
+    }
+
+    if (error instanceof WorkflowError) {
+      return jsonError(error.message, error.status);
     }
 
     if (error instanceof RateLimitExceededError) {

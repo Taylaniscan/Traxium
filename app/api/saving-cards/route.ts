@@ -2,7 +2,7 @@ import { UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
-import { createSavingCard, getSavingCards } from "@/lib/data";
+import { createSavingCard, getSavingCards, WorkflowError } from "@/lib/data";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -115,6 +115,10 @@ export async function POST(request: Request) {
 
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
+    }
+
+    if (error instanceof WorkflowError) {
+      return jsonError(error.message, error.status);
     }
 
     if (error instanceof RateLimitExceededError) {

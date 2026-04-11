@@ -35,6 +35,7 @@ import type {
   DashboardData,
   WorkspaceReadiness,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 export type DashboardClientLoadState = {
@@ -84,6 +85,10 @@ function isDevelopment() {
 
 function normalizeDashboardNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function hasMeaningfulDashboardValue(value: unknown) {
+  return normalizeDashboardNumber(value) !== 0;
 }
 
 function normalizeDashboardLabel(value: unknown, fallback: string) {
@@ -260,7 +265,7 @@ function resolveChartState(input: {
   }
 
   const hasData = input.points.some((point) =>
-    input.keys.some((key) => normalizeDashboardNumber(point[key]) > 0)
+    input.keys.some((key) => hasMeaningfulDashboardValue(point[key]))
   );
 
   return hasData ? ("ready" as const) : ("empty" as const);
@@ -389,7 +394,7 @@ export function DashboardClient({
             points: metrics.byPhase,
             keys: ["savings"],
           })}
-          heightClassName="h-80"
+          frameClassName="h-80"
           emptyMessage="No phase savings are available yet."
         >
           <PhaseBarChart data={metrics.byPhase} />
@@ -403,7 +408,7 @@ export function DashboardClient({
             points: metrics.byCategory,
             keys: ["savings"],
           })}
-          heightClassName="h-80"
+          frameClassName="h-80"
           emptyMessage="No category savings are available yet."
         >
           <CategoryBarChart data={metrics.byCategory} />
@@ -417,7 +422,7 @@ export function DashboardClient({
             points: metrics.monthlyTrend,
             keys: ["savings", "forecast"],
           })}
-          heightClassName="h-80"
+          frameClassName="h-80"
           emptyMessage="No savings forecast data is available yet."
         >
           <ForecastAreaChart data={metrics.monthlyTrend} />
@@ -493,14 +498,14 @@ function ChartCard({
   title,
   description,
   status,
-  heightClassName,
+  frameClassName,
   emptyMessage,
   children,
 }: {
   title: string;
   description: string;
   status: ChartState;
-  heightClassName: string;
+  frameClassName: string;
   emptyMessage: string;
   children: ReactNode;
 }) {
@@ -510,16 +515,21 @@ function ChartCard({
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className={heightClassName}>
-        {status === "loading" ? (
-          <ChartStateMessage message="Loading chart..." />
-        ) : status === "error" ? (
-          <ChartStateMessage message="This chart is unavailable right now." />
-        ) : status === "empty" ? (
-          <ChartStateMessage message={emptyMessage} />
-        ) : (
-          children
-        )}
+      <CardContent>
+        <div
+          data-dashboard-chart-frame={title}
+          className={cn("h-80 w-full min-h-[20rem] min-w-0", frameClassName)}
+        >
+          {status === "loading" ? (
+            <ChartStateMessage message="Loading chart..." />
+          ) : status === "error" ? (
+            <ChartStateMessage message="This chart is unavailable right now." />
+          ) : status === "empty" ? (
+            <ChartStateMessage message={emptyMessage} />
+          ) : (
+            children
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -535,7 +545,7 @@ function ChartStateMessage({ message }: { message: string }) {
 
 function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
@@ -567,7 +577,7 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
 
 function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
@@ -606,7 +616,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
 
 function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />

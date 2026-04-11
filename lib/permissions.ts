@@ -1,5 +1,9 @@
 import { Phase, Role } from "@prisma/client";
 import type { AppPermission } from "@/lib/types";
+import {
+  canFinanceLockWorkflowPhase,
+  requiredRolesForWorkflowPhase,
+} from "@/lib/workflow";
 
 export const globalAccessRoles = [
   Role.HEAD_OF_GLOBAL_PROCUREMENT,
@@ -44,14 +48,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly AppPermission[]> = {
   ],
 };
 
-const PHASE_APPROVER_ROLES: Record<Phase, readonly Role[]> = {
-  [Phase.IDEA]: [Role.HEAD_OF_GLOBAL_PROCUREMENT],
-  [Phase.VALIDATED]: [Role.GLOBAL_CATEGORY_LEADER],
-  [Phase.REALISED]: [Role.FINANCIAL_CONTROLLER],
-  [Phase.ACHIEVED]: [Role.HEAD_OF_GLOBAL_PROCUREMENT],
-  [Phase.CANCELLED]: [],
-};
-
 const FINANCE_LOCK_ROLES = new Set<Role>([Role.FINANCIAL_CONTROLLER]);
 
 const LOCKED_FINANCE_FIELDS = new Set([
@@ -68,7 +64,7 @@ export function getPermissionsForRole(role: Role): readonly AppPermission[] {
 }
 
 export function requiredRolesForPhase(phase: Phase): Role[] {
-  return [...PHASE_APPROVER_ROLES[phase]];
+  return requiredRolesForWorkflowPhase(phase);
 }
 
 export function hasAnyRole(role: Role, roles: readonly Role[]): boolean {
@@ -88,11 +84,18 @@ export function hasGlobalAccessRole(role: Role): boolean {
 }
 
 export function canApprovePhase(role: Role, phase: Phase): boolean {
-  return hasPermission(role, "approvePhaseChanges") && hasAnyRole(role, PHASE_APPROVER_ROLES[phase]);
+  return (
+    hasPermission(role, "approvePhaseChanges") &&
+    hasAnyRole(role, requiredRolesForWorkflowPhase(phase))
+  );
 }
 
-export function canLockFinance(role: Role): boolean {
-  return FINANCE_LOCK_ROLES.has(role) && hasPermission(role, "lockFinance");
+export function canLockFinance(role: Role, phase?: Phase): boolean {
+  return (
+    FINANCE_LOCK_ROLES.has(role) &&
+    hasPermission(role, "lockFinance") &&
+    (phase ? canFinanceLockWorkflowPhase(phase) : true)
+  );
 }
 
 export function isLockedField(field: string): boolean {

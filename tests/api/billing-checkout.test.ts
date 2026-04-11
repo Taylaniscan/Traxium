@@ -166,9 +166,9 @@ describe("billing checkout routes", () => {
 
     process.env.APP_ENV = "development";
     process.env.STRIPE_SECRET_KEY =
-      "sk_test_localdevbillingsecretkey000000000000000000000000";
+      "sk_test_FAKE";
     process.env.STRIPE_WEBHOOK_SECRET =
-      "whsec_localdevbillingwebhooksecret000000000000000000000000";
+      "whsec_FAKE";
     process.env.STRIPE_PORTAL_RETURN_URL =
       "http://localhost:3000/settings/billing";
     process.env.STRIPE_CHECKOUT_SUCCESS_URL =

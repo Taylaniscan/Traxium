@@ -156,6 +156,10 @@ describe("release safety consistency", () => {
     expect(releaseChecklist).toContain("STRIPE_SECRET_KEY");
     expect(releaseChecklist).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
     expect(releaseChecklist).toContain("STRIPE_GROWTH_METERED_PRICE_ID");
+    expect(releaseChecklist).toContain("dashboard and Kanban changes include both focused regression tests");
+    expect(releaseChecklist).toContain("POSTDEPLOY_SESSION_COOKIE");
+    expect(releaseChecklist).toContain("/dashboard");
+    expect(releaseChecklist).toContain("/kanban");
     expect(releaseChecklist).toContain(
       "subscription-gating-and-billing-recovery.md"
     );
@@ -191,12 +195,17 @@ describe("release safety consistency", () => {
     expect(operationsRunbook).toContain("Observability / Analytics Incident Flow");
     expect(operationsRunbook).toContain("Jobs / Worker Incident Flow");
     expect(smokeTests).toContain("/login");
+    expect(smokeTests).toContain("/dashboard");
+    expect(smokeTests).toContain("/kanban");
     expect(smokeTests).toContain("/onboarding");
     expect(smokeTests).toContain("/admin/members");
     expect(smokeTests).toContain("/admin/settings");
     expect(smokeTests).toContain("/admin/insights");
     expect(smokeTests).toContain("/admin/jobs");
     expect(smokeTests).toContain("npm run jobs:worker:once");
+    expect(smokeTests).toContain("POSTDEPLOY_SESSION_COOKIE");
+    expect(smokeTests).toContain("Savings by Phase");
+    expect(smokeTests).toContain("Pending approval");
     expect(smokeTests).toContain("/billing-required");
     expect(smokeTests).toContain("/api/auth/bootstrap");
     expect(smokeTests).toContain("/settings/billing");
@@ -231,9 +240,9 @@ describe("release safety consistency", () => {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
       SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
       STRIPE_SECRET_KEY:
-        "sk_test_previewcibillingsecretkey000000000000000000000000",
+        "sk_test_FAKE",
       STRIPE_WEBHOOK_SECRET:
-        "whsec_previewcibillingwebhooksecret000000000000000000000000",
+        "whsec_FAKE",
       STRIPE_PORTAL_RETURN_URL: "https://preview-traxium.vercel.app/admin/settings",
       STRIPE_CHECKOUT_SUCCESS_URL:
         "https://preview-traxium.vercel.app/admin/settings?checkout=success",

@@ -55,6 +55,35 @@ Current modules in the application include:
 - Evidence upload and secure download
 - Approval and phase workflow support
 
+## Canonical Workflow Contract
+
+Traxium now treats the workflow contract as a first-class product rule, not a UI convention.
+
+- New saving cards must start in `Idea`.
+- The canonical lifecycle order is `Idea -> Validated -> Realised -> Achieved`.
+- Allowed transitions are:
+  - `Idea -> Validated`
+  - `Validated -> Realised`
+  - `Realised -> Achieved`
+  - any non-cancelled phase -> `Cancelled`, but only with a cancellation reason
+- No skipping is allowed between non-cancelled phases.
+- Phase changes must go through the phase-change request and approval flow. Create and edit flows must not mutate `phase` directly.
+
+Target-phase approval requirements:
+
+- `Idea`: initial phase for new cards rather than a normal requested destination
+- `Validated`: `Head of Global Procurement` and `Financial Controller`
+- `Realised`: `Financial Controller`
+- `Achieved`: `Financial Controller`
+- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+
+Additional workflow constraints:
+
+- Finance lock is only allowed for `Validated` savings.
+- Kanban groups cards by persisted `savingCard.phase`, not by a pending request destination.
+- Pending phase-change requests are shown as pending metadata in the card UI. They do not visually relocate the card before approval completes.
+- The legacy approval path is not an active parallel workflow. The phase-change request approval model is the only approval path that may advance card phase.
+
 ## Product status
 
 Traxium is currently in the stage of evolving from a strong internal MVP into a hardened multi-tenant B2B SaaS product.
@@ -99,6 +128,21 @@ The product is being hardened toward:
 - stronger operational reliability
 - workspace-based multi-tenancy
 - role-based access control for real customer environments
+
+### Workflow And Data Ownership
+
+The current ownership model is intentionally split to reduce regression risk:
+
+- `lib/workflow.ts`: canonical workflow rules, allowed transitions, approver roles, cancellation requirement, finance-lock eligibility
+- `lib/workflow/service.ts`: workflow request / approval orchestration
+- `lib/saving-cards/queries.ts`: saving-card and reference-data reads
+- `lib/saving-cards/mutations.ts`: saving-card and related write paths
+- `lib/dashboard/data.ts`: dashboard data loading
+- `lib/workspace/readiness.ts`: workspace readiness data loading
+- `lib/workspace/portfolio-surface-cache.ts`: cache invalidation for dashboard and readiness surfaces
+- `lib/data.ts`: compatibility facade that re-exports the current service surface
+
+Dashboard and Kanban are release-critical surfaces. Any workflow, saving-card, or reporting change must preserve their runtime behavior, smoke coverage, and stale-data expectations.
 
 ## Evidence storage model
 

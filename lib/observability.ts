@@ -17,7 +17,6 @@ import {
   type StructuredLogEntry,
   type StructuredLogLevel,
 } from "@/lib/logger";
-import { enqueueJob, jobTypes } from "@/lib/jobs";
 
 export type ObservabilityContext = {
   event: string;
@@ -45,6 +44,10 @@ type ObservabilityExceptionJobPayload = {
   context: ObservabilityContext;
 };
 
+let observabilityJobsModulePromise:
+  | Promise<typeof import("@/lib/jobs")>
+  | null = null;
+
 function getAppEnvironment() {
   return resolveAppEnvironment();
 }
@@ -63,6 +66,81 @@ function isSentryEnabled(runtime: ObservabilityRuntime) {
 
 function shouldQueueObservability(runtime: ObservabilityRuntime) {
   return runtime === "server" && !isJobWorkerProcess();
+}
+
+function loadObservabilityJobsModule() {
+  observabilityJobsModulePromise ??= import("@/lib/jobs");
+  return observabilityJobsModulePromise;
+}
+
+function queueObservabilityMessageJob(input: {
+  message: string;
+  context: ObservabilityContext;
+  level: StructuredLogLevel;
+  runtime: ObservabilityRuntime;
+}) {
+  void loadObservabilityJobsModule()
+    .then(({ enqueueJob, jobTypes }) =>
+      enqueueJob({
+        type: jobTypes.OBSERVABILITY_MESSAGE,
+        organizationId: input.context.organizationId,
+        payload: {
+          message: input.message,
+          context: input.context,
+          level: input.level,
+        } satisfies ObservabilityMessageJobPayload,
+      })
+    )
+    .catch((error) => {
+      writeStructuredLog("warn", {
+        event: "observability.enqueue.failed",
+        runtime: input.runtime,
+        organizationId: input.context.organizationId,
+        userId: input.context.userId,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Observability message could not be queued.",
+        payload: {
+          observabilityEvent: input.context.event,
+          kind: "message",
+        },
+      });
+    });
+}
+
+function queueObservabilityExceptionJob(input: {
+  error: unknown;
+  context: ObservabilityContext;
+  runtime: ObservabilityRuntime;
+}) {
+  void loadObservabilityJobsModule()
+    .then(({ enqueueJob, jobTypes }) =>
+      enqueueJob({
+        type: jobTypes.OBSERVABILITY_EXCEPTION,
+        organizationId: input.context.organizationId,
+        payload: {
+          error: serializeErrorForLog(input.error),
+          context: input.context,
+        } satisfies ObservabilityExceptionJobPayload,
+      })
+    )
+    .catch((enqueueError) => {
+      writeStructuredLog("warn", {
+        event: "observability.enqueue.failed",
+        runtime: input.runtime,
+        organizationId: input.context.organizationId,
+        userId: input.context.userId,
+        message:
+          enqueueError instanceof Error
+            ? enqueueError.message
+            : "Observability exception could not be queued.",
+        payload: {
+          observabilityEvent: input.context.event,
+          kind: "exception",
+        },
+      });
+    });
 }
 
 function toSentryLevel(level: StructuredLogLevel) {
@@ -256,33 +334,12 @@ export function captureMessage(
   };
 
   if (shouldQueueObservability(runtime)) {
-    void Promise.resolve(
-      enqueueJob({
-        type: jobTypes.OBSERVABILITY_MESSAGE,
-        organizationId: sentryContext.organizationId,
-        payload: {
-          message,
-          context: sentryContext,
-          level,
-        } satisfies ObservabilityMessageJobPayload,
-      })
-    ).catch((error) => {
-      writeStructuredLog("warn", {
-        event: "observability.enqueue.failed",
-        runtime,
-        organizationId: sentryContext.organizationId,
-        userId: sentryContext.userId,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Observability message could not be queued.",
-        payload: {
-          observabilityEvent: sentryContext.event,
-          kind: "message",
-        },
-      });
+    queueObservabilityMessageJob({
+      message,
+      context: sentryContext,
+      level,
+      runtime,
     });
-
     return entry;
   }
 
@@ -319,32 +376,11 @@ export function captureException(
   };
 
   if (shouldQueueObservability(runtime)) {
-    void Promise.resolve(
-      enqueueJob({
-        type: jobTypes.OBSERVABILITY_EXCEPTION,
-        organizationId: sentryContext.organizationId,
-        payload: {
-          error: serializeErrorForLog(error),
-          context: sentryContext,
-        } satisfies ObservabilityExceptionJobPayload,
-      })
-    ).catch((enqueueError) => {
-      writeStructuredLog("warn", {
-        event: "observability.enqueue.failed",
-        runtime,
-        organizationId: sentryContext.organizationId,
-        userId: sentryContext.userId,
-        message:
-          enqueueError instanceof Error
-            ? enqueueError.message
-            : "Observability exception could not be queued.",
-        payload: {
-          observabilityEvent: sentryContext.event,
-          kind: "exception",
-        },
-      });
+    queueObservabilityExceptionJob({
+      error,
+      context: sentryContext,
+      runtime,
     });
-
     return entry;
   }
 

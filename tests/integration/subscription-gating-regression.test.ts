@@ -184,9 +184,9 @@ function createDeployEnv(overrides: Record<string, string | undefined> = {}) {
       ref: projectRef,
     }),
     STRIPE_SECRET_KEY:
-      "sk_test_previewcibillingsecretkey000000000000000000000000",
+      "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
-      "whsec_previewcibillingwebhooksecret000000000000000000000000",
+      "whsec_FAKE",
     STRIPE_PORTAL_RETURN_URL: "https://preview-traxium.vercel.app/settings/billing",
     STRIPE_CHECKOUT_SUCCESS_URL:
       "https://preview-traxium.vercel.app/settings/billing?checkout=success",
@@ -387,7 +387,7 @@ describe("subscription gating regression", () => {
           NEXT_PUBLIC_APP_URL: "https://app.traxium.com",
           PROJECT_REF: "prodproj",
           STRIPE_SECRET_KEY:
-            "sk_test_previewcibillingsecretkey000000000000000000000000",
+            "sk_test_FAKE",
         })
       )
     ).toThrow(

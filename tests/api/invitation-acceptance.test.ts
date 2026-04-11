@@ -12,6 +12,10 @@ import {
   createAuthSessionUser,
 } from "../helpers/security-fixtures";
 
+const ACTIVE_INVITATION_EXPIRES_AT = new Date("2099-03-31T12:00:00.000Z");
+const ACTIVE_INVITATION_EXPIRES_AT_ISO =
+  ACTIVE_INVITATION_EXPIRES_AT.toISOString();
+
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const updateUserByIdMock = vi.hoisted(() => vi.fn());
@@ -95,7 +99,7 @@ function createInvitationRecord(
     role: OrganizationRole.MEMBER,
     token: "token-123",
     status: InvitationStatus.PENDING,
-    expiresAt: new Date("2026-03-31T12:00:00.000Z"),
+    expiresAt: ACTIVE_INVITATION_EXPIRES_AT,
     invitedByUserId: "admin-user-1",
     createdAt: new Date("2026-03-24T12:00:00.000Z"),
     updatedAt: new Date("2026-03-24T12:00:00.000Z"),
@@ -217,7 +221,7 @@ describe("invitation acceptance route", () => {
         email: "new.user@example.com",
         role: OrganizationRole.MEMBER,
         status: InvitationStatus.ACCEPTED,
-        expiresAt: "2026-03-31T12:00:00.000Z",
+        expiresAt: ACTIVE_INVITATION_EXPIRES_AT_ISO,
         organization: {
           id: DEFAULT_ORGANIZATION_ID,
           name: "Atlas Procurement",
@@ -302,7 +306,7 @@ describe("invitation acceptance route", () => {
         email: "new.user@example.com",
         role: OrganizationRole.MEMBER,
         status: InvitationStatus.ACCEPTED,
-        expiresAt: "2026-03-31T12:00:00.000Z",
+        expiresAt: ACTIVE_INVITATION_EXPIRES_AT_ISO,
         organization: {
           id: DEFAULT_ORGANIZATION_ID,
           name: "Atlas Procurement",

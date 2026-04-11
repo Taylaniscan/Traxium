@@ -161,7 +161,7 @@ describe("lib/observability", () => {
     );
   });
 
-  it("queues server-side exceptions and messages instead of sending them inline", () => {
+  it("queues server-side exceptions and messages instead of sending them inline", async () => {
     captureMessage(
       "Background telemetry queued.",
       {
@@ -178,6 +178,8 @@ describe("lib/observability", () => {
       requestId: "req-456",
       status: 500,
     });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(enqueueJobMock).toHaveBeenCalledWith(
       expect.objectContaining({

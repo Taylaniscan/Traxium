@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const TEST_STRIPE_SECRET_KEY =
-  "sk_test_localdevbillingsecretkey000000000000000000000000";
+  "sk_test_FAKE";
 const TEST_WEBHOOK_SECRET =
-  "whsec_localdevbillingwebhooksecret000000000000000000000000";
+  "whsec_FAKE";
 const TEST_ORGANIZATION_ID = "org_atlas_procurement";
 
 const retrieveSubscriptionMock = vi.hoisted(() => vi.fn());
@@ -242,7 +242,7 @@ vi.mock("@/lib/billing/stripe", async () => {
   const StripeModule = await import("stripe");
   const StripeClient = StripeModule.default;
   const verificationClient = new StripeClient(
-    "sk_test_localdevbillingsecretkey000000000000000000000000"
+    "sk_test_FAKE"
   );
   const mockStripeClient = {
     webhooks: {

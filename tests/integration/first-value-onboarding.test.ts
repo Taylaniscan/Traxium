@@ -44,6 +44,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", () => ({
   bootstrapCurrentUser: bootstrapCurrentUserMock,
   getCurrentUser: getCurrentUserMock,
+  requireUser: getCurrentUserMock,
+  createAuthGuardErrorResponse: vi.fn(() => null),
 }));
 
 vi.mock("@/components/layout/app-shell", () => ({
@@ -240,9 +242,10 @@ describe("first-value onboarding", () => {
     );
 
     expect(markup).toContain("No live saving cards yet.");
-    expect(markup).toContain("Start first record");
-    expect(markup).toContain("Load sample data");
-    expect(markup).toContain("Invite teammate");
+    expect(markup).toContain(
+      "Create the first saving card to populate the dashboard with real portfolio data."
+    );
+    expect(markup).toContain("Create saving card");
   });
 
   it("writes sample data only into the active organization", async () => {

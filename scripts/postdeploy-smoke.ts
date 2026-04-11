@@ -6,7 +6,8 @@ export type PostdeploySmokeCategory =
   | "invite"
   | "admin"
   | "observability"
-  | "jobs";
+  | "jobs"
+  | "portfolio";
 
 export type PostdeploySmokeCheck = {
   category: PostdeploySmokeCategory;
@@ -15,7 +16,10 @@ export type PostdeploySmokeCheck = {
   path: string;
   expectedStatuses: number[];
   expectedLocationIncludes?: string;
+  expectedBodyIncludes?: string[];
+  expectedBodyExcludes?: string[];
   body?: Record<string, unknown>;
+  requiresSession?: boolean;
 };
 
 export type PostdeploySmokeResult = {
@@ -66,8 +70,23 @@ export function resolvePostdeployBaseUrl(
   return normalizeBaseUrl(cliValue || envValue);
 }
 
-export function buildPostdeploySmokeChecks(): PostdeploySmokeCheck[] {
-  return [
+export function resolvePostdeploySessionCookie(
+  env: Record<string, string | undefined> = process.env
+) {
+  return env.POSTDEPLOY_SESSION_COOKIE?.trim() || null;
+}
+
+export function resolvePostdeployPendingWorkflowExpectation(
+  env: Record<string, string | undefined> = process.env
+) {
+  return env.POSTDEPLOY_EXPECT_PENDING_PHASE_REQUEST === "true";
+}
+
+export function buildPostdeploySmokeChecks(input?: {
+  includeAuthenticatedPortfolioChecks?: boolean;
+  expectPendingPhaseRequest?: boolean;
+}): PostdeploySmokeCheck[] {
+  const checks: PostdeploySmokeCheck[] = [
     {
       category: "auth",
       name: "Login page responds",
@@ -160,13 +179,81 @@ export function buildPostdeploySmokeChecks(): PostdeploySmokeCheck[] {
       expectedStatuses: [401, 403],
     },
   ];
+
+  if (input?.includeAuthenticatedPortfolioChecks) {
+    checks.push(
+      {
+        category: "portfolio",
+        name: "Dashboard page renders live portfolio sections for a seeded workspace session",
+        method: "GET",
+        path: "/dashboard",
+        expectedStatuses: [200],
+        expectedBodyIncludes: [
+          "Dashboard",
+          "Savings by Phase",
+          "Savings by Category",
+          "Savings Forecast",
+        ],
+        expectedBodyExcludes: [
+          "No live saving cards yet.",
+          "Dashboard charts are unavailable",
+        ],
+        requiresSession: true,
+      },
+      {
+        category: "portfolio",
+        name: "Kanban page renders persisted workflow columns for a seeded workspace session",
+        method: "GET",
+        path: "/kanban",
+        expectedStatuses: [200],
+        expectedBodyIncludes: [
+          "Kanban Board",
+          "Idea",
+          "Validated",
+          "Realised",
+          "Achieved",
+          "Cancelled",
+        ],
+        expectedBodyExcludes: [
+          "No board activity yet",
+          "Kanban board is unavailable",
+        ],
+        requiresSession: true,
+      }
+    );
+
+    if (input.expectPendingPhaseRequest) {
+      checks.push({
+        category: "portfolio",
+        name: "Kanban keeps pending workflow requests visibly pending instead of rendering them as moved",
+        method: "GET",
+        path: "/kanban",
+        expectedStatuses: [200],
+        expectedBodyIncludes: [
+          "Pending approval",
+          "Card remains in",
+        ],
+        requiresSession: true,
+      });
+    }
+  }
+
+  return checks;
 }
 
-function buildRequestInit(check: PostdeploySmokeCheck, timeoutMs: number): RequestInit {
+function buildRequestInit(
+  check: PostdeploySmokeCheck,
+  timeoutMs: number,
+  sessionCookie?: string | null
+): RequestInit {
   const headers = new Headers();
 
   if (check.body) {
     headers.set("content-type", "application/json");
+  }
+
+  if (check.requiresSession && sessionCookie) {
+    headers.set("cookie", sessionCookie);
   }
 
   return {
@@ -184,6 +271,7 @@ export async function executePostdeploySmokeCheck(
   input: {
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    sessionCookie?: string | null;
   } = {}
 ): Promise<PostdeploySmokeResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -192,23 +280,38 @@ export async function executePostdeploySmokeCheck(
   const url = new URL(check.path, normalizedBaseUrl).toString();
 
   try {
-    const response = await fetchImpl(url, buildRequestInit(check, timeoutMs));
+    const response = await fetchImpl(
+      url,
+      buildRequestInit(check, timeoutMs, input.sessionCookie)
+    );
     const location = response.headers.get("location");
     const statusMatches = check.expectedStatuses.includes(response.status);
     const locationMatches = check.expectedLocationIncludes
       ? (location ?? "").includes(check.expectedLocationIncludes)
       : true;
+    const shouldInspectBody = Boolean(
+      check.expectedBodyIncludes?.length || check.expectedBodyExcludes?.length
+    );
+    const responseBody = shouldInspectBody ? await response.text() : "";
+    const bodyIncludesMatch =
+      check.expectedBodyIncludes?.every((snippet) =>
+        responseBody.includes(snippet)
+      ) ?? true;
+    const bodyExcludesMatch =
+      check.expectedBodyExcludes?.every((snippet) =>
+        !responseBody.includes(snippet)
+      ) ?? true;
 
     return {
       check,
       url,
       status: response.status,
-      ok: statusMatches && locationMatches,
+      ok: statusMatches && locationMatches && bodyIncludesMatch && bodyExcludesMatch,
       location,
       error:
-        statusMatches && locationMatches
+        statusMatches && locationMatches && bodyIncludesMatch && bodyExcludesMatch
           ? null
-          : `Expected ${check.expectedStatuses.join(", ")}${check.expectedLocationIncludes ? ` with redirect containing ${check.expectedLocationIncludes}` : ""}, received ${response.status}${location ? ` (${location})` : ""}.`,
+          : `Expected ${check.expectedStatuses.join(", ")}${check.expectedLocationIncludes ? ` with redirect containing ${check.expectedLocationIncludes}` : ""}${check.expectedBodyIncludes?.length ? ` with body containing ${check.expectedBodyIncludes.join(", ")}` : ""}${check.expectedBodyExcludes?.length ? ` and excluding ${check.expectedBodyExcludes.join(", ")}` : ""}, received ${response.status}${location ? ` (${location})` : ""}.`,
     };
   } catch (error) {
     return {
@@ -229,8 +332,13 @@ export async function runPostdeploySmoke(input: {
   baseUrl: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  sessionCookie?: string | null;
+  expectPendingPhaseRequest?: boolean;
 }): Promise<PostdeploySmokeSummary> {
-  const checks = buildPostdeploySmokeChecks();
+  const checks = buildPostdeploySmokeChecks({
+    includeAuthenticatedPortfolioChecks: Boolean(input.sessionCookie),
+    expectPendingPhaseRequest: input.expectPendingPhaseRequest,
+  });
   const results: PostdeploySmokeResult[] = [];
 
   for (const check of checks) {
@@ -238,6 +346,7 @@ export async function runPostdeploySmoke(input: {
       await executePostdeploySmokeCheck(input.baseUrl, check, {
         fetchImpl: input.fetchImpl,
         timeoutMs: input.timeoutMs,
+        sessionCookie: input.sessionCookie,
       })
     );
   }
@@ -277,7 +386,14 @@ function printSummary(summary: PostdeploySmokeSummary) {
 async function runCli() {
   try {
     const baseUrl = resolvePostdeployBaseUrl();
-    const summary = await runPostdeploySmoke({ baseUrl });
+    const sessionCookie = resolvePostdeploySessionCookie();
+    const expectPendingPhaseRequest =
+      resolvePostdeployPendingWorkflowExpectation();
+    const summary = await runPostdeploySmoke({
+      baseUrl,
+      sessionCookie,
+      expectPendingPhaseRequest,
+    });
 
     printSummary(summary);
 

@@ -22,6 +22,15 @@ const createSavingCardMock = vi.hoisted(() => vi.fn());
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const createOrganizationInvitationMock = vi.hoisted(() => vi.fn());
+const WorkflowErrorMock = vi.hoisted(
+  () =>
+    class WorkflowError extends Error {
+      constructor(message: string, readonly status = 409) {
+        super(message);
+        this.name = "WorkflowError";
+      }
+    }
+);
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
 const RateLimitExceededErrorMock = vi.hoisted(
@@ -67,6 +76,7 @@ const sheetToJsonMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: getCurrentUserMock,
+  requireUser: getCurrentUserMock,
   requirePermission: requirePermissionMock,
   requireOrganization: requireOrganizationMock,
   createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
@@ -76,6 +86,7 @@ vi.mock("@/lib/data", () => ({
   createSavingCard: createSavingCardMock,
   getReferenceData: getReferenceDataMock,
   importSavingCards: importSavingCardsMock,
+  WorkflowError: WorkflowErrorMock,
 }));
 
 vi.mock("@/lib/invitations", () => ({
