@@ -59,16 +59,14 @@ export const savingCardSchema = z
     impactEndDate: z.coerce.date(),
     cancellationReason: z.string().optional().or(z.literal("")),
     stakeholderIds: z.array(z.string()).default([]),
-    evidence: z
-      .array(
-        z.object({
-          id: z.string().optional(),
-          fileName: z.string().min(1),
-          fileUrl: z.string().min(1),
-          fileSize: z.coerce.number().int().positive(),
-          fileType: z.string().min(1)
-        })
-      )
+    evidence: z.array(
+  z.object({
+    id: z.string().optional(),
+    fileName: z.string().min(1),
+    fileSize: z.number(),
+    fileType: z.string().min(1),
+  })
+)
       .default([])
   })
   .superRefine((value, ctx) => {

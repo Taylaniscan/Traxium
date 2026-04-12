@@ -1,63 +1,223 @@
 import { Phase } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { addApproval, getSavingCard, setFinanceLock, updateSavingCard } from "@/lib/data";
-import { canApprovePhase, canLockFinance } from "@/lib/permissions";
+import { ZodError, z } from "zod";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
+import { getSavingCard, setFinanceLock, updateSavingCard, WorkflowError } from "@/lib/data";
+import { canLockFinance } from "@/lib/permissions";
+import {
+  createRateLimitErrorResponse,
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
+import { savingCardSchema } from "@/lib/validation";
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+const paramsSchema = z.object({
+  id: z.string().trim().min(1, "Saving card id is required."),
+});
+
+const actionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("approve"),
+    phase: z.nativeEnum(Phase),
+    comment: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("finance-lock"),
+    locked: z.boolean(),
+  }),
+]);
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+async function readJsonBody(request: Request) {
   try {
-    const user = await requireUser();
-    const { id } = await params;
-    const payload = await request.json();
-    const card = await updateSavingCard(id, payload, user.id);
-    return NextResponse.json(card);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Update failed." }, { status: 400 });
+    return { ok: true as const, data: await request.json() };
+  } catch {
+    return {
+      ok: false as const,
+      response: jsonError("Request body must be valid JSON.", 400),
+    };
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function resolveSavingCardId(
+  params: Promise<{ id: string }>
+): Promise<string> {
+  return paramsSchema.parse(await params).id;
+}
+
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const card = await getSavingCard(id);
+    const user = await requireUser({ redirectTo: null });
+    await enforceRateLimit({
+      policy: "savingCardUpdate",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.update",
+    });
+
+    const id = await resolveSavingCardId(params);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return body.response;
+    }
+
+    if (!isPlainObject(body.data)) {
+      return jsonError("Request body must be a JSON object.", 400);
+    }
+
+    const payload = savingCardSchema.safeParse(body.data);
+
+    if (!payload.success) {
+      return jsonError(payload.error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
+    }
+
+    const existingCard = await getSavingCard(id, user.organizationId);
+
+    if (!existingCard) {
+      return jsonError("Saving card not found.", 404);
+    }
+
+    const card = await updateSavingCard(id, payload.data, user.id, user.organizationId);
+    return NextResponse.json(card);
+  } catch (error) {
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    if (error instanceof ZodError) {
+      return jsonError(error.issues[0]?.message ?? "Saving card payload is invalid.", 422);
+    }
+
+    if (error instanceof WorkflowError) {
+      return jsonError(error.message, error.status);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
+    return jsonError(
+      error instanceof Error ? error.message : "Saving card update failed.",
+      500
+    );
+  }
+}
+
+export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser({ redirectTo: null });
+    const id = await resolveSavingCardId(params);
+    const card = await getSavingCard(id, user.organizationId);
 
     if (!card) {
-      return NextResponse.json({ error: "Saving card not found." }, { status: 404 });
+      return jsonError("Saving card not found.", 404);
     }
-    return NextResponse.json(
-      { error: "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval." },
-      { status: 400 }
+
+    return jsonError(
+      "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval.",
+      409
     );
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Phase update failed." }, { status: 400 });
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    if (error instanceof ZodError) {
+      return jsonError(error.issues[0]?.message ?? "Saving card id is invalid.", 422);
+    }
+
+    return jsonError(
+      error instanceof Error ? error.message : "Phase update failed.",
+      500
+    );
   }
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser();
-    const { id } = await params;
-    const payload = await request.json();
+    const user = await requireUser({ redirectTo: null });
+    await enforceRateLimit({
+      policy: "savingCardUpdate",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: "saving-cards.action",
+    });
 
-    if (payload.action === "approve") {
-      const phase = payload.phase as Phase;
-      if (!canApprovePhase(user.role, phase)) {
-        return NextResponse.json({ error: "You are not allowed to approve this phase." }, { status: 403 });
-      }
-      const result = await addApproval(id, phase, user.id, true, payload.comment);
-      return NextResponse.json(result);
+    const id = await resolveSavingCardId(params);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return body.response;
     }
 
-    if (payload.action === "finance-lock") {
+    if (!isPlainObject(body.data)) {
+      return jsonError("Request body must be a JSON object.", 400);
+    }
+
+    const payload = actionSchema.safeParse(body.data);
+
+    if (!payload.success) {
+      return jsonError(payload.error.issues[0]?.message ?? "Action payload is invalid.", 422);
+    }
+
+    const card = await getSavingCard(id, user.organizationId);
+
+    if (!card) {
+      return jsonError("Saving card not found.", 404);
+    }
+
+    if (payload.data.action === "approve") {
+      return jsonError(
+        "Direct approval actions are disabled. Use /api/approve-phase-change for assigned workflow requests.",
+        409
+      );
+    }
+
+    if (payload.data.action === "finance-lock") {
       if (!canLockFinance(user.role)) {
-        return NextResponse.json({ error: "Only finance can lock savings." }, { status: 403 });
+        return jsonError("Only finance can lock savings.", 403);
       }
-      const result = await setFinanceLock(id, user.id, Boolean(payload.locked));
+      const result = await setFinanceLock(card.id, user.id, payload.data.locked, user.organizationId);
       return NextResponse.json(result);
     }
 
-    return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
+    return jsonError("Unsupported action.", 422);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Action failed." }, { status: 400 });
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    if (error instanceof ZodError) {
+      return jsonError(error.issues[0]?.message ?? "Action payload is invalid.", 422);
+    }
+
+    if (error instanceof WorkflowError) {
+      return jsonError(error.message, error.status);
+    }
+
+    if (error instanceof RateLimitExceededError) {
+      return createRateLimitErrorResponse(error);
+    }
+
+    return jsonError(
+      error instanceof Error ? error.message : "Saving card action failed.",
+      500
+    );
   }
 }

@@ -6,15 +6,21 @@ import {
   ALLOWED_EVIDENCE_EXTENSIONS,
   MAX_EVIDENCE_FILE_SIZE,
   formatEvidenceFileSize,
-  isAllowedEvidenceFileName
+  isAllowedEvidenceFileName,
 } from "@/lib/evidence-config";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export type UploadedEvidenceFile = {
   id?: string;
   fileName: string;
-  fileUrl: string;
+  downloadUrl?: string;
   fileSize: number;
   fileType: string;
   progress?: number;
@@ -23,10 +29,12 @@ export type UploadedEvidenceFile = {
 };
 
 export function EvidenceUploader({
+  savingCardId,
   files,
   onChange,
-  onError
+  onError,
 }: {
+  savingCardId: string;
   files: UploadedEvidenceFile[];
   onChange: (files: UploadedEvidenceFile[]) => void;
   onError: (message: string | null) => void;
@@ -37,34 +45,49 @@ export function EvidenceUploader({
 
   return (
     <>
-      <Card className="border-dashed">
+      <Card className="rounded-3xl border border-[var(--border)] shadow-sm">
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">Evidence Upload</CardTitle>
-              <CardDescription>Upload contracts, quotes, confirmations, and spreadsheets up to 25 MB each.</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
-                <FolderOpen className="mr-2 h-4 w-4" />
-                Pick Files
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => setShowDriveModal(true)}>
-                Upload from Google Drive
-              </Button>
-            </div>
-          </div>
+          <CardTitle>Evidence Upload</CardTitle>
+          <CardDescription>
+            Upload contracts, quotes, confirmations, and spreadsheets up to 25 MB each.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+
+        <CardContent className="space-y-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={() => inputRef.current?.click()}>
+              <CloudUpload className="mr-2 h-4 w-4" />
+              Pick Files
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDriveModal(true)}
+            >
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Upload from Google Drive
+            </Button>
+
+            <span className="text-sm text-[var(--muted-foreground)]">
+              Allowed: {ALLOWED_EVIDENCE_EXTENSIONS.join(", ").toUpperCase()}
+            </span>
+          </div>
+
           <input
             ref={inputRef}
             type="file"
-            className="hidden"
             multiple
-            accept={ALLOWED_EVIDENCE_EXTENSIONS.join(",")}
+            className="hidden"
             onChange={(event) => {
               if (event.target.files) {
-                void performUploads(event.target.files, files, onChange, onError);
+                void performUploads(
+                  savingCardId,
+                  event.target.files,
+                  files,
+                  onChange,
+                  onError,
+                );
                 event.target.value = "";
               }
             }}
@@ -79,14 +102,22 @@ export function EvidenceUploader({
             onDrop={(event) => {
               event.preventDefault();
               setIsDragging(false);
-              void performUploads(event.dataTransfer.files, files, onChange, onError);
+              void performUploads(
+                savingCardId,
+                event.dataTransfer.files,
+                files,
+                onChange,
+                onError,
+              );
             }}
             className={`rounded-3xl border-2 border-dashed p-8 text-center transition ${
-              isDragging ? "border-[var(--primary)] bg-[var(--muted)]" : "border-[var(--border)] bg-white/60"
+              isDragging
+                ? "border-[var(--primary)] bg-[var(--muted)]"
+                : "border-[var(--border)] bg-white/60"
             }`}
           >
-            <CloudUpload className="mx-auto h-8 w-8 text-[var(--primary)]" />
-            <p className="mt-3 text-sm font-semibold">Drag and drop evidence files here</p>
+            <CloudUpload className="mx-auto mb-3 h-8 w-8 text-[var(--muted-foreground)]" />
+            <p className="text-sm font-medium">Drag and drop evidence files here</p>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
               Supported: PDF, JPG, JPEG, PNG, XLS, XLSX, DOC, DOCX, PPT, PPTX
             </p>
@@ -94,31 +125,55 @@ export function EvidenceUploader({
 
           <div className="space-y-3">
             {files.map((file, index) => (
-              <div key={file.id ?? `${file.fileName}-${index}`} className="rounded-2xl bg-[var(--muted)] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-4 w-4 text-[var(--primary)]" />
-                    <div>
-                      <p className="text-sm font-semibold">{file.fileName}</p>
-                      <p className="text-xs text-[var(--muted-foreground)]">
-                        {file.fileType} · {formatEvidenceFileSize(file.fileSize)}
-                      </p>
-                      {file.status === "error" ? <p className="mt-1 text-xs text-red-600">{file.error}</p> : null}
+              <div
+                key={file.id ?? `${file.fileName}-${index}`}
+                className="flex items-start justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3"
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <FileText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--primary)]" />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{file.fileName}</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">
+                      {file.fileType} · {formatEvidenceFileSize(file.fileSize)}
                     </div>
+
+                    {file.downloadUrl ? (
+                      <a
+                        href={file.downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-block text-xs font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+                      >
+                        Open file
+                      </a>
+                    ) : null}
+
+                    {file.status === "error" ? (
+                      <div className="mt-1 text-xs text-red-600">{file.error}</div>
+                    ) : null}
+
+                    {file.status === "uploading" ? (
+                      <div className="mt-2 h-2 w-40 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[var(--primary)] transition-all"
+                          style={{ width: `${file.progress ?? 0}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => onChange(files.filter((_, fileIndex) => fileIndex !== index))}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
-                {file.status === "uploading" ? (
-                  <div className="mt-3 h-2 rounded-full bg-white">
-                    <div className="h-2 rounded-full bg-[var(--primary)]" style={{ width: `${file.progress ?? 0}%` }} />
-                  </div>
-                ) : null}
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() =>
+                    onChange(files.filter((_, fileIndex) => fileIndex !== index))
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             ))}
           </div>
@@ -126,14 +181,18 @@ export function EvidenceUploader({
       </Card>
 
       {showDriveModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold">Google Drive Upload</h3>
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Google Drive integration will be available in future version.
+              Google Drive integration will be available in a future version.
             </p>
             <div className="mt-6 flex justify-end">
-              <Button type="button" onClick={() => setShowDriveModal(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDriveModal(false)}
+              >
                 Close
               </Button>
             </div>
@@ -145,10 +204,11 @@ export function EvidenceUploader({
 }
 
 async function performUploads(
+  savingCardId: string,
   fileList: FileList,
   existingFiles: UploadedEvidenceFile[],
   onChange: (files: UploadedEvidenceFile[]) => void,
-  onError: (message: string | null) => void
+  onError: (message: string | null) => void,
 ) {
   let currentFiles = [...existingFiles];
 
@@ -167,25 +227,34 @@ async function performUploads(
     const uploadEntry: UploadedEvidenceFile = {
       id: tempId,
       fileName: file.name,
-      fileUrl: "",
       fileSize: file.size,
       fileType: file.type || "application/octet-stream",
       progress: 0,
-      status: "uploading"
+      status: "uploading",
     };
 
     currentFiles = [...currentFiles, uploadEntry];
     onChange(currentFiles);
 
     try {
-      const uploaded = await uploadSingleFile(file, (progress) => {
-        currentFiles = currentFiles.map((item) => (item.id === tempId ? { ...item, progress } : item));
+      const uploaded = await uploadSingleFile(savingCardId, file, (progress) => {
+        currentFiles = currentFiles.map((item) =>
+          item.id === tempId ? { ...item, progress } : item,
+        );
         onChange(currentFiles);
       });
 
       currentFiles = currentFiles.map((item) =>
-        item.id === tempId ? { ...uploaded, id: item.id, status: "uploaded", progress: 100 } : item
+        item.id === tempId
+          ? {
+              ...uploaded,
+              id: item.id,
+              status: "uploaded",
+              progress: 100,
+            }
+          : item,
       );
+
       onChange(currentFiles);
     } catch (error) {
       currentFiles = currentFiles.map((item) =>
@@ -193,9 +262,9 @@ async function performUploads(
           ? {
               ...item,
               status: "error",
-              error: error instanceof Error ? error.message : "Upload failed."
+              error: error instanceof Error ? error.message : "Upload failed.",
             }
-          : item
+          : item,
       );
       onChange(currentFiles);
       onError(error instanceof Error ? error.message : "Upload failed.");
@@ -203,9 +272,14 @@ async function performUploads(
   }
 }
 
-function uploadSingleFile(file: File, onProgress: (progress: number) => void) {
-  return new Promise<UploadedEvidenceFile>((resolve, reject) => {
+function uploadSingleFile(
+  savingCardId: string,
+  file: File,
+  onProgress: (progress: number) => void,
+): Promise<UploadedEvidenceFile> {
+  return new Promise((resolve, reject) => {
     const formData = new FormData();
+    formData.append("savingCardId", savingCardId);
     formData.append("files", file);
 
     const xhr = new XMLHttpRequest();
@@ -218,12 +292,16 @@ function uploadSingleFile(file: File, onProgress: (progress: number) => void) {
 
     xhr.addEventListener("load", () => {
       if (xhr.status < 200 || xhr.status >= 300) {
-        const message = JSON.parse(xhr.responseText || "{}").error ?? "Upload failed.";
+        const message =
+          JSON.parse(xhr.responseText || "{}").error ?? "Upload failed.";
         reject(new Error(message));
         return;
       }
 
-      const result = JSON.parse(xhr.responseText) as { files: UploadedEvidenceFile[] };
+      const result = JSON.parse(xhr.responseText) as {
+        files: UploadedEvidenceFile[];
+      };
+
       resolve(result.files[0]);
     });
 

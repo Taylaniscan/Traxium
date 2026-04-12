@@ -1,302 +1,125 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, CircleDollarSign, Filter, Target, TrendingUp } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
-import { implementationComplexities, phaseLabels, qualificationStatuses, savingDrivers } from "@/lib/constants";
-import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
+import Link from "next/link";
+import type { OrganizationRole } from "@prisma/client";
+import type { ComponentType, ReactNode } from "react";
+import { useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  ArrowUpRight,
+  CircleDollarSign,
+  Target,
+  TrendingUp,
+  X,
+} from "lucide-react";
 
-type DashboardData = Awaited<ReturnType<typeof import("@/lib/data").getDashboardData>>;
+import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { phaseLabels, phases } from "@/lib/constants";
+import type {
+  DashboardCardSummary,
+  DashboardData,
+  WorkspaceReadiness,
+} from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils/numberFormatter";
 
-export function DashboardClient({ data }: { data: DashboardData }) {
-  const [filters, setFilters] = useState({
-    savingDriver: "",
-    implementationComplexity: "",
-    qualificationStatus: ""
-  });
+export type DashboardClientLoadState = {
+  dataError?: string | null;
+  readinessError?: string | null;
+};
 
-  const filteredCards = useMemo(
-    () =>
-      data.cards.filter((card) => {
-        if (filters.savingDriver && card.savingDriver !== filters.savingDriver) return false;
-        if (filters.implementationComplexity && card.implementationComplexity !== filters.implementationComplexity) return false;
-        if (filters.qualificationStatus && card.qualificationStatus !== filters.qualificationStatus) return false;
-        return true;
-      }),
-    [data.cards, filters]
-  );
+type DashboardChartDatum = {
+  label: string;
+  savings: number;
+  phase?: DashboardCardSummary["phase"];
+};
 
-  const metrics = useMemo(() => deriveDashboardMetrics(filteredCards), [filteredCards]);
+type DashboardForecastDatum = {
+  month: string;
+  savings: number;
+  forecast: number;
+};
 
-  const kpis = [
-    { label: "Pipeline Savings", value: metrics.pipelineSavings, icon: CircleDollarSign },
-    { label: "Realised Savings", value: metrics.realisedSavings, icon: TrendingUp },
-    { label: "Achieved Savings", value: metrics.achievedSavings, icon: Target },
-    { label: "Savings Forecast", value: metrics.forecastSavings, icon: ArrowUpRight }
-  ];
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div className="space-y-1">
-            <CardTitle>Portfolio Filters</CardTitle>
-            <CardDescription>Refine the dashboard by driver, implementation effort, or qualification stage.</CardDescription>
-          </div>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
-            <Filter className="h-4 w-4 text-[var(--muted-foreground)]" />
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <Select value={filters.savingDriver} onChange={(event) => setFilters((current) => ({ ...current, savingDriver: event.target.value }))}>
-            <option value="">All saving drivers</option>
-            {savingDrivers.map((driver) => (
-              <option key={driver} value={driver}>
-                {driver}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filters.implementationComplexity}
-            onChange={(event) => setFilters((current) => ({ ...current, implementationComplexity: event.target.value }))}
-          >
-            <option value="">All implementation complexity</option>
-            {implementationComplexities.map((complexity) => (
-              <option key={complexity} value={complexity}>
-                {complexity}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filters.qualificationStatus}
-            onChange={(event) => setFilters((current) => ({ ...current, qualificationStatus: event.target.value }))}
-          >
-            <option value="">All qualification statuses</option>
-            {qualificationStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </Select>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-          return (
-            <Card key={kpi.label}>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="rounded-xl bg-blue-50 p-2 text-[var(--primary)]">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-foreground)]">KPI</span>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[32px] font-semibold leading-none tracking-tight text-[var(--foreground)]">{formatCurrency(kpi.value, "EUR")}</p>
-                  <p className="text-[13px] font-medium text-[var(--muted-foreground)]">{kpi.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <ChartCard title="Savings by Category" description="Contribution by procurement category." data={metrics.byCategory} color="#2563EB" />
-        <ChartCard title="Savings by Driver" description="Savings grouped by initiative driver." data={metrics.byDriver} color="#1D4ED8" />
-        <ForecastCard data={metrics.monthlyTrend} />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <TableCard
-          title="Top Saving Projects"
-          description="Highest-value saving cards in the current filtered portfolio."
-          rows={metrics.topProjects}
-        />
-        <TableCard
-          title="Benchmark Opportunities"
-          description="Cards with open commercial headroom based on remaining baseline-to-new price gap."
-          rows={metrics.benchmarkOpportunities}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ChartCard({
-  title,
-  description,
-  data,
-  color
-}: {
+type DashboardProjectRow = {
   title: string;
-  description: string;
-  data: Array<{ label: string; savings: number }>;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value)} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <Tooltip
-              cursor={{ fill: "rgba(37, 99, 235, 0.06)" }}
-              contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-              formatter={(value: number) => formatCurrency(value, "EUR")}
-            />
-            <Bar dataKey="savings" fill={color} radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
+  category: string;
+  phase: string;
+  value: number;
+};
+
+type DashboardMetrics = {
+  pipelineSavings: number;
+  realisedSavings: number;
+  achievedSavings: number;
+  forecastSavings: number;
+  byPhase: DashboardChartDatum[];
+  byCategory: DashboardChartDatum[];
+  monthlyTrend: DashboardForecastDatum[];
+  topProjects: DashboardProjectRow[];
+};
+
+type DashboardDataWarning = {
+  hasInvalidSavings: boolean;
+  hasInvalidDates: boolean;
+};
+
+type ChartState = "loading" | "empty" | "error" | "ready";
+
+function isDevelopment() {
+  return process.env.NODE_ENV !== "production";
 }
 
-function ForecastCard({ data }: { data: Array<{ month: string; savings: number; forecast: number }> }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Savings Forecast</CardTitle>
-        <CardDescription>Current savings run-rate versus forecast pipeline contribution.</CardDescription>
-      </CardHeader>
-      <CardContent className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value)} tick={{ fill: "#6B7280", fontSize: 12 }} />
-            <Tooltip
-              cursor={{ stroke: "#2563EB", strokeOpacity: 0.18 }}
-              contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-              formatter={(value: number) => formatCurrency(value, "EUR")}
-            />
-            <Legend wrapperStyle={{ fontSize: 12, color: "#6B7280" }} />
-            <Line type="monotone" dataKey="savings" name="Savings" stroke="#2563EB" strokeWidth={3} dot={false} />
-            <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#16A34A" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
+function normalizeDashboardNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function TableCard({
-  title,
-  description,
-  rows
-}: {
-  title: string;
-  description: string;
-  rows: Array<{ title: string; category: string; phase: string; value: number }>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <Table>
-          <TableHead>
-            <tr>
-              <TableHeaderCell>Project</TableHeaderCell>
-              <TableHeaderCell>Category</TableHeaderCell>
-              <TableHeaderCell>Phase</TableHeaderCell>
-              <TableHeaderCell className="text-right">Value</TableHeaderCell>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {rows.length ? (
-              rows.map((row) => (
-                <TableRow key={`${row.title}-${row.phase}`}>
-                  <TableCell className="font-medium">{row.title}</TableCell>
-                  <TableCell>{row.category}</TableCell>
-                  <TableCell>{row.phase}</TableCell>
-                  <TableCell className="text-right font-semibold">{formatCurrency(row.value, "EUR")}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell className="py-8 text-[var(--muted-foreground)]" colSpan={4}>
-                  No saving cards match the active filters.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
+function hasMeaningfulDashboardValue(value: unknown) {
+  return normalizeDashboardNumber(value) !== 0;
 }
 
-function deriveDashboardMetrics(cards: DashboardData["cards"]) {
-  const pipelineSavings = cards.filter((card) => card.phase !== "CANCELLED").reduce((sum, card) => sum + card.calculatedSavings, 0);
-  const realisedSavings = cards.filter((card) => card.phase === "REALISED").reduce((sum, card) => sum + card.calculatedSavings, 0);
-  const achievedSavings = cards.filter((card) => card.phase === "ACHIEVED").reduce((sum, card) => sum + card.calculatedSavings, 0);
+function normalizeDashboardLabel(value: unknown, fallback: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
+}
 
-  const monthlyTrend = Object.values(
-    cards.reduce<Record<string, { month: string; savings: number; forecast: number }>>((acc, card) => {
-      const key = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(new Date(card.impactStartDate));
-      acc[key] ??= { month: key, savings: 0, forecast: 0 };
-      acc[key].savings += card.calculatedSavings;
-      acc[key].forecast += card.calculatedSavings * getForecastFactor(card.frequency);
-      return acc;
-    }, {})
-  );
+function resolveDashboardMonthBucket(value: unknown) {
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      month: "Unknown timing",
+      sortValue: Number.MAX_SAFE_INTEGER,
+    };
+  }
 
   return {
-    pipelineSavings,
-    realisedSavings,
-    achievedSavings,
-    forecastSavings: monthlyTrend.reduce((sum, item) => sum + item.forecast, 0),
-    monthlyTrend,
-    byCategory: groupSavings(cards, (card) => card.category.name),
-    byDriver: groupSavings(cards, (card) => card.savingDriver ?? "Unspecified"),
-    topProjects: [...cards]
-      .sort((a, b) => b.calculatedSavings - a.calculatedSavings)
-      .slice(0, 5)
-      .map((card) => ({
-        title: card.title,
-        category: card.category.name,
-        phase: phaseLabels[card.phase],
-        value: card.calculatedSavings
-      })),
-    benchmarkOpportunities: [...cards]
-      .map((card) => ({
-        title: card.title,
-        category: card.category.name,
-        phase: phaseLabels[card.phase],
-        value: Math.max((card.baselinePrice - card.newPrice) * card.annualVolume, 0)
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5)
+    month: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      year: "numeric",
+    }).format(date),
+    sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
   };
 }
 
-function groupSavings(cards: DashboardData["cards"], getLabel: (card: DashboardData["cards"][number]) => string) {
-  return Object.values(
-    cards.reduce<Record<string, { label: string; savings: number }>>((acc, card) => {
-      const key = getLabel(card);
-      acc[key] ??= { label: key, savings: 0 };
-      acc[key].savings += card.calculatedSavings;
-      return acc;
-    }, {})
-  );
-}
-
-function getForecastFactor(frequency: DashboardData["cards"][number]["frequency"]) {
+function getForecastFactor(frequency: DashboardCardSummary["frequency"]) {
   switch (frequency) {
     case "ONE_TIME":
       return 1;
@@ -305,4 +128,722 @@ function getForecastFactor(frequency: DashboardData["cards"][number]["frequency"
     default:
       return 1.2;
   }
+}
+
+function buildSavingsBreakdown(
+  cards: DashboardData["cards"],
+  getLabel: (card: DashboardCardSummary) => string
+) {
+  return Object.values(
+    cards.reduce<Record<string, DashboardChartDatum>>((acc, card) => {
+      const label = normalizeDashboardLabel(getLabel(card), "Unspecified");
+      acc[label] ??= {
+        label,
+        savings: 0,
+      };
+      acc[label].savings += normalizeDashboardNumber(card.calculatedSavings);
+      return acc;
+    }, {})
+  );
+}
+
+export function deriveDashboardMetrics(cards: DashboardData["cards"]): DashboardMetrics {
+  const pipelineSavings = cards
+    .filter((card) => card.phase !== "CANCELLED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+  const realisedSavings = cards
+    .filter((card) => card.phase === "REALISED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+  const achievedSavings = cards
+    .filter((card) => card.phase === "ACHIEVED")
+    .reduce(
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      0
+    );
+
+  const monthlyTrend = Object.values(
+    cards.reduce<
+      Record<
+        string,
+        DashboardForecastDatum & {
+          sortValue: number;
+        }
+      >
+    >((acc, card) => {
+      const bucket = resolveDashboardMonthBucket(card.impactStartDate);
+      const key = `${bucket.sortValue}:${bucket.month}`;
+      const savings = normalizeDashboardNumber(card.calculatedSavings);
+
+      acc[key] ??= {
+        month: bucket.month,
+        savings: 0,
+        forecast: 0,
+        sortValue: bucket.sortValue,
+      };
+      acc[key].savings += savings;
+      acc[key].forecast += savings * getForecastFactor(card.frequency);
+      return acc;
+    }, {})
+  )
+    .sort((left, right) => left.sortValue - right.sortValue)
+    .map(({ sortValue, ...item }) => item);
+
+  return {
+    pipelineSavings,
+    realisedSavings,
+    achievedSavings,
+    forecastSavings: monthlyTrend.reduce(
+      (sum, item) => sum + normalizeDashboardNumber(item.forecast),
+      0
+    ),
+    byPhase: phases.map((phase) => ({
+      phase,
+      label:
+        phaseLabels[phase] ?? normalizeDashboardLabel(phase, "Unknown phase"),
+      savings: cards
+        .filter((card) => card.phase === phase)
+        .reduce(
+          (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+          0
+        ),
+    })),
+    byCategory: buildSavingsBreakdown(
+      cards,
+      (card) => card.category?.name ?? "Uncategorized"
+    )
+      .sort((left, right) => right.savings - left.savings)
+      .slice(0, 6),
+    monthlyTrend: monthlyTrend.slice(-6),
+    topProjects: [...cards]
+      .sort(
+        (left, right) =>
+          normalizeDashboardNumber(right.calculatedSavings) -
+          normalizeDashboardNumber(left.calculatedSavings)
+      )
+      .slice(0, 5)
+      .map((card) => ({
+        title: normalizeDashboardLabel(card.title, "Untitled saving card"),
+        category: normalizeDashboardLabel(
+          card.category?.name,
+          "Uncategorized"
+        ),
+        phase:
+          phaseLabels[card.phase] ??
+          normalizeDashboardLabel(card.phase, "Unknown phase"),
+        value: normalizeDashboardNumber(card.calculatedSavings),
+      })),
+  };
+}
+
+function inspectDashboardData(cards: DashboardData["cards"]): DashboardDataWarning {
+  return {
+    hasInvalidSavings: cards.some(
+      (card) =>
+        typeof card.calculatedSavings !== "number" ||
+        !Number.isFinite(card.calculatedSavings)
+    ),
+    hasInvalidDates: cards.some((card) => {
+      if (card.impactStartDate instanceof Date) {
+        return Number.isNaN(card.impactStartDate.getTime());
+      }
+
+      return Number.isNaN(
+        new Date(String(card.impactStartDate ?? "")).getTime()
+      );
+    }),
+  };
+}
+
+function resolveChartState(input: {
+  error: string | null;
+  points: ReadonlyArray<Record<string, unknown>>;
+  keys: readonly string[];
+}) {
+  if (input.error) {
+    return "error" as const;
+  }
+
+  const hasData = input.points.some((point) =>
+    input.keys.some((key) => hasMeaningfulDashboardValue(point[key]))
+  );
+
+  return hasData ? ("ready" as const) : ("empty" as const);
+}
+
+const WELCOME_DISMISSED_STORAGE_KEY = "traxium_welcome_dismissed";
+
+export function DashboardClient({
+  data,
+  readiness,
+  viewer: _viewer,
+  loadState,
+}: {
+  data: DashboardData;
+  readiness?: WorkspaceReadiness | null;
+  viewer: {
+    organizationMembershipRole: OrganizationRole;
+  };
+  loadState?: DashboardClientLoadState;
+}) {
+  const dataError = loadState?.dataError?.trim() || null;
+  const readinessError = loadState?.readinessError?.trim() || null;
+  const metrics = deriveDashboardMetrics(data.cards);
+  const debugInfo = inspectDashboardData(data.cards);
+  const annualTarget = normalizeDashboardNumber(
+    (data as DashboardData & { annualTarget?: unknown }).annualTarget
+  );
+  const annualTargetProgress =
+    annualTarget > 0 ? Math.min((metrics.achievedSavings / annualTarget) * 100, 100) : 0;
+  const recentAchievements = [...data.cards]
+    .filter((card) => {
+      if (card.phase !== "ACHIEVED") {
+        return false;
+      }
+
+      const updatedAt = (card as DashboardCardSummary & {
+        updatedAt?: Date | string | null;
+      }).updatedAt;
+
+      if (!updatedAt) {
+        return false;
+      }
+
+      const updatedAtTime = new Date(updatedAt).getTime();
+      return Number.isFinite(updatedAtTime) && Date.now() - updatedAtTime <= 24 * 60 * 60 * 1000;
+    })
+    .sort((left, right) => {
+      const leftDate = new Date(
+        ((left as DashboardCardSummary & { updatedAt?: Date | string | null }).updatedAt ?? 0) as
+          string | number | Date
+      ).getTime();
+      const rightDate = new Date(
+        ((right as DashboardCardSummary & { updatedAt?: Date | string | null }).updatedAt ?? 0) as
+          string | number | Date
+      ).getTime();
+
+      return rightDate - leftDate;
+    });
+  const showDevWarning =
+    isDevelopment() && (debugInfo.hasInvalidDates || debugInfo.hasInvalidSavings);
+  const [welcomeDismissed, setWelcomeDismissed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    try {
+      setWelcomeDismissed(
+        window.localStorage.getItem(WELCOME_DISMISSED_STORAGE_KEY) === "true"
+      );
+    } catch {
+      setWelcomeDismissed(false);
+    }
+  }, []);
+
+  const showWelcomeBanner =
+    !data.cards.length && welcomeDismissed === false;
+
+  function dismissWelcomeBanner() {
+    try {
+      window.localStorage.setItem(WELCOME_DISMISSED_STORAGE_KEY, "true");
+    } catch {
+      // Ignore storage errors and still hide the banner for this session.
+    }
+
+    setWelcomeDismissed(true);
+  }
+
+  if (dataError) {
+    return (
+      <div className="space-y-4">
+        {readinessError ? (
+          <InlineNotice
+            title="Workspace setup status is temporarily unavailable"
+            description={readinessError}
+          />
+        ) : null}
+        <StateCard
+          title="Dashboard charts are unavailable"
+          description={dataError}
+          action={
+            <Link
+              href="/dashboard"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Refresh dashboard
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (!data.cards.length) {
+    return (
+      <div className="space-y-4">
+        {showWelcomeBanner ? (
+          <WelcomeBanner onDismiss={dismissWelcomeBanner} />
+        ) : null}
+        {readinessError ? (
+          <InlineNotice
+            title="Workspace setup status is temporarily unavailable"
+            description={readinessError}
+          />
+        ) : null}
+        <StateCard
+          title="No live saving cards yet."
+          description="Create the first saving card to populate the dashboard with real portfolio data."
+          action={
+            <Link
+              href="/saving-cards/new"
+              className={buttonVariants({ size: "sm" })}
+            >
+              Create saving card
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {readinessError ? (
+        <InlineNotice
+          title="Workspace setup status is temporarily unavailable"
+          description={readinessError}
+        />
+      ) : null}
+      {showDevWarning ? (
+        <InlineNotice
+          title="Development data warning"
+          description="Some dashboard inputs were invalid and were normalized locally so the charts can still render."
+        />
+      ) : null}
+      {readiness && !readiness.isWorkspaceReady ? (
+        <InlineNotice
+          title="Workspace setup is still in progress"
+          description="The dashboard is live, but reporting will become more reliable as setup and card coverage improve."
+        />
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Pipeline Savings"
+          value={formatCurrency(metrics.pipelineSavings, "EUR")}
+          helper="Active portfolio"
+          gradient="bg-[linear-gradient(135deg,#4f46e5,#7c3aed)]"
+          icon={CircleDollarSign}
+        />
+        <MetricCard
+          label="Realised Savings"
+          value={formatCurrency(metrics.realisedSavings, "EUR")}
+          helper="Currently in delivery"
+          gradient="bg-[linear-gradient(135deg,#0ea5e9,#2563eb)]"
+          icon={TrendingUp}
+        />
+        <MetricCard
+          label="Achieved Savings"
+          value={formatCurrency(metrics.achievedSavings, "EUR")}
+          helper="Locked-in value"
+          gradient="bg-[linear-gradient(135deg,#059669,#10b981)]"
+          icon={Target}
+        />
+        <MetricCard
+          label="Savings Forecast"
+          value={formatCurrency(metrics.forecastSavings, "EUR")}
+          helper="Expected outlook"
+          gradient="bg-[linear-gradient(135deg,#d97706,#f59e0b)]"
+          icon={ArrowUpRight}
+        />
+      </div>
+
+      {annualTarget > 0 ? (
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                Yıllık Hedef İlerleme
+              </p>
+              <p className="text-sm font-semibold text-[#4f46e5]">
+                {Math.round(annualTargetProgress)}%
+              </p>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-[20px] bg-[#e0e7ff]">
+              <div
+                className="h-full rounded-[20px] bg-[linear-gradient(90deg,#4f46e5,#818cf8)]"
+                style={{ width: `${annualTargetProgress}%` }}
+              />
+            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {formatCurrency(metrics.achievedSavings, "EUR")} gerçekleşti /{" "}
+              {formatCurrency(annualTarget, "EUR")} hedef
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {recentAchievements.length ? (
+        <div className="rounded-xl border border-[#6ee7b7] bg-[linear-gradient(135deg,#ecfdf5,#d1fae5)] px-4 py-3">
+          <p className="text-sm font-semibold text-[#064e3b]">
+            {"\uD83C\uDF89"} {recentAchievements[0].title} bugün Achieved aşamasına geçti! ·{" "}
+            {recentAchievements[0].buyer.name} ·{" "}
+            {formatCurrency(recentAchievements[0].calculatedSavings, "EUR")}
+            {recentAchievements.length > 1 ? ` · +${recentAchievements.length - 1} daha` : ""}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <ChartCard
+          title="Savings by Phase"
+          description="Current portfolio value by workflow phase."
+          status={resolveChartState({
+            error: null,
+            points: metrics.byPhase,
+            keys: ["savings"],
+          })}
+          frameClassName="h-80"
+          emptyMessage="No phase savings are available yet."
+        >
+          <PhaseBarChart data={metrics.byPhase} />
+        </ChartCard>
+
+        <ChartCard
+          title="Savings by Category"
+          description="Top procurement categories by savings contribution."
+          status={resolveChartState({
+            error: null,
+            points: metrics.byCategory,
+            keys: ["savings"],
+          })}
+          frameClassName="h-80"
+          emptyMessage="No category savings are available yet."
+        >
+          <CategoryBarChart data={metrics.byCategory} />
+        </ChartCard>
+
+        <ChartCard
+          title="Savings Forecast"
+          description="Current savings and forecast by month."
+          status={resolveChartState({
+            error: null,
+            points: metrics.monthlyTrend,
+            keys: ["savings", "forecast"],
+          })}
+          frameClassName="h-80"
+          emptyMessage="No savings forecast data is available yet."
+        >
+          <ForecastAreaChart data={metrics.monthlyTrend} />
+        </ChartCard>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Saving Projects</CardTitle>
+          <CardDescription>
+            Highest-value saving cards in the current portfolio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {metrics.topProjects.map((project) => (
+            <div
+              key={`${project.title}-${project.phase}`}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {project.title}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {project.category} · {project.phase}
+                </p>
+              </div>
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {formatCurrency(project.value, "EUR")}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <Card className="relative">
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
+        aria-label="Dismiss welcome banner"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <CardHeader>
+        <CardTitle>Traxium&apos;a hoş geldiniz 👋</CardTitle>
+        <CardDescription>
+          İlk tasarruf inisiyatifinizi ekleyin, örnek veri yükleyin ya da
+          ekibinizi davet edin.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+            İlk inisiyatifi ekle
+          </Link>
+          <LoadSampleDataButton size="sm">Örnek veri yükle</LoadSampleDataButton>
+          <Link
+            href="/admin/members"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Ekibi davet et
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  helper,
+  gradient,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  gradient: string;
+  icon: ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Card className={cn("border-0 text-white shadow-[0_18px_40px_rgba(79,70,229,0.18)]", gradient)}>
+      <CardContent className="space-y-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-medium text-white/80">{label}</p>
+            <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-white">
+              {value}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/20 p-2 text-white">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+        <p className="text-[10px] text-white/80">{helper}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartCard({
+  title,
+  description,
+  status,
+  frameClassName,
+  emptyMessage,
+  children,
+}: {
+  title: string;
+  description: string;
+  status: ChartState;
+  frameClassName: string;
+  emptyMessage: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div
+          data-dashboard-chart-frame={title}
+          className={cn("h-80 w-full min-h-[20rem] min-w-0", frameClassName)}
+        >
+          {status === "loading" ? (
+            <ChartStateMessage message="Loading chart..." />
+          ) : status === "error" ? (
+            <ChartStateMessage message="This chart is unavailable right now." />
+          ) : status === "empty" ? (
+            <ChartStateMessage message={emptyMessage} />
+          ) : (
+            children
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartStateMessage({ message }: { message: string }) {
+  return (
+    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/30 px-6 text-center text-sm text-[var(--muted-foreground)]">
+      {message}
+    </div>
+  );
+}
+
+function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
+  return (
+    <div className="h-full w-full min-h-0 min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number) => [
+              formatCurrency(value, "EUR"),
+              "Savings",
+            ]}
+          />
+          <Bar dataKey="savings" fill="#4f46e5" radius={[8, 8, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
+  return (
+    <div className="h-full w-full min-h-0 min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 0, right: 8, bottom: 0, left: 12 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+          <XAxis
+            type="number"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <YAxis
+            type="category"
+            dataKey="label"
+            width={92}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number) => [
+              formatCurrency(value, "EUR"),
+              "Savings",
+            ]}
+          />
+          <Bar dataKey="savings" fill="#0F766E" radius={[0, 8, 8, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
+  return (
+    <div className="h-full w-full min-h-0 min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+          <XAxis
+            dataKey="month"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#6B7280", fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, "EUR")}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+            formatter={(value: number, name: string) => [
+              formatCurrency(value, "EUR"),
+              name === "forecast" ? "Forecast" : "Savings",
+            ]}
+          />
+          <Area
+            type="monotone"
+            dataKey="savings"
+            name="Savings"
+            stroke="#2563EB"
+            fill="#93C5FD"
+            fillOpacity={0.55}
+          />
+          <Area
+            type="monotone"
+            dataKey="forecast"
+            name="Forecast"
+            stroke="#16A34A"
+            fill="#86EFAC"
+            fillOpacity={0.35}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function StateCard({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/80">
+      <CardHeader>
+        <CardTitle className="text-amber-950">{title}</CardTitle>
+        <CardDescription className="text-amber-900">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      {action ? <CardContent className="pt-0">{action}</CardContent> : null}
+    </Card>
+  );
+}
+
+function InlineNotice({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/80">
+      <CardContent className="space-y-1 py-4">
+        <p className="text-sm font-semibold text-amber-950">{title}</p>
+        <p className="text-sm text-amber-900">{description}</p>
+      </CardContent>
+    </Card>
+  );
 }

@@ -2,17 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, FileStack, MessageSquareText, PackageSearch, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileStack, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
 import { ApprovalPanel } from "@/components/saving-cards/approval-panel";
 import { CreatableMasterDataField, type CreatableValue } from "@/components/saving-cards/creatable-master-data-field";
+import { ResultsTab } from "@/components/saving-cards/results-tab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { currencies, phaseLabels, roleLabels } from "@/lib/constants";
+import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
@@ -50,9 +53,9 @@ const tabs = [
   { id: "financials", label: "Financials", icon: CheckCircle2 },
   { id: "stakeholders", label: "Stakeholders", icon: Users },
   { id: "evidence", label: "Evidence", icon: FileStack },
+  { id: "results", label: "Results", icon: TrendingUp },
   { id: "alternative-suppliers", label: "Alternative Suppliers", icon: PackageSearch },
   { id: "alternative-materials", label: "Alternative Materials", icon: PackageSearch },
-  { id: "validation", label: "Validation", icon: ShieldCheck },
   { id: "comments", label: "Comments", icon: MessageSquareText }
 ] as const;
 
@@ -61,13 +64,15 @@ export function SavingCardDetailWorkspace({
   referenceData,
   canApprove,
   canLock,
-  currentUserId
+  currentUserId,
+  canRequestPhaseChange
 }: {
   card: SavingCardWithRelations;
   referenceData: ReferenceData;
   canApprove: boolean;
   canLock: boolean;
   currentUserId: string;
+  canRequestPhaseChange: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("overview");
@@ -76,6 +81,8 @@ export function SavingCardDetailWorkspace({
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [phaseRequestOpen, setPhaseRequestOpen] = useState(false);
+  const [phaseRequestLoading, setPhaseRequestLoading] = useState(false);
 
   const baselineEntries = [
     { label: "Baseline Supplier", value: `${card.supplier.name} · ${formatCurrency(card.baselinePrice, card.currency)}` },
@@ -102,6 +109,15 @@ export function SavingCardDetailWorkspace({
     }))
   ];
   const bestOption = [...comparisonOptions].sort((a, b) => a.price - b.price)[0];
+  const pendingPhaseRequest =
+    card.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
+  const nextPhase = getPrimaryNextPhase(card.phase);
+  const showPhaseRequestButton =
+    !pendingPhaseRequest &&
+    canRequestPhaseChange &&
+    card.phase !== "ACHIEVED" &&
+    card.phase !== "CANCELLED" &&
+    Boolean(nextPhase);
 
   async function submitAlternativeSupplier() {
     setError(null);
@@ -181,89 +197,159 @@ export function SavingCardDetailWorkspace({
     router.refresh();
   }
 
+  async function requestPhaseChange() {
+    if (!nextPhase) {
+      return;
+    }
+
+    setError(null);
+    setPhaseRequestLoading(true);
+
+    try {
+      const response = await fetch("/api/phase-change-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          savingCardId: card.id,
+          requestedPhase: nextPhase,
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setError(result?.error ?? "Unable to request a phase change.");
+        setPhaseRequestLoading(false);
+        return;
+      }
+
+      setPhaseRequestOpen(false);
+      router.refresh();
+    } catch {
+      setError("Unable to reach the workflow service. Please retry.");
+    } finally {
+      setPhaseRequestLoading(false);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Sourcing Scenario Comparison</CardTitle>
-          <CardDescription>Benchmark the baseline against evaluated supplier and material options.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
-          <div className="space-y-3">
-            {baselineEntries.map((item) => (
-              <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{item.label}</p>
-                <p className="mt-1 text-sm font-semibold">{item.value}</p>
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+              Record Workspace
+            </p>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">Business Detail</h2>
+            <p className="max-w-3xl text-sm leading-6 text-[var(--muted-foreground)]">
+              Core record information stays here. Workflow review and approval activity are separated into the right rail so they do not compete with the business detail.
+            </p>
+          </div>
+
+          <div className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+                <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                  {nextPhase ? phaseLabels[nextPhase] : "Sonraki faz yok"}
+                </span>
               </div>
-            ))}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-xs uppercase tracking-wide text-emerald-700">Best Price Option</p>
-              <p className="mt-1 text-sm font-semibold text-emerald-900">
-                {bestOption ? `${bestOption.type}: ${bestOption.label} · ${formatCurrency(bestOption.price, bestOption.currency)}` : "No alternatives yet"}
-              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {pendingPhaseRequest ? (
+                  <Badge tone="amber">Onay Bekleniyor</Badge>
+                ) : null}
+                {showPhaseRequestButton ? (
+                  <Button
+                    type="button"
+                    onClick={() => setPhaseRequestOpen((open) => !open)}
+                  >
+                    Faz Değişikliği İste
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {comparisonOptions.length ? (
-              comparisonOptions.map((option) => (
-                <div key={`${option.type}-${option.label}-${option.price}`} className="rounded-2xl border border-[var(--border)] bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold">{option.label}</p>
-                    {option.selected ? <Badge tone="emerald">Selected</Badge> : <Badge tone="slate">{option.type}</Badge>}
-                  </div>
-                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-                    {formatCurrency(option.price, option.currency)}
-                  </p>
+
+            {phaseRequestOpen && showPhaseRequestButton && nextPhase ? (
+              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {phaseLabels[card.phase]} fazından {phaseLabels[nextPhase]} fazına geçiş isteği oluşturulacak.
+                </p>
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Bu kayıt mevcut onay akışını kullanır ve onay tamamlanana kadar kart mevcut fazında kalır.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    onClick={requestPhaseChange}
+                    disabled={phaseRequestLoading}
+                  >
+                    {phaseRequestLoading ? "Gönderiliyor..." : "İsteği Gönder"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setPhaseRequestOpen(false)}
+                    disabled={phaseRequestLoading}
+                  >
+                    İptal
+                  </Button>
                 </div>
-              ))
-            ) : (
-              <div className="rounded-2xl bg-[var(--muted)] p-4 text-sm text-[var(--muted-foreground)]">
-                Add supplier or material alternatives to compare sourcing scenarios.
               </div>
-            )}
+            ) : null}
           </div>
-        </CardContent>
-      </Card>
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                activeTab === tab.id
-                  ? "border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm"
-                  : "border-[var(--border)] bg-white text-[var(--foreground)] hover:border-blue-200 hover:bg-blue-50"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    activeTab === tab.id
+                      ? "border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm"
+                      : "border-[var(--border)] bg-white text-[var(--foreground)] hover:border-blue-200 hover:bg-blue-50"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {activeTab === "overview" ? (
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Overview</CardTitle>
-              <CardDescription>Core commercial and sourcing case context.</CardDescription>
+              <CardTitle>Core Record</CardTitle>
+              <CardDescription>Main sourcing context, business ownership, and core operating data.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <Metric label="Baseline Supplier" value={card.supplier.name} />
-              <Metric label="Baseline Material" value={card.material.name} />
-              <Metric label="Alternative Supplier" value={card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified"} />
-              <Metric label="Alternative Material" value={card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "Not specified"} />
-              <Metric label="Phase" value={phaseLabels[card.phase]} />
-              <Metric label="Saving Type" value={card.savingType} />
-              <Metric label="Business Unit" value={card.businessUnit.name} />
-              <Metric label="Plant" value={card.plant.name} />
+            <CardContent className="space-y-6">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 text-sm leading-6 text-[var(--foreground)]">
+                {card.description}
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <DetailSection title="Sourcing Basis">
+                  <Metric label="Baseline Supplier" value={card.supplier.name} />
+                  <Metric label="Baseline Material" value={card.material.name} />
+                  <Metric label="Alternative Supplier" value={card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified"} />
+                  <Metric label="Alternative Material" value={card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "Not specified"} />
+                </DetailSection>
+
+                <DetailSection title="Business Context">
+                  <Metric label="Phase" value={phaseLabels[card.phase]} />
+                  <Metric label="Saving Type" value={card.savingType} />
+                  <Metric label="Business Unit" value={card.businessUnit.name} />
+                  <Metric label="Plant" value={card.plant.name} />
+                </DetailSection>
+              </div>
             </CardContent>
           </Card>
 
@@ -276,6 +362,9 @@ export function SavingCardDetailWorkspace({
               <Metric label="Saving Driver" value={card.savingDriver ?? "Not set"} />
               <Metric label="Implementation Complexity" value={card.implementationComplexity ?? "Not set"} />
               <Metric label="Qualification Status" value={card.qualificationStatus ?? "Not set"} />
+              <Metric label="Buyer" value={card.buyer.name} />
+              <Metric label="Category" value={card.category.name} />
+              <Metric label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
             </CardContent>
           </Card>
         </div>
@@ -285,27 +374,79 @@ export function SavingCardDetailWorkspace({
         <Card>
           <CardHeader>
             <CardTitle>Financials</CardTitle>
-            <CardDescription>Calculation inputs and baseline-versus-alternative scenario context on the card.</CardDescription>
+            <CardDescription>Commercial inputs first, then scenario comparison and evaluated alternatives.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
-            <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
-            <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-            <Metric label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
-            <Metric
-              label="Alternative Scenario"
-              value={
-                card.alternativeSupplier?.name ??
-                card.alternativeSupplierManualName ??
-                card.alternativeMaterial?.name ??
-                card.alternativeMaterialManualName ??
-                "No alternative selected"
-              }
-            />
-            <Metric
-              label="Scenario Comparison"
-              value={`Baseline ${formatCurrency(card.baselinePrice, card.currency)} vs New ${formatCurrency(card.newPrice, card.currency)}`}
-            />
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
+              <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
+              <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
+              <Metric label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
+              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(card.calculatedSavingsUSD), "USD")} />
+              <Metric label="FX Rate" value={card.fxRate.toString()} />
+              <Metric
+                label="Alternative Scenario"
+                value={
+                  card.alternativeSupplier?.name ??
+                  card.alternativeSupplierManualName ??
+                  card.alternativeMaterial?.name ??
+                  card.alternativeMaterialManualName ??
+                  "No alternative selected"
+                }
+              />
+              <Metric
+                label="Scenario Comparison"
+                value={`Baseline ${formatCurrency(card.baselinePrice, card.currency)} vs New ${formatCurrency(card.newPrice, card.currency)}`}
+              />
+            </div>
+
+            <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-[var(--muted)]/18 p-5">
+              <div>
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+                  Sourcing Scenario Comparison
+                </p>
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Compare the baseline against evaluated supplier and material options.
+                </p>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
+                <div className="space-y-3">
+                  {baselineEntries.map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                      <p className="text-xs text-[var(--muted-foreground)]">{item.label}</p>
+                      <p className="mt-1 text-sm font-semibold">{item.value}</p>
+                    </div>
+                  ))}
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-xs text-emerald-700">Best Price Option</p>
+                    <p className="mt-1 text-sm font-semibold text-emerald-900">
+                      {bestOption ? `${bestOption.type}: ${bestOption.label} · ${formatCurrency(bestOption.price, bestOption.currency)}` : "No alternatives yet"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {comparisonOptions.length ? (
+                    comparisonOptions.map((option) => (
+                      <div key={`${option.type}-${option.label}-${option.price}`} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold">{option.label}</p>
+                          {option.selected ? <Badge tone="emerald">Selected</Badge> : <Badge tone="slate">{option.type}</Badge>}
+                        </div>
+                        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                          {formatCurrency(option.price, option.currency)}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 p-4 text-sm text-[var(--muted-foreground)]">
+                      Add supplier or material alternatives to compare sourcing scenarios.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -328,24 +469,58 @@ export function SavingCardDetailWorkspace({
         </Card>
       ) : null}
 
-      {activeTab === "evidence" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Evidence</CardTitle>
-            <CardDescription>Files supporting sourcing negotiations and finance validation.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {card.evidence.map((item) => (
-              <div key={item.id} className="rounded-2xl bg-[var(--muted)] p-4">
-                <p className="font-semibold">{item.fileName}</p>
-                <p className="text-xs text-[var(--muted-foreground)]">{item.fileType}</p>
-                <a href={item.fileUrl} className="text-sm text-[var(--primary)] underline">
-                  Open file
-                </a>
+{activeTab === "evidence" ? (
+  <Card className="rounded-3xl border border-[var(--border)] shadow-sm">
+    <CardHeader>
+      <CardTitle>Evidence</CardTitle>
+      <CardDescription>
+        Files supporting sourcing negotiations and finance validation.
+      </CardDescription>
+    </CardHeader>
+
+    <CardContent className="space-y-3">
+      {card.evidence.length ? (
+        card.evidence.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3"
+          >
+            <div>
+              <div className="text-sm font-medium">{item.fileName}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">
+                {item.fileType}
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            </div>
+
+            <a
+              href={`/api/evidence/${item.id}/download`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+            >
+              Open file
+            </a>
+          </div>
+        ))
+      ) : (
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/60 px-4 py-6 text-sm text-[var(--muted-foreground)]">
+          No evidence uploaded yet.
+        </div>
+      )}
+    </CardContent>
+  </Card>
+) : null}
+
+      {activeTab === "results" ? (
+        <ResultsTab
+          savingCardId={card.id}
+          materialName={card.material.name}
+          baselinePrice={card.baselinePrice}
+          newPrice={card.newPrice}
+          annualVolume={card.annualVolume}
+          volumeUnit={card.volumeUnit}
+          currency={card.currency}
+        />
       ) : null}
 
       {activeTab === "alternative-suppliers" ? (
@@ -628,46 +803,6 @@ export function SavingCardDetailWorkspace({
         </div>
       ) : null}
 
-      {activeTab === "validation" ? (
-        <div className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
-          <ApprovalPanel card={card} canApprove={canApprove} canLock={canLock} currentUserId={currentUserId} />
-          <Card>
-            <CardHeader>
-              <CardTitle>Validation History</CardTitle>
-              <CardDescription>Approvals and phase progression for finance and procurement governance.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {card.phaseChangeRequests.map((request) => (
-                <div key={request.id} className="rounded-2xl border bg-white p-4">
-                  <p className="font-semibold">
-                    {phaseLabels[request.currentPhase]} to {phaseLabels[request.requestedPhase]} · {request.approvalStatus.toLowerCase()}
-                  </p>
-                  <p className="text-sm text-[var(--muted-foreground)]">
-                    Requested by {request.requestedBy.name} on {formatDate(request.createdAt)}
-                  </p>
-                </div>
-              ))}
-              {card.approvals.map((approval) => (
-                <div key={approval.id} className="rounded-2xl bg-[var(--muted)] p-4">
-                  <p className="font-semibold">
-                    {phaseLabels[approval.phase]} · {approval.approver.name}
-                  </p>
-                  <p className="text-sm text-[var(--muted-foreground)]">{approval.comment ?? "No comment"}</p>
-                </div>
-              ))}
-              {card.phaseHistory.map((item) => (
-                <div key={item.id} className="rounded-2xl border bg-white p-4">
-                  <p className="font-semibold">
-                    {item.fromPhase ? phaseLabels[item.fromPhase] : "Created"} to {phaseLabels[item.toPhase]}
-                  </p>
-                  <p className="text-sm text-[var(--muted-foreground)]">{formatDate(item.createdAt)}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-
       {activeTab === "comments" ? (
         <Card>
           <CardHeader>
@@ -683,11 +818,20 @@ export function SavingCardDetailWorkspace({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--muted-foreground)]">No comments recorded for this saving card yet.</p>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Henüz yorum yok. Finans ekibi veya onaylayıcılarla notlarınızı burada paylaşabilirsiniz.
+              </p>
             )}
           </CardContent>
         </Card>
       ) : null}
+
+      </div>
+
+      <div className="space-y-6 self-start xl:sticky xl:top-6">
+        <ApprovalPanel card={card} canApprove={canApprove} canLock={canLock} currentUserId={currentUserId} />
+        <WorkflowActivityPanel card={card} />
+      </div>
     </div>
   );
 }
@@ -703,9 +847,126 @@ function Field({ label, children, className }: { label: string; children: React.
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-[var(--muted)] p-4">
-      <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/28 p-4">
+      <p className="text-xs text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
+      <div className="grid gap-4">{children}</div>
+    </div>
+  );
+}
+
+function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
+  const allowedTransitions = getAllowedPhaseTransitions(currentPhase);
+
+  return (
+    allowedTransitions.find((phase) => phase !== "CANCELLED") ??
+    allowedTransitions[0] ??
+    null
+  );
+}
+
+function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Workflow Activity</CardTitle>
+        <CardDescription>Phase requests, approvals, and phase progression are separated from the main business record.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <Metric label="Phase Requests" value={String(card.phaseChangeRequests.length)} />
+          <Metric label="Approval Log" value={String(card.approvals.length)} />
+          <Metric label="Phase Events" value={String(card.phaseHistory.length)} />
+        </div>
+
+        <WorkflowSection title="Phase-change Requests">
+          {card.phaseChangeRequests.length ? (
+            card.phaseChangeRequests.map((request) => (
+              <WorkflowEventCard
+                key={request.id}
+                title={`${phaseLabels[request.currentPhase]} to ${phaseLabels[request.requestedPhase]}`}
+                subtitle={`Requested by ${request.requestedBy.name} on ${formatDate(request.createdAt)}`}
+                detail={request.comment ?? "No request comment provided."}
+              />
+            ))
+          ) : (
+            <EmptyWorkflowState message="No phase-change requests recorded for this card yet." />
+          )}
+        </WorkflowSection>
+
+        <WorkflowSection title="Approval Log">
+          {card.approvals.length ? (
+            card.approvals.map((approval) => (
+              <WorkflowEventCard
+                key={approval.id}
+                title={`${phaseLabels[approval.phase]} · ${approval.approver.name}`}
+                subtitle={approval.status.toLowerCase()}
+                detail={approval.comment ?? "No comment"}
+              />
+            ))
+          ) : (
+            <EmptyWorkflowState message="No approval decisions have been recorded yet." />
+          )}
+        </WorkflowSection>
+
+        <WorkflowSection title="Phase History">
+          {card.phaseHistory.length ? (
+            card.phaseHistory.map((item) => (
+              <WorkflowEventCard
+                key={item.id}
+                title={`${item.fromPhase ? phaseLabels[item.fromPhase] : "Created"} to ${phaseLabels[item.toPhase]}`}
+                subtitle={formatDate(item.createdAt)}
+                detail={item.changedById ? "Recorded by an assigned workflow participant" : "Recorded by system workflow"}
+              />
+            ))
+          ) : (
+            <EmptyWorkflowState message="No phase history is available yet." />
+          )}
+        </WorkflowSection>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkflowSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function WorkflowEventCard({
+  title,
+  subtitle,
+  detail,
+}: {
+  title: string;
+  subtitle: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+      <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+      <p className="mt-1 text-xs text-[var(--muted-foreground)]">{subtitle}</p>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
+    </div>
+  );
+}
+
+function EmptyWorkflowState({ message }: { message: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/20 p-4 text-sm text-[var(--muted-foreground)]">
+      {message}
     </div>
   );
 }

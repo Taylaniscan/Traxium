@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -13,6 +14,18 @@ enum Role {
   TACTICAL_BUYER
   PROCUREMENT_ANALYST
   FINANCIAL_CONTROLLER
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
 }
 
 enum Phase {
@@ -40,77 +53,268 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum ForecastSource {
+  MANUAL_ENTRY
+  ERP_CSV_UPLOAD
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+enum PriceType {
+  LICENSED
+  METERED
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+}
+
+enum UsageFeature {
+  SAVING_CARDS
+  ACTIVE_MEMBERS
+  INVITATIONS_SENT
+  EVIDENCE_UPLOADS
+  API_REQUESTS
+  JOB_EXECUTIONS
+}
+
+enum UsageWindow {
+  LIFETIME
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  slug            String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users           User[]
+  memberships     OrganizationMembership[]
+  invitations     Invitation[]
+  buyers          Buyer[]
+  suppliers       Supplier[]
+  materials       Material[]
+  categories      Category[]
+  plants          Plant[]
+  businessUnits   BusinessUnit[]
+  savingCards     SavingCard[]
+  annualTargets   AnnualTarget[]
+  usageEvents     UsageEvent[]
+  usageCounters   UsageCounter[]
+  quotaSnapshots  QuotaSnapshot[]
+  jobs            Job[]
+  billingCustomer BillingCustomer?
+  subscriptions   Subscription[]
+  webhookEvents   WebhookEvent[]
+  auditLogs       AuditLog[]
+}
+
 model User {
-  id                  String                   @id @default(cuid())
-  name                String
-  email               String                   @unique
-  role                Role
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  ownedCards          SavingCard[]             @relation("BuyerCards")
-  stakeholderCards    SavingCardStakeholder[]
-  approvals           Approval[]
-  comments            SavingCardComment[]
-  notifications       Notification[]
-  auditLogs           AuditLog[]
-  requestedPhaseChanges PhaseChangeRequest[]   @relation("RequestedPhaseChanges")
-  approvalRequests    PhaseChangeRequestApproval[]
+  id                   String   @id @default(cuid())
+  organizationId       String
+  activeOrganizationId String?
+  name                 String
+  email                String
+  role                 Role
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization          Organization                  @relation(fields: [organizationId], references: [id])
+  memberships           OrganizationMembership[]
+  sentInvitations       Invitation[]                  @relation("InvitationInvitedBy")
+  stakeholderCards      SavingCardStakeholder[]
+  approvals             Approval[]
+  comments              SavingCardComment[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  requestedPhaseChanges PhaseChangeRequest[]          @relation("RequestedPhaseChanges")
+  approvalRequests      PhaseChangeRequestApproval[]
+  uploadedEvidence      SavingCardEvidence[]          @relation("UploadedEvidence")
+  phaseHistoryEntries   PhaseHistory[]                @relation("PhaseHistoryChangedBy")
+  createdForecasts      MaterialConsumptionForecast[] @relation("MaterialConsumptionForecastCreatedBy")
+  confirmedActuals      MaterialConsumptionActual[]   @relation("MaterialConsumptionActualConfirmedBy")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([activeOrganizationId])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrganizationRole @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, status])
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  email           String
+  role            OrganizationRole @default(MEMBER)
+  token           String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  invitedByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, email])
+  @@index([organizationId, status])
+  @@index([invitedByUserId])
+}
+
+model Buyer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  email          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  savingCards   SavingCard[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Supplier {
-  id                            String                           @id @default(cuid())
-  name                          String                           @unique
-  createdAt                     DateTime                         @default(now())
-  updatedAt                     DateTime                         @updatedAt
-  savingCards                   SavingCard[]                     @relation("BaselineSupplier")
-  alternativeScenarioCards      SavingCard[]                     @relation("AlternativeScenarioSupplier")
-  alternativeSuppliers          SavingCardAlternativeSupplier[]
-  alternativeMaterials          SavingCardAlternativeMaterial[]
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization             Organization                    @relation(fields: [organizationId], references: [id])
+  savingCards              SavingCard[]                    @relation("BaselineSupplier")
+  alternativeScenarioCards SavingCard[]                    @relation("AlternativeScenarioSupplier")
+  alternativeSuppliers     SavingCardAlternativeSupplier[]
+  alternativeMaterials     SavingCardAlternativeMaterial[]
+  forecasts                MaterialConsumptionForecast[]
+  actuals                  MaterialConsumptionActual[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Material {
-  id                            String                           @id @default(cuid())
-  name                          String                           @unique
-  createdAt                     DateTime                         @default(now())
-  updatedAt                     DateTime                         @updatedAt
-  savingCards                   SavingCard[]                     @relation("BaselineMaterial")
-  alternativeScenarioCards      SavingCard[]                     @relation("AlternativeScenarioMaterial")
-  alternativeMaterials          SavingCardAlternativeMaterial[]
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization             Organization                    @relation(fields: [organizationId], references: [id])
+  savingCards              SavingCard[]                    @relation("BaselineMaterial")
+  alternativeScenarioCards SavingCard[]                    @relation("AlternativeScenarioMaterial")
+  alternativeMaterials     SavingCardAlternativeMaterial[]
+  forecasts                MaterialConsumptionForecast[]
+  actuals                  MaterialConsumptionActual[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Category {
-  id            String         @id @default(cuid())
-  name          String         @unique
-  annualTarget  Float          @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  annualTarget   Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
   savingCards   SavingCard[]
   annualTargets AnnualTarget[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Plant {
-  id          String       @id @default(cuid())
-  name        String       @unique
-  region      String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  savingCards SavingCard[]
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  region         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  savingCards  SavingCard[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model BusinessUnit {
-  id          String       @id @default(cuid())
-  name        String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  savingCards SavingCard[]
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  savingCards  SavingCard[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model SavingCard {
-  id                            String                   @id @default(cuid())
+  id                            String    @id @default(cuid())
+  organizationId                String
   title                         String
   description                   String
   savingType                    String
-  phase                         Phase                    @default(IDEA)
+  phase                         Phase     @default(IDEA)
   supplierId                    String
   materialId                    String
   alternativeSupplierId         String?
@@ -124,66 +328,126 @@ model SavingCard {
   baselinePrice                 Float
   newPrice                      Float
   annualVolume                  Float
+  volumeUnit                    String    @default("units")
   currency                      Currency
   fxRate                        Float
   calculatedSavings             Float
-  calculatedSavingsUSD Float
-  frequency                   Frequency
-  savingDriver                String?
-  implementationComplexity    String?
-  qualificationStatus         String?
-  startDate                   DateTime
-  endDate                     DateTime
-  impactStartDate             DateTime
-  impactEndDate               DateTime
-  financeLocked               Boolean                  @default(false)
-  cancellationReason          String?
-  createdAt                   DateTime                 @default(now())
-  updatedAt                   DateTime                 @updatedAt
-  supplier                    Supplier                 @relation("BaselineSupplier", fields: [supplierId], references: [id])
-  material                    Material                 @relation("BaselineMaterial", fields: [materialId], references: [id])
-  alternativeSupplier         Supplier?                @relation("AlternativeScenarioSupplier", fields: [alternativeSupplierId], references: [id])
-  alternativeMaterial         Material?                @relation("AlternativeScenarioMaterial", fields: [alternativeMaterialId], references: [id])
-  category                    Category                 @relation(fields: [categoryId], references: [id])
-  plant                       Plant                    @relation(fields: [plantId], references: [id])
-  businessUnit                BusinessUnit             @relation(fields: [businessUnitId], references: [id])
-  buyer                       User                     @relation("BuyerCards", fields: [buyerId], references: [id])
-  stakeholders                SavingCardStakeholder[]
-  evidence                    SavingCardEvidence[]
+  calculatedSavingsUSD          Float
+  frequency                     Frequency
+  savingDriver                  String?
+  implementationComplexity      String?
+  qualificationStatus           String?
+  startDate                     DateTime
+  endDate                       DateTime
+  impactStartDate               DateTime
+  impactEndDate                 DateTime
+  financeLocked                 Boolean   @default(false)
+  cancellationReason            String?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  supplier            Supplier     @relation("BaselineSupplier", fields: [supplierId], references: [id])
+  material            Material     @relation("BaselineMaterial", fields: [materialId], references: [id])
+  alternativeSupplier Supplier?    @relation("AlternativeScenarioSupplier", fields: [alternativeSupplierId], references: [id])
+  alternativeMaterial Material?    @relation("AlternativeScenarioMaterial", fields: [alternativeMaterialId], references: [id])
+  category            Category     @relation(fields: [categoryId], references: [id])
+  plant               Plant        @relation(fields: [plantId], references: [id])
+  businessUnit        BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  buyer               Buyer        @relation(fields: [buyerId], references: [id])
+
+  forecasts            MaterialConsumptionForecast[]
+  actuals              MaterialConsumptionActual[]
+  stakeholders         SavingCardStakeholder[]
+  evidence             SavingCardEvidence[]
   alternativeSuppliers SavingCardAlternativeSupplier[]
   alternativeMaterials SavingCardAlternativeMaterial[]
-  comments                    SavingCardComment[]
-  approvals                   Approval[]
-  phaseChangeRequests         PhaseChangeRequest[]
-  phaseHistory                PhaseHistory[]
-  auditLogs                   AuditLog[]
+  comments             SavingCardComment[]
+  approvals            Approval[]
+  phaseChangeRequests  PhaseChangeRequest[]
+  phaseHistory         PhaseHistory[]
+  auditLogs            AuditLog[]
+
+  @@index([organizationId])
+  @@index([organizationId, phase])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, buyerId])
+}
+
+model MaterialConsumptionForecast {
+  id           String         @id @default(cuid())
+  savingCardId String
+  materialId   String
+  supplierId   String?
+  period       DateTime
+  forecastQty  Float
+  unit         String         @default("units")
+  source       ForecastSource @default(MANUAL_ENTRY)
+  notes        String?
+  createdById  String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material   Material   @relation(fields: [materialId], references: [id])
+  supplier   Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy  User       @relation("MaterialConsumptionForecastCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([savingCardId, materialId, period])
+  @@index([savingCardId, period])
+}
+
+model MaterialConsumptionActual {
+  id            String         @id @default(cuid())
+  savingCardId  String
+  materialId    String
+  supplierId    String?
+  period        DateTime
+  actualQty     Float
+  unit          String         @default("units")
+  source        ForecastSource @default(MANUAL_ENTRY)
+  invoiceRef    String?
+  confirmedById String
+  createdAt     DateTime       @default(now())
+
+  savingCard  SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material    Material   @relation(fields: [materialId], references: [id])
+  supplier    Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  confirmedBy User       @relation("MaterialConsumptionActualConfirmedBy", fields: [confirmedById], references: [id])
+
+  @@unique([savingCardId, materialId, period])
+  @@index([savingCardId, period])
 }
 
 model SavingCardStakeholder {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   savingCardId String
   userId       String
-  createdAt    DateTime   @default(now())
-  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  user         User       @relation(fields: [userId], references: [id])
+  createdAt    DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
 
   @@unique([savingCardId, userId])
 }
 
 model SavingCardEvidence {
-  id           String     @id @default(cuid())
-  savingCardId String
-  fileName     String
-  fileUrl      String
-  fileSize     Int
-  fileType     String
-  uploadedById String?
-  uploadedAt   DateTime   @default(now())
-  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  savingCardId  String
+  fileName      String
+  storageBucket String
+  storagePath   String
+  fileSize      Int
+  fileType      String
+  uploadedById  String?
+  uploadedAt    DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  uploadedBy User?      @relation("UploadedEvidence", fields: [uploadedById], references: [id])
 }
 
 model SavingCardAlternativeSupplier {
-  id                 String     @id @default(cuid())
+  id                 String   @id @default(cuid())
   savingCardId       String
   supplierId         String?
   supplierNameManual String?
@@ -196,14 +460,15 @@ model SavingCardAlternativeSupplier {
   qualityRating      String
   riskLevel          String
   notes              String?
-  isSelected         Boolean    @default(false)
-  createdAt          DateTime   @default(now())
-  savingCard         SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  supplier           Supplier?  @relation(fields: [supplierId], references: [id])
+  isSelected         Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  supplier   Supplier?  @relation(fields: [supplierId], references: [id])
 }
 
 model SavingCardAlternativeMaterial {
-  id                  String     @id @default(cuid())
+  id                  String   @id @default(cuid())
   savingCardId        String
   materialId          String?
   materialNameManual  String?
@@ -216,111 +481,351 @@ model SavingCardAlternativeMaterial {
   qualificationStatus String
   riskLevel           String
   notes               String?
-  isSelected          Boolean    @default(false)
-  createdAt           DateTime   @default(now())
-  savingCard          SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  material            Material?  @relation(fields: [materialId], references: [id])
-  supplier            Supplier?  @relation(fields: [supplierId], references: [id])
+  isSelected          Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  material   Material?  @relation(fields: [materialId], references: [id])
+  supplier   Supplier?  @relation(fields: [supplierId], references: [id])
 }
 
 model SavingCardComment {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   savingCardId String
   authorId     String
   body         String
-  createdAt    DateTime   @default(now())
-  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  author       User       @relation(fields: [authorId], references: [id])
+  createdAt    DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorId], references: [id])
 }
 
 model Approval {
-  id           String     @id @default(cuid())
+  id           String         @id @default(cuid())
   savingCardId String
   approverId   String
   phase        Phase
   approved     Boolean
   status       ApprovalStatus @default(APPROVED)
   comment      String?
-  createdAt    DateTime   @default(now())
-  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  approver     User       @relation(fields: [approverId], references: [id])
+  createdAt    DateTime       @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  approver   User       @relation(fields: [approverId], references: [id])
 }
 
 model PhaseChangeRequest {
-  id                 String                     @id @default(cuid())
+  id                 String         @id @default(cuid())
   savingCardId       String
   currentPhase       Phase
   requestedPhase     Phase
   requestedById      String
-  approvalStatus     ApprovalStatus            @default(PENDING)
+  approvalStatus     ApprovalStatus @default(PENDING)
   comment            String?
   cancellationReason String?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  savingCard         SavingCard                @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  requestedBy        User                      @relation("RequestedPhaseChanges", fields: [requestedById], references: [id])
-  approvals          PhaseChangeRequestApproval[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  savingCard  SavingCard                   @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  requestedBy User                         @relation("RequestedPhaseChanges", fields: [requestedById], references: [id])
+  approvals   PhaseChangeRequestApproval[]
 }
 
 model PhaseChangeRequestApproval {
-  id                   String            @id @default(cuid())
+  id                   String         @id @default(cuid())
   phaseChangeRequestId String
   approverId           String
   role                 Role
-  status               ApprovalStatus    @default(PENDING)
+  status               ApprovalStatus @default(PENDING)
   comment              String?
   decidedAt            DateTime?
-  createdAt            DateTime          @default(now())
-  phaseChangeRequest   PhaseChangeRequest @relation(fields: [phaseChangeRequestId], references: [id], onDelete: Cascade)
-  approver             User              @relation(fields: [approverId], references: [id])
+  createdAt            DateTime       @default(now())
+
+  phaseChangeRequest PhaseChangeRequest @relation(fields: [phaseChangeRequestId], references: [id], onDelete: Cascade)
+  approver           User               @relation(fields: [approverId], references: [id])
 
   @@unique([phaseChangeRequestId, approverId])
 }
 
 model PhaseHistory {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   savingCardId String
   fromPhase    Phase?
   toPhase      Phase
   changedById  String?
-  createdAt    DateTime   @default(now())
-  savingCard   SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  changedBy  User?      @relation("PhaseHistoryChangedBy", fields: [changedById], references: [id])
 }
 
 model Notification {
-  id         String   @id @default(cuid())
-  userId     String
-  title      String
-  message    String
-  readAt     DateTime?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
-  id           String     @id @default(cuid())
-  userId       String?
-  savingCardId String?
-  action       String
-  detail       String
-  createdAt    DateTime   @default(now())
-  user         User?      @relation(fields: [userId], references: [id])
-  savingCard   SavingCard? @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  savingCardId   String?
+  actorUserId    String?
+  targetUserId   String?
+  targetEntityId String?
+  eventType      String?
+  action         String
+  detail         String
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id])
+  savingCard   SavingCard?   @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, eventType, createdAt])
+  @@index([organizationId, actorUserId])
+  @@index([organizationId, targetUserId])
+  @@index([organizationId, targetEntityId])
 }
 
 model FxRate {
-  id         String    @id @default(cuid())
-  currency   Currency
-  rateToEUR  Float
-  validFrom  DateTime
-  createdAt  DateTime  @default(now())
+  id        String   @id @default(cuid())
+  currency  Currency
+  rateToEUR Float
+  validFrom DateTime
+  createdAt DateTime @default(now())
 }
 
 model AnnualTarget {
-  id          String    @id @default(cuid())
-  year        Int
-  targetValue Float
-  categoryId  String?
-  createdAt   DateTime  @default(now())
-  category    Category? @relation(fields: [categoryId], references: [id])
+  id             String   @id @default(cuid())
+  organizationId String
+  year           Int
+  targetValue    Float
+  categoryId     String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  category     Category?    @relation(fields: [categoryId], references: [id])
+
+  @@index([organizationId])
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  type           String
+  idempotencyKey String?
+  organizationId String?
+  payload        Json
+  status         JobStatus @default(QUEUED)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  scheduledAt    DateTime  @default(now())
+  reservedAt     DateTime?
+  processedAt    DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([type, idempotencyKey])
+  @@index([status, scheduledAt, createdAt])
+  @@index([organizationId, status, scheduledAt])
+  @@index([reservedAt])
+}
+
+model ProductPlan {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  stripeProductId String?  @unique
+  isActive        Boolean  @default(true)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  planPrices    PlanPrice[]
+  subscriptions Subscription[]
+
+  @@index([isActive, code])
+}
+
+model PlanPrice {
+  id            String          @id @default(cuid())
+  productPlanId String
+  stripePriceId String?         @unique
+  type          PriceType
+  interval      BillingInterval
+  intervalCount Int             @default(1)
+  currencyCode  String
+  unitAmount    Int
+  usageFeature  UsageFeature?
+  isActive      Boolean         @default(true)
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  productPlan   ProductPlan    @relation(fields: [productPlanId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@index([productPlanId])
+  @@index([productPlanId, isActive])
+  @@index([type, interval, currencyCode])
+  @@index([usageFeature])
+}
+
+model BillingCustomer {
+  id               String   @id @default(cuid())
+  organizationId   String   @unique
+  stripeCustomerId String   @unique
+  email            String?
+  name             String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  billingCustomerId  String
+  productPlanId      String?
+  planPriceId        String?
+  stripeSubscriptionId String          @unique
+  status             SubscriptionStatus
+  currencyCode       String?
+  quantity           Int                @default(1)
+  cancelAtPeriodEnd  Boolean            @default(false)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  canceledAt         DateTime?
+  endedAt            DateTime?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id], onDelete: Cascade)
+  productPlan    ProductPlan?   @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
+  planPrice      PlanPrice?     @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([billingCustomerId, status])
+  @@index([productPlanId])
+  @@index([planPriceId])
+}
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  stripeEventId   String   @unique
+  source          String   @default("stripe")
+  eventType       String
+  apiVersion      String?
+  livemode        Boolean
+  payload         Json
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  processingError String?
+  updatedAt       DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, receivedAt])
+  @@index([source, eventType, receivedAt])
+  @@index([processedAt])
+}
+
+model UsageEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  quantity       Int
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  source         String
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, feature, createdAt])
+  @@index([organizationId, feature, window, periodStart, periodEnd])
+}
+
+model UsageCounter {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  quantity       Int          @default(0)
+  source         String
+  reason         String?
+  metadata       Json?
+  lastEventAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, feature, window, periodStart, periodEnd])
+  @@index([organizationId, feature, window, periodStart])
+  @@index([organizationId, updatedAt])
+}
+
+model QuotaSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  feature        UsageFeature
+  window         UsageWindow
+  periodStart    DateTime
+  periodEnd      DateTime
+  limitQuantity  Int?
+  source         String       @default("manual")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, feature, window, periodStart, periodEnd])
+  @@index([organizationId, feature, window, periodStart])
+  @@index([organizationId, updatedAt])
+}
+
+model RateLimitBucket {
+  bucketKey       String   @id
+  policy          String
+  action          String?
+  scope           String
+  hits            Int
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@index([policy, expiresAt])
+  @@index([policy, action, expiresAt])
+  @@index([scope, expiresAt])
 }

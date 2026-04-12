@@ -1,22 +1,60 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { z } from "zod";
+import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getCommandCenterData } from "@/lib/data";
+import type { CommandCenterData, CommandCenterFilters } from "@/lib/types";
+import { commandCenterFilterKeys } from "@/lib/types";
+
+const commandCenterFilterSchema: z.ZodType<CommandCenterFilters> = z.object({
+  categoryId: z.string().trim().min(1).optional(),
+  businessUnitId: z.string().trim().min(1).optional(),
+  buyerId: z.string().trim().min(1).optional(),
+  plantId: z.string().trim().min(1).optional(),
+  supplierId: z.string().trim().min(1).optional(),
+});
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+function normalizeFilterValue(value: string | null) {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
 
 export async function GET(request: Request) {
   try {
-    await requireUser();
+    const user = await requireUser({ redirectTo: null });
     const { searchParams } = new URL(request.url);
-    const data = await getCommandCenterData({
-      categoryId: searchParams.get("categoryId") || undefined,
-      businessUnitId: searchParams.get("businessUnitId") || undefined,
-      buyerId: searchParams.get("buyerId") || undefined,
-      plantId: searchParams.get("plantId") || undefined,
-      supplierId: searchParams.get("supplierId") || undefined
-    });
+    const duplicateKey = commandCenterFilterKeys.find((key) => searchParams.getAll(key).length > 1);
 
-    return NextResponse.json(data);
+    if (duplicateKey) {
+      return jsonError(`Query parameter "${duplicateKey}" must only be provided once.`, 400);
+    }
+
+    const rawFilters = Object.fromEntries(
+      commandCenterFilterKeys.map((key) => [key, normalizeFilterValue(searchParams.get(key))])
+    );
+
+    const filters = commandCenterFilterSchema.safeParse(rawFilters);
+
+    if (!filters.success) {
+      return jsonError(filters.error.issues[0]?.message ?? "Command center filters are invalid.", 422);
+    }
+
+    const data = await getCommandCenterData(user.organizationId, filters.data);
+
+    return NextResponse.json<CommandCenterData>(data);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load command center." }, { status: 500 });
+    const authResponse = createAuthGuardErrorResponse(error);
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    return jsonError(
+      error instanceof Error ? error.message : "Unable to load command center.",
+      500
+    );
   }
 }
-

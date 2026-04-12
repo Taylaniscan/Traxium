@@ -1,293 +1,102 @@
-# Codex Build Task
+# Codex Task Guardrails
 Project: Procurement Savings Tracker
 
-You are a senior full-stack engineer.
+This file is the contributor-facing guidance for future Codex runs. It is not an MVP build brief anymore. Use it to preserve the repaired workflow, Kanban, dashboard, and release-safety contract.
 
-Your task is to build a working MVP of the Procurement Savings Tracker application.
+## Canonical Workflow Contract
 
-## Tech Stack
-- Next.js 15
-- TypeScript
-- TailwindCSS
-- shadcn/ui
-- PostgreSQL
-- Prisma ORM
-- Recharts
-- dnd-kit
-- Excel import/export (xlsx)
+Saving cards follow one canonical lifecycle:
 
-## Core Feature
-The system tracks procurement savings initiatives through lifecycle phases.
+- New cards must start in `Idea`.
+- Allowed non-cancelled progression is `Idea -> Validated -> Realised -> Achieved`.
+- Any non-cancelled phase may move to `Cancelled` only with a cancellation reason.
+- No skipping is allowed between non-cancelled phases.
 
-Phases:
-Idea → Validated → Realised → Achieved → Cancelled
+Target-phase approval requirements:
 
-Each savings initiative is a "Saving Card".
+- `Idea`: initial phase for new cards rather than a normal requested destination
+- `Validated`: `Head of Global Procurement` and `Financial Controller`
+- `Realised`: `Financial Controller`
+- `Achieved`: `Financial Controller`
+- `Cancelled`: requires a reason and follows the implemented phase-change approval path
 
----
+Finance lock:
 
-## Core Screens
+- Finance lock is only allowed for `Validated` savings.
+- Locked fields remain:
+  - baseline price
+  - new price
+  - annual volume
+  - currency
+  - impact dates
 
-Login
+## Canonical Source Of Truth
 
-Dashboard
+When changing workflow behavior, the source of truth is:
 
-Saving Cards List
+- `lib/workflow.ts`: workflow rules and policy
+- `lib/workflow/service.ts`: phase-change request and approval execution
 
-Saving Card Detail
+Do not invent a second workflow matrix in routes, components, tests, or prompts.
 
-Saving Card Create/Edit
+## Guardrails For Mutations
 
-Kanban Board
+- Do not bypass workflow by writing `phase` directly in saving-card create or update flows.
+- Do not add a route or helper that can approve or mutate card phase outside the phase-change request approval path.
+- Do not revive the legacy approval model as a parallel workflow.
+- If a change affects dashboard or Kanban state, make cache invalidation expectations explicit through the existing workspace / portfolio cache helpers.
 
-Timeline (Gantt)
+## Kanban Contract
 
-Reports
+- Kanban groups cards by persisted `savingCard.phase`.
+- Pending phase requests are UI metadata, not actual phase movement.
+- A pending request must not visually relocate the card into the destination column.
+- Invalid move options such as `Idea -> Achieved` must not be offered.
+- Cancellation actions must require a reason.
+- Rejected or blocked moves must show visible feedback so the board does not feel broken.
 
-Admin Settings
+## Dashboard And Reporting Contract
 
----
+- Dashboard charts must render when valid underlying data exists.
+- Partial malformed data should be normalized or ignored safely rather than collapsing the whole dashboard into an empty or error state.
+- Dashboard aggregation ownership lives in `lib/dashboard/data.ts`.
+- Command-center aggregation ownership lives in `lib/command-center/data.ts`.
 
-## Dashboard Metrics
+## Module Ownership
 
-Savings by category
+- `lib/saving-cards/queries.ts`: saving-card and reference-data reads
+- `lib/saving-cards/mutations.ts`: saving-card and related write paths
+- `lib/workspace/readiness.ts`: workspace-readiness reads
+- `lib/workspace/portfolio-surface-cache.ts`: dashboard/readiness cache invalidation
+- `lib/data.ts`: compatibility facade only
 
-Savings vs target
+If you add new behavior, attach it to the owning domain module instead of expanding `lib/data.ts` back into a mixed layer.
 
-Savings by buyer
+## Test Expectations
 
-Monthly savings trend
+Tests must enforce intended product behavior, not legacy drift.
 
-Savings forecast pipeline
+Required guardrails:
 
-Savings by business unit
+- workflow tests must reject direct phase bypasses and skipped transitions
+- approval tests must follow the canonical approver matrix
+- Kanban tests must protect persisted-phase grouping and pending-request rendering
+- dashboard tests must protect real chart rendering paths, not only mock wrappers
+- release tests must protect dashboard and Kanban as deploy-critical surfaces
 
-Total pipeline savings
+If behavior changes intentionally, update the docs and the tests together in the same change.
 
-Total realised savings
+## Release-Critical Surfaces
 
-Total achieved savings (calendar year)
+Dashboard and Kanban are release-critical.
 
----
+Any change that affects workflow, saving cards, caching, dashboard metrics, or Kanban rendering must keep these aligned:
 
-## Kanban Board
+- `docs/release-checklist.md`
+- `docs/post-release-smoke-tests.md`
+- `docs/runtime-baseline.md`
+- the existing CI smoke / release contract tests
 
-Columns:
-Idea
-Validated
-Realised
-Achieved
-Cancelled
+## Closeout Note
 
-Cards must be draggable.
-
-Movement between columns must follow approval rules.
-
----
-
-## Timeline View
-
-Display savings initiatives as Gantt chart.
-
-Each card should show:
-
-Start date
-
-End date
-
-Impact period
-
-Savings value over time
-
-Filters:
-Category
-Buyer
-Supplier
-Business unit
-Phase
-
----
-
-## Saving Card Fields
-
-title
-
-description
-
-saving type
-
-phase
-
-supplier
-
-material
-
-category
-
-plant
-
-business unit
-
-buyer
-
-baseline price
-
-new price
-
-annual volume
-
-currency
-
-fx rate
-
-calculated savings
-
-frequency (one-time, recurring, multi-year)
-
-start date
-
-end date
-
-impact start date
-
-impact end date
-
-stakeholders
-
-evidence files
-
-finance lock flag
-
-cancellation reason
-
----
-
-## Evidence Upload
-
-Allow files:
-
-contracts
-
-RFQ summaries
-
-supplier quotes
-
-supplier confirmations
-
----
-
-## Calculation
-
-Savings formula:
-
-Savings = (Baseline price – New price) × Annual volume
-
-System must convert currencies if needed.
-
----
-
-## Data Input
-
-Manual entry
-
-Excel import
-
----
-
-## Export
-
-Excel export for reports.
-
----
-
-## Database
-
-Create models for:
-
-users
-
-suppliers
-
-materials
-
-categories
-
-plants
-
-business_units
-
-saving_cards
-
-saving_card_stakeholders
-
-saving_card_evidence
-
-saving_card_comments
-
-approvals
-
-phase_history
-
-notifications
-
-audit_logs
-
-fx_rates
-
-annual_targets
-
----
-
-## Workflow Logic
-
-Idea → requires Head of Global Procurement approval
-
-Validated → requires:
-Head of Global Procurement
-Financial Controller
-
-Realised → requires Financial Controller approval
-
-Achieved → requires Financial Controller approval
-
-Cancelled → requires reason
-
-Finance can lock validated savings.
-
----
-
-## Implementation Steps
-
-1. Scaffold Next.js project
-2. Setup Prisma schema
-3. Setup PostgreSQL connection
-4. Create seed data
-5. Implement authentication
-6. Build saving cards CRUD
-7. Implement workflow approvals
-8. Build dashboards
-9. Implement Kanban board
-10. Implement timeline page
-11. Implement Excel import/export
-12. Add email notification mock
-13. Run and fix all errors
-
----
-
-## Completion Criteria
-
-The application should:
-
-Run locally
-
-Allow creating saving cards
-
-Display dashboards
-
-Show Kanban board
-
-Show timeline
-
-Export reports
-
-Follow approval workflow
+The repaired system is now anchored on one workflow contract, one approval model, persisted-truth Kanban semantics, and explicit release/runtime protection for dashboard and Kanban. Future contributors and Codex runs must not reintroduce direct phase mutation, parallel approval logic, pending-as-moved rendering, or stale-data assumptions after workflow and saving-card mutations.

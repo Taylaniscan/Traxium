@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: preview
+      NEXT_PUBLIC_APP_URL: https://preview-ci.traxium.test
+      DATABASE_URL: postgresql://postgres.previewci:preview-ci-password@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
+      DIRECT_URL: postgresql://postgres.previewci:preview-ci-password@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
+      NEXT_PUBLIC_SUPABASE_URL: https://previewci.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InByZXZpZXdjaSJ9.sig
+      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwicmVmIjoicHJldmlld2NpIn0.sig
+      SUPABASE_STORAGE_BUCKET: evidence-private
+      STRIPE_SECRET_KEY: sk_test_previewcibillingsecretkey000000000000000000000000
+      STRIPE_WEBHOOK_SECRET: whsec_previewcibillingwebhooksecret000000000000000000000000
+      STRIPE_PORTAL_RETURN_URL: https://preview-ci.traxium.test/admin/settings
+      STRIPE_CHECKOUT_SUCCESS_URL: https://preview-ci.traxium.test/admin/settings?checkout=success
+      STRIPE_CHECKOUT_CANCEL_URL: https://preview-ci.traxium.test/admin/settings?checkout=cancelled
+      STRIPE_STARTER_PRODUCT_ID: prod_previewcistarter2026
+      STRIPE_STARTER_BASE_PRICE_ID: price_previewcistartermonthly2026
+      STRIPE_STARTER_METERED_PRICE_ID: price_previewcistarterusage2026
+      STRIPE_GROWTH_PRODUCT_ID: prod_previewcigrowth2026
+      STRIPE_GROWTH_BASE_PRICE_ID: price_previewcigrowthmonthly2026
+      STRIPE_GROWTH_METERED_PRICE_ID: price_previewcigrowthusage2026
+      NEXT_PUBLIC_SENTRY_DSN: ""
+      SENTRY_DSN: ""
+      NEXT_PUBLIC_ANALYTICS_HOST: ""
+      NEXT_PUBLIC_ANALYTICS_KEY: ""
+      NEXT_PUBLIC_ANALYTICS_CAPTURE_PATH: /capture
+      NEXT_PUBLIC_ANALYTICS_IDENTIFY_PATH: /identify
+      ANALYTICS_HOST: ""
+      ANALYTICS_KEY: ""
+      ANALYTICS_CAPTURE_PATH: /capture
+      ANALYTICS_IDENTIFY_PATH: /identify
+      JOB_WORKER_ONCE: "false"
+      JOB_WORKER_MAX_JOBS: "100"
+      JOB_WORKER_IDLE_DELAY_MS: "2000"
+      JOB_WORKER_ORGANIZATION_ID: ""
+      JOB_WORKER_TYPES: ""
+      ENABLE_SHORT_LIVED_CACHE_IN_TESTS: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate app environment contract
+        run: npm run env:check
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Validate Prisma schema
+        run: npm run db:validate
+
+      - name: Run CI smoke contract
+        run: npm run test:ci:smoke
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Run test suite
+        run: npm run test
+
+      - name: Run production build
+        run: npm run build

@@ -1,37 +1,103 @@
 import { Phase, Role } from "@prisma/client";
+import type { AppPermission } from "@/lib/types";
+import {
+  canFinanceLockWorkflowPhase,
+  requiredRolesForWorkflowPhase,
+} from "@/lib/workflow";
+
+export const globalAccessRoles = [
+  Role.HEAD_OF_GLOBAL_PROCUREMENT,
+  Role.GLOBAL_CATEGORY_LEADER,
+  Role.FINANCIAL_CONTROLLER,
+] as const;
+
+const ROLE_PERMISSIONS: Record<Role, readonly AppPermission[]> = {
+  [Role.HEAD_OF_GLOBAL_PROCUREMENT]: [
+    "viewWorkspace",
+    "manageWorkspace",
+    "viewReports",
+    "exportWorkbook",
+    "manageSavingCards",
+    "approvePhaseChanges",
+  ],
+  [Role.GLOBAL_CATEGORY_LEADER]: [
+    "viewWorkspace",
+    "manageWorkspace",
+    "viewReports",
+    "exportWorkbook",
+    "manageSavingCards",
+    "approvePhaseChanges",
+  ],
+  [Role.TACTICAL_BUYER]: [
+    "viewWorkspace",
+    "manageSavingCards",
+  ],
+  [Role.PROCUREMENT_ANALYST]: [
+    "viewWorkspace",
+    "viewReports",
+    "manageSavingCards",
+  ],
+  [Role.FINANCIAL_CONTROLLER]: [
+    "viewWorkspace",
+    "manageWorkspace",
+    "viewReports",
+    "exportWorkbook",
+    "manageSavingCards",
+    "approvePhaseChanges",
+    "lockFinance",
+  ],
+};
+
+const FINANCE_LOCK_ROLES = new Set<Role>([Role.FINANCIAL_CONTROLLER]);
+
+const LOCKED_FINANCE_FIELDS = new Set([
+  "baselinePrice",
+  "newPrice",
+  "annualVolume",
+  "currency",
+  "impactStartDate",
+  "impactEndDate",
+]);
+
+export function getPermissionsForRole(role: Role): readonly AppPermission[] {
+  return ROLE_PERMISSIONS[role];
+}
 
 export function requiredRolesForPhase(phase: Phase): Role[] {
-  switch (phase) {
-    case "IDEA":
-      return ["HEAD_OF_GLOBAL_PROCUREMENT"];
-    case "VALIDATED":
-      return ["HEAD_OF_GLOBAL_PROCUREMENT", "FINANCIAL_CONTROLLER"];
-    case "REALISED":
-      return ["FINANCIAL_CONTROLLER"];
-    case "ACHIEVED":
-      return ["FINANCIAL_CONTROLLER"];
-    case "CANCELLED":
-      return [];
-    default:
-      return [];
-  }
+  return requiredRolesForWorkflowPhase(phase);
 }
 
-export function canApprovePhase(role: Role, phase: Phase) {
-  return requiredRolesForPhase(phase).includes(role);
+export function hasAnyRole(role: Role, roles: readonly Role[]): boolean {
+  return roles.includes(role);
 }
 
-export function canLockFinance(role: Role) {
-  return role === "FINANCIAL_CONTROLLER";
+export function hasPermission(role: Role, permission: AppPermission): boolean {
+  return getPermissionsForRole(role).includes(permission);
 }
 
-export function isLockedField(field: string) {
-  return [
-    "baselinePrice",
-    "newPrice",
-    "annualVolume",
-    "currency",
-    "impactStartDate",
-    "impactEndDate"
-  ].includes(field);
+export function hasAnyPermission(role: Role, permissions: readonly AppPermission[]): boolean {
+  return permissions.some((permission) => hasPermission(role, permission));
+}
+
+export function hasGlobalAccessRole(role: Role): boolean {
+  return hasAnyRole(role, globalAccessRoles);
+}
+
+export function canApprovePhase(role: Role, phase: Phase): boolean {
+  return (
+    hasPermission(role, "approvePhaseChanges") &&
+    hasAnyRole(role, requiredRolesForWorkflowPhase(phase))
+  );
+}
+
+export function canLockFinance(role: Role, phase?: Phase): boolean {
+  return (
+    FINANCE_LOCK_ROLES.has(role) &&
+    hasPermission(role, "lockFinance") &&
+    (phase ? canFinanceLockWorkflowPhase(phase) : true)
+  );
+}
+
+export function isLockedField(field: string): boolean {
+  return LOCKED_FINANCE_FIELDS.has(field);
 }

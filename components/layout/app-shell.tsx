@@ -1,10 +1,34 @@
 import { requireUser } from "@/lib/auth";
-import { getNotificationsForUser, getPendingApprovals } from "@/lib/data";
+import { getNotificationsForUser, getPendingApprovals, getWorkspaceReadiness } from "@/lib/data";
 import { AppShellClient } from "@/components/layout/app-shell-client";
+
+type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
+
+function buildWorkspaceSummary(readiness: WorkspaceReadiness | null) {
+  if (!readiness) {
+    return null;
+  }
+
+  return {
+    name: readiness.workspace.name,
+  };
+}
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [notifications, pendingApprovals] = await Promise.all([getNotificationsForUser(user.id), getPendingApprovals(user.id)]);
+  const [notifications, pendingApprovals, readiness] = await Promise.all([
+    getNotificationsForUser(user.id),
+    getPendingApprovals(user.id, user.organizationId),
+    getWorkspaceReadiness(user.organizationId).catch((error) => {
+      console.log("Workspace readiness could not be loaded:", error);
+      return null;
+    }),
+  ]);
+  const shellNotifications = notifications.map((item) => ({
+    id: item.id,
+    title: item.title,
+    message: item.message
+  }));
 
   return (
     <AppShellClient
@@ -14,11 +38,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         email: user.email,
         role: user.role
       }}
-      notifications={notifications.map((item) => ({
-        id: item.id,
-        title: item.title,
-        message: item.message
-      }))}
+      workspace={buildWorkspaceSummary(readiness)}
+      notifications={shellNotifications}
       pendingActionsCount={pendingApprovals.length}
     >
       {children}

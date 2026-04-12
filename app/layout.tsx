@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AnalyticsBootstrap } from "@/components/analytics/analytics-bootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,8 +14,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className="h-full scroll-smooth">
+      <body className="min-h-full bg-[var(--background)] text-[var(--foreground)] antialiased">
+        <AnalyticsBootstrap />
+        {children}
+      </body>
     </html>
   );
 }
