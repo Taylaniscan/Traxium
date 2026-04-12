@@ -751,7 +751,7 @@ function ResultMetric({
   return (
     <Card>
       <CardContent className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+        <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
           {label}
         </p>
         <p className={`text-2xl font-semibold tracking-tight ${toneClass}`}>{value}</p>

@@ -166,7 +166,7 @@ export default async function AdminPage() {
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-5 md:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Workspace</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">Workspace</p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight">{workspaceName}</p>
                   <p className="mt-2 text-sm text-[var(--muted-foreground)]">
                     Organization slug <span className="font-medium text-[var(--foreground)]">{readiness.workspace.slug}</span>
@@ -381,7 +381,7 @@ function MetricCard({
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-4">
       <StatusPill ready={ready} />
-      <p className="mt-3 text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+      <p className="mt-3 text-xs text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>

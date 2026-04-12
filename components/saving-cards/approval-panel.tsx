@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Toast } from "@/components/ui/toast";
 import { phaseLabels } from "@/lib/constants";
 import type { SavingCardWithRelations } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export function ApprovalPanel({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string; tone: "success" | "error" } | null>(null);
 
   const actionableRequests = useMemo(
     () =>
@@ -64,13 +66,22 @@ export function ApprovalPanel({
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
-        setError(getApprovalErrorMessage(response.status, result?.error));
+        const message = getApprovalErrorMessage(response.status, result?.error);
+        setError(message);
+        setToast({ id: Date.now(), message, tone: "error" });
         return;
       }
 
+      setToast({
+        id: Date.now(),
+        message: approved ? "Onay kaydedildi" : "İşlem reddedildi",
+        tone: "success"
+      });
       router.refresh();
     } catch {
-      setError("Unable to reach the workflow service. Please retry.");
+      const message = "Unable to reach the workflow service. Please retry.";
+      setError(message);
+      setToast({ id: Date.now(), message, tone: "error" });
     } finally {
       setLoading(null);
     }
@@ -95,7 +106,7 @@ export function ApprovalPanel({
   return (
     <Card>
       <CardHeader>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+        <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
           Workflow
         </p>
         <CardTitle>Review Actions</CardTitle>
@@ -110,7 +121,7 @@ export function ApprovalPanel({
         </div>
 
         <div className="space-y-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
             Pending approvals
           </p>
 
@@ -122,10 +133,19 @@ export function ApprovalPanel({
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">{request.comment ?? "No request comment provided."}</p>
                 <div className="mt-3 flex flex-wrap gap-3">
-                  <Button onClick={() => submitApproval(request.id, true)} disabled={loading === request.id}>
+                  <Button
+                    onClick={() => submitApproval(request.id, true)}
+                    disabled={loading === request.id}
+                    className="rounded-[8px] bg-[#059669] px-5 py-2 text-white hover:bg-[#047857]"
+                  >
                     {loading === request.id ? "Processing..." : "Approve Phase Change"}
                   </Button>
-                  <Button variant="outline" onClick={() => submitApproval(request.id, false)} disabled={loading === request.id}>
+                  <Button
+                    variant="outline"
+                    onClick={() => submitApproval(request.id, false)}
+                    disabled={loading === request.id}
+                    className="rounded-[8px] border-[1.5px] border-[#f43f5e] bg-white px-5 py-2 text-[#e11d48] hover:bg-[#fff1f2] hover:text-[#e11d48]"
+                  >
                     Reject
                   </Button>
                 </div>
@@ -141,7 +161,7 @@ export function ApprovalPanel({
         </div>
 
         <div className="space-y-3 border-t border-[var(--border)] pt-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
             Finance control
           </p>
 
@@ -161,6 +181,14 @@ export function ApprovalPanel({
           </div>
         </div>
       </CardContent>
+      {toast ? (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          tone={toast.tone}
+          onDone={() => setToast((current) => (current?.id === toast.id ? null : current))}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -168,7 +196,7 @@ export function ApprovalPanel({
 function WorkflowMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{value}</p>
     </div>
   );

@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SavingCardDetailWorkspace } from "@/components/saving-cards/detail-workspace";
-import { Badge } from "@/components/ui/badge";
+import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { getValueBadgeTone } from "@/lib/calculations";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCard } from "@/lib/data";
 import { phaseLabels } from "@/lib/constants";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
-import { canLockFinance } from "@/lib/permissions";
+import { canLockFinance, hasPermission } from "@/lib/permissions";
 
 export default async function SavingCardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -34,6 +33,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
         (approval) => approval.approverId === user.id && approval.status === "PENDING"
       )
   );
+  const canRequestPhaseChange = hasPermission(user.role, "manageSavingCards");
 
   return (
     <div className="space-y-8">
@@ -41,7 +41,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
         <div className="space-y-3">
           <SectionHeading title={card.title} />
           <div className="flex flex-wrap gap-2">
-            <Badge tone={getValueBadgeTone(card.phase)}>{phaseLabels[card.phase]}</Badge>
+            <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
             <span className="rounded-full border border-[var(--border)] bg-white px-3 py-1 text-xs font-medium text-[var(--foreground)]">
               {card.savingType}
             </span>
@@ -62,7 +62,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
         <Card className="overflow-hidden">
           <CardHeader className="space-y-3 border-b bg-[linear-gradient(180deg,rgba(241,245,249,0.75),#ffffff)]">
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+              <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
                 Business Overview
               </p>
               <CardTitle className="text-[1.75rem] tracking-[-0.03em]">Financial Case</CardTitle>
@@ -121,6 +121,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
         canApprove={canApprove}
         canLock={canLockFinance(user.role)}
         currentUserId={user.id}
+        canRequestPhaseChange={canRequestPhaseChange}
       />
     </div>
   );
@@ -129,7 +130,7 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
   );
@@ -142,7 +143,7 @@ function formatDate(date: Date) {
 function HighlightMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-      <p className="text-xs uppercase tracking-wide text-cyan-100/80">{label}</p>
+      <p className="text-xs text-cyan-100/80">{label}</p>
       <p className="mt-1 text-sm font-semibold text-white">{value}</p>
     </div>
   );
@@ -160,7 +161,7 @@ function InfoStrip({ label, value }: { label: string; value: string }) {
 function TopMetric({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <div className={`rounded-2xl border p-4 ${emphasis ? "border-slate-200 bg-slate-50" : "border-[var(--border)] bg-white"}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{label}</p>
       <p className={`mt-2 ${emphasis ? "text-[1.35rem]" : "text-base"} font-semibold tracking-[-0.03em]`}>{value}</p>
     </div>
   );
@@ -169,7 +170,7 @@ function TopMetric({ label, value, emphasis }: { label: string; value: string; e
 function DetailGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3 rounded-3xl border border-[var(--border)] bg-[var(--muted)]/18 p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">{title}</p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
       <div className="space-y-3">{children}</div>
     </div>
   );

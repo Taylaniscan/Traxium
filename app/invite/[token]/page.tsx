@@ -73,22 +73,22 @@ export default async function InvitePage(
         <CardContent className="space-y-6">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Organization</dt>
+              <dt className="text-xs font-medium text-slate-500">Organization</dt>
               <dd className="mt-2 text-sm font-medium text-slate-900">{invitation.organization.name}</dd>
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Invited role</dt>
+              <dt className="text-xs font-medium text-slate-500">Invited role</dt>
               <dd className="mt-2 text-sm font-medium text-slate-900">{formatRoleLabel(invitation.role)}</dd>
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Invitation email</dt>
+              <dt className="text-xs font-medium text-slate-500">Invitation email</dt>
               <dd className="mt-2 text-sm font-medium text-slate-900">{invitation.email}</dd>
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Expires</dt>
+              <dt className="text-xs font-medium text-slate-500">Expires</dt>
               <dd className="mt-2 text-sm font-medium text-slate-900">{formatDateLabel(invitation.expiresAt)}</dd>
             </div>
           </dl>

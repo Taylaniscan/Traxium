@@ -102,8 +102,9 @@ export function WorkspaceOnboardingForm({
         <CardHeader>
           <CardTitle>Create your first workspace</CardTitle>
           <CardDescription>
-            Set up the organization boundary that will own your saving cards,
-            approvals, master data, and reporting.
+            Start with the workspace name only. You can add your first
+            initiative, load sample data, or invite teammates from the
+            dashboard right after this step.
           </CardDescription>
         </CardHeader>
 
@@ -124,7 +125,8 @@ export function WorkspaceOnboardingForm({
               />
               <p className="text-sm text-slate-500">
                 This becomes the first organization for your account and sets
-                your active workspace context.
+                your active workspace context. The rest of the setup can wait
+                until you land on the dashboard.
               </p>
             </div>
 

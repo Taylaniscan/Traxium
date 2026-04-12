@@ -162,33 +162,13 @@ export function TimelineBoard({
   const currentMonthHighlight = getRangeHighlight(timelineStart, totalRange, getCurrentMonthRange(referenceNow));
   const todayPosition = getOffsetPercent(referenceNow.getTime(), timelineStart, totalRange);
 
-  const summary = useMemo(() => {
-    const activeCards = visibleCards.filter((card) => card.phase !== "CANCELLED");
-
-    const pipeline = activeCards.reduce((sum, card) => sum + card.calculatedSavings, 0);
-    const realised = activeCards
-      .filter((card) => card.phase === "REALISED")
-      .reduce((sum, card) => sum + card.calculatedSavings, 0);
-    const achieved = activeCards
-      .filter((card) => card.phase === "ACHIEVED")
-      .reduce((sum, card) => sum + card.calculatedSavings, 0);
-
-    return {
-      pipeline,
-      realised,
-      achieved,
-      achievedShare: pipeline > 0 ? achieved / pipeline : 0,
-      realisedShare: pipeline > 0 ? (realised + achieved) / pipeline : 0
-    };
-  }, [visibleCards]);
-
   if (!cards.length) {
     return (
       <div className="space-y-6">
         <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
           <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
-              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
+              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-cyan-100">
                 Timeline Launch
               </div>
               <div>
@@ -427,44 +407,6 @@ export function TimelineBoard({
       ) : null}
 
       {!visibleCards.length ? null : (
-      <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_48%,#dbeafe_130%)] text-white shadow-[0_28px_80px_rgba(15,23,42,0.18)]">
-        <CardHeader className="border-b border-white/15">
-          <CardTitle>Portfolio savings pipeline</CardTitle>
-          <CardDescription className="text-blue-100">
-            Track the full pipeline, how much is realised, and how much has already landed as achieved savings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-3">
-            <SummaryMetric label="Total Pipeline Savings" value={summary.pipeline} tone="text-white" />
-            <SummaryMetric label="Realised Savings" value={summary.realised} tone="text-blue-50" />
-            <SummaryMetric label="Achieved Savings" value={summary.achieved} tone="text-emerald-100" />
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[12px] text-blue-50">
-                <span>Pipeline progressed to realised or achieved</span>
-                <span>{formatPercent(summary.realisedShare)}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-white/80" style={{ width: `${summary.realisedShare * 100}%` }} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[12px] text-blue-50">
-                <span>Pipeline fully achieved</span>
-                <span>{formatPercent(summary.achievedShare)}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-emerald-300" style={{ width: `${summary.achievedShare * 100}%` }} />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      )}
-
-      {!visibleCards.length ? null : (
       <Card className="overflow-hidden">
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -522,7 +464,7 @@ export function TimelineBoard({
                 <div className="min-w-fit">
                   <div className="sticky top-0 z-30 grid bg-[var(--card)]/95 backdrop-blur-sm" style={{ gridTemplateColumns: `${PROJECT_COLUMN_WIDTH}px ${gridWidth}px` }}>
                     <div className="sticky left-0 z-40 border-b border-r border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">Saving projects</p>
+                      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">Saving projects</p>
                       <p className="mt-1 text-[12px] text-[var(--foreground)]">{toTitleCase(scale)} scale</p>
                     </div>
                     <div className="relative grid border-b border-[var(--border)]" style={{ gridTemplateColumns: `repeat(${segments.length}, minmax(${segmentWidth}px, 1fr))` }}>
@@ -534,7 +476,7 @@ export function TimelineBoard({
                       ) : null}
                       {segments.map((segment, index) => (
                         <div key={`${segment.primaryLabel}-${segment.start.toISOString()}-${index}`} className="border-r border-[var(--border)] px-4 py-3 last:border-r-0">
-                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{segment.secondaryLabel}</p>
+                          <p className="text-[11px] text-[var(--muted-foreground)]">{segment.secondaryLabel}</p>
                           <p className="font-semibold text-[var(--foreground)]">{segment.primaryLabel}</p>
                         </div>
                       ))}
@@ -543,7 +485,7 @@ export function TimelineBoard({
                           className="pointer-events-none absolute inset-y-0 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.18)]"
                           style={{ left: toPercentStyle(todayPosition) }}
                         >
-                          <span className="absolute left-1 top-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                          <span className="absolute left-1 top-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-semibold text-white">
                             Today
                           </span>
                         </div>
@@ -599,7 +541,8 @@ export function TimelineBoard({
                         return (
                           <div key={card.id} className="group absolute left-0 right-0" style={{ top: `${barTop}px`, height: `${barHeight}px` }}>
                             <div
-                              className={`absolute rounded-[14px] border border-white/45 shadow-[0_10px_22px_rgba(15,23,42,0.12)] ${phaseStyle.bar}`}
+                              tabIndex={0}
+                              className={`peer absolute rounded-[14px] border border-white/45 shadow-[0_10px_22px_rgba(15,23,42,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${phaseStyle.bar}`}
                               style={{
                                 left: toPercentStyle(barLeft),
                                 width: toPercentStyle(Math.max(barRight - barLeft, 1.6)),
@@ -610,17 +553,15 @@ export function TimelineBoard({
                                 <div className={`h-full ${phaseStyle.progress}`} style={{ width: toPercentStyle(progress * 100) }} />
                               </div>
                               <div className="relative flex h-full items-center justify-between gap-3 px-3">
-                                <div className="min-w-0">
-                                  {barPixelWidth >= 92 ? <p className="truncate text-[12px] font-semibold">{card.title}</p> : null}
-                                  {barPixelWidth >= 164 ? (
-                                    <p className="truncate text-[11px] opacity-90">{formatCurrency(Math.round(card.calculatedSavings), card.currency)}</p>
-                                  ) : null}
-                                  {barPixelWidth < 92 ? (
-                                    <p className="truncate text-[11px] font-semibold">{formatCurrency(Math.round(card.calculatedSavings), card.currency)}</p>
-                                  ) : null}
-                                </div>
+                                {barPixelWidth >= 92 ? (
+                                  <p className="truncate text-[11px] font-semibold opacity-95">
+                                    {formatCurrency(Math.round(card.calculatedSavings), card.currency)}
+                                  </p>
+                                ) : (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-white/75" aria-hidden="true" />
+                                )}
                                 {barPixelWidth >= 230 ? (
-                                  <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                                  <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold">
                                     {phaseLabels[card.phase]}
                                   </span>
                                 ) : null}
@@ -637,15 +578,19 @@ export function TimelineBoard({
                               }}
                             />
 
-                            <div className="pointer-events-none absolute left-0 top-[-120px] z-30 hidden w-72 rounded-2xl border border-slate-200 bg-white p-4 text-[12px] text-slate-700 shadow-[0_18px_50px_rgba(15,23,42,0.18)] group-hover:block">
+                            <div className="pointer-events-none absolute left-0 top-[-144px] z-30 w-72 rounded-2xl border border-slate-200 bg-white p-4 text-[12px] text-slate-700 opacity-0 shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100">
                               <div className="space-y-1">
                                 <p className="font-semibold text-slate-900">{card.title}</p>
-                                <p>{card.supplier.name}</p>
+                                <p>{card.supplier.name} · {card.material.name}</p>
                               </div>
                               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
                                 <TooltipRow label="Saving" value={formatCurrency(Math.round(card.calculatedSavings), card.currency)} />
                                 <TooltipRow label="Phase" value={phaseLabels[card.phase]} />
                                 <TooltipRow label="Owner" value={card.buyer.name} />
+                                <TooltipRow
+                                  label="Project Period"
+                                  value={`${formatShortDate(card.startDate)} - ${formatShortDate(card.endDate)}`}
+                                />
                                 <TooltipRow
                                   label="Impact Period"
                                   value={`${formatShortDate(card.impactStartDate)} - ${formatShortDate(card.impactEndDate)}`}
@@ -680,7 +625,7 @@ function TimelineMetric({
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
-      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="text-[11px] text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>
@@ -698,15 +643,6 @@ function TimelinePromise({
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4">
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
-    </div>
-  );
-}
-
-function SummaryMetric({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="rounded-[22px] border border-white/12 bg-white/10 px-4 py-4 backdrop-blur-sm">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-blue-100">{label}</p>
-      <p className={`mt-2 text-3xl font-semibold ${tone}`}>{formatCurrency(Math.round(value), "EUR")}</p>
     </div>
   );
 }
@@ -737,7 +673,7 @@ function LookupSelect({
 function TooltipRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="text-[10px] text-slate-500">{label}</p>
       <p className="mt-1 text-slate-800">{value}</p>
     </div>
   );
@@ -903,10 +839,6 @@ function getWeekNumber(date: Date) {
 
 function formatShortDate(date: Date | string) {
   return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(value * 100)}%`;
 }
 
 function toPercentStyle(value: number) {

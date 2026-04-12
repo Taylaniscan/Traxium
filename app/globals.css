@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f7fa;
-  --foreground: #111827;
+  --background: #f0f4ff;
+  --foreground: #1e1b4b;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #1e1b4b;
   --popover: #ffffff;
-  --popover-foreground: #111827;
-  --primary: #2563eb;
-  --primary-foreground: #eff6ff;
-  --secondary: #dbeafe;
-  --secondary-foreground: #1d4ed8;
-  --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
-  --accent: #1d4ed8;
-  --accent-foreground: #eff6ff;
+  --popover-foreground: #1e1b4b;
+  --primary: #4f46e5;
+  --primary-foreground: #eef2ff;
+  --secondary: #e0e7ff;
+  --secondary-foreground: #3730a3;
+  --muted: #f5f3ff;
+  --muted-foreground: #6d6aac;
+  --accent: #6366f1;
+  --accent-foreground: #eef2ff;
   --destructive: #dc2626;
   --destructive-foreground: #fef2f2;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: rgba(37, 99, 235, 0.24);
+  --border: #ddd6fe;
+  --input: #e0e7ff;
+  --ring: rgba(99, 102, 241, 0.24);
   --radius: 1rem;
 }
 
@@ -63,7 +63,7 @@ body {
   min-height: 100%;
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(180deg, #f8fafc 0%, #f5f7fa 100%);
+  background: linear-gradient(180deg, #f0f4ff 0%, #eef2ff 100%);
   color: var(--foreground);
   font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -88,4 +88,22 @@ a {
 
 ::selection {
   background: rgba(37, 99, 235, 0.18);
+}
+
+@keyframes toast-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  12%,
+  88% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
 }

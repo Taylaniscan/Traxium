@@ -26,7 +26,7 @@ function WorkerCommandCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+          <p className="text-xs text-[var(--muted-foreground)]">
             Continuous Worker
           </p>
           <p className="mt-2 font-mono text-sm text-[var(--foreground)]">
@@ -37,7 +37,7 @@ function WorkerCommandCard() {
           </p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+          <p className="text-xs text-[var(--muted-foreground)]">
             One-shot Drain
           </p>
           <p className="mt-2 font-mono text-sm text-[var(--foreground)]">

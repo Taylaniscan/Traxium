@@ -3,14 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Search } from "lucide-react";
-import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
-import { Badge } from "@/components/ui/badge";
+import { PhaseBadge, PhaseDot } from "@/components/ui/phase-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
-import { getValueBadgeTone } from "@/lib/calculations";
 import { phaseLabels, phases } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -66,97 +63,24 @@ export function SavingCardTable({
 
   if (!cards.length) {
     return (
-      <div className="space-y-6">
-        <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
-          <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-4">
-              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
-                Portfolio Launch
-              </div>
-              <div>
-                <h2 className="text-3xl font-semibold tracking-tight">
-                  No live saving cards yet.
-                </h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85">
-                  This portfolio becomes the shared working view once the first cards are live. Start with one structured card, then use this page to track phase progression, ownership, supplier exposure, and finance-lock status.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-                  Create first saving card
-                </Link>
-                <LoadSampleDataButton
-                  className="border-white/20 bg-white/10 text-white hover:bg-white/20"
-                >
-                  Load sample data
-                </LoadSampleDataButton>
-                <Link
-                  href="/admin"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "sm" }),
-                    "border-white/20 bg-white/10 text-white hover:bg-white/20"
-                  )}
-                >
-                  Review setup
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-              <PortfolioLaunchMetric
-                label="Setup Completeness"
-                value={`${readiness?.coverage.overallPercent ?? 0}%`}
-                detail="Combined master-data and workflow readiness."
-              />
-              <PortfolioLaunchMetric
-                label="Master Data"
-                value={`${configuredCollections}/${readiness?.masterData.length ?? 6}`}
-                detail="Configured collections ready for card creation."
-              />
-              <PortfolioLaunchMetric
-                label="Workflow Coverage"
-                value={`${workflowCoverageReady}/${readiness?.workflowCoverage.length ?? 3}`}
-                detail="Approval roles currently assigned."
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Next Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {nextActions.map((item) => (
-                <div key={item} className="rounded-xl bg-[var(--muted)] px-4 py-3 text-sm">
-                  {item}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>What This Page Tracks</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <PortfolioPromise
-                title="Live portfolio register"
-                description="Every saving card will appear here with phase, owner, supplier, timing, and finance-lock status."
-              />
-              <PortfolioPromise
-                title="Working search and filters"
-                description="Teams can narrow the portfolio by search or phase once multiple initiatives are active."
-              />
-              <PortfolioPromise
-                title="Operational oversight"
-                description="This page becomes the fastest way to review open initiatives before drilling into the full workspace."
-              />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+          <div className="text-4xl" aria-hidden="true">
+            📋
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">
+              Henüz saving card yok
+            </h2>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              İlk tasarruf inisiyatifinizi ekleyerek başlayın.
+            </p>
+          </div>
+          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+            İlk İnisiyatifi Ekle
+          </Link>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -264,59 +188,48 @@ export function SavingCardTable({
           </div>
         </CardHeader>
         <CardContent>
-        <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
-          <Table className="min-w-[980px] bg-white">
-            <TableHead>
-              <tr>
-                <TableHeaderCell>Title</TableHeaderCell>
-                <TableHeaderCell>Phase</TableHeaderCell>
-                <TableHeaderCell>Category</TableHeaderCell>
-                <TableHeaderCell>Buyer</TableHeaderCell>
-                <TableHeaderCell>Supplier</TableHeaderCell>
-                <TableHeaderCell className="text-right">Savings</TableHeaderCell>
-                <TableHeaderCell>Timing</TableHeaderCell>
-                <TableHeaderCell>Lock</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {filteredCards.map((card) => (
-                <TableRow key={card.id}>
-                  <TableCell>
-                    <Link href={`/saving-cards/${card.id}`} className="font-semibold text-[var(--foreground)] hover:text-[var(--primary)] hover:underline">
+          <div className="space-y-3">
+            {filteredCards.map((card) => (
+              <Link
+                key={card.id}
+                href={`/saving-cards/${card.id}`}
+                className="flex flex-col gap-4 rounded-[10px] border border-[rgba(99,102,241,0.1)] bg-white px-4 py-4 transition-shadow hover:shadow-[0_2px_8px_rgba(79,70,229,0.12)] lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <PhaseDot phase={card.phase} className="h-2 w-2" />
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">
                       {card.title}
-                    </Link>
-                    <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">{card.savingType}</p>
-                  </TableCell>
-                  <TableCell>
-                    <Badge tone={getValueBadgeTone(card.phase)}>{phaseLabels[card.phase]}</Badge>
-                  </TableCell>
-                  <TableCell>{card.category.name}</TableCell>
-                  <TableCell>{card.buyer.name}</TableCell>
-                  <TableCell>{card.supplier.name}</TableCell>
-                  <TableCell className="text-right">
-                    <p className="font-semibold">{formatCurrency(Math.round(card.calculatedSavings), "EUR")}</p>
-                    <p className="text-[12px] text-[var(--muted-foreground)]">{card.currency} basis</p>
-                  </TableCell>
-                  <TableCell>
-                    <p>{formatDate(card.impactStartDate)}</p>
-                    <p className="text-[12px] text-[var(--muted-foreground)]">to {formatDate(card.impactEndDate)}</p>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={
-                        card.financeLocked
-                          ? "rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
-                          : "rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600"
-                      }
-                    >
-                      {card.financeLocked ? "Locked" : "Open"}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    </p>
+                    {card.financeLocked ? (
+                      <span className="text-sm" aria-label="Finance locked">
+                        🔒
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 truncate text-[13px] text-[var(--muted-foreground)]">
+                    {card.category.name} · {card.supplier.name} · {card.buyer.name}
+                  </p>
+                  <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
+                    {card.savingType} · {formatDate(card.impactStartDate)} to{" "}
+                    {formatDate(card.impactEndDate)}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
+                  <div className="text-left lg:text-right">
+                    <p className="text-base font-semibold text-[var(--foreground)]">
+                      {formatCurrency(Math.round(card.calculatedSavings), "EUR")}
+                    </p>
+                    <p className="text-[12px] text-[var(--muted-foreground)]">
+                      {card.currency} basis
+                    </p>
+                  </div>
+                  <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+                </div>
+              </Link>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -334,7 +247,7 @@ function PortfolioLaunchMetric({
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
-      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <p className="text-[11px] text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>
@@ -419,7 +332,7 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
     <Card className="bg-white">
       <CardContent className="p-5">
         <p className="text-[1.7rem] font-semibold tracking-[-0.03em]">{value}</p>
-        <p className="mt-2 text-[12px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{label}</p>
+        <p className="mt-2 text-[12px] text-[var(--muted-foreground)]">{label}</p>
       </CardContent>
     </Card>
   );

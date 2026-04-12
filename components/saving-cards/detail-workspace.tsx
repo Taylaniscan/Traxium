@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, FileStack, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileStack, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
 import { ApprovalPanel } from "@/components/saving-cards/approval-panel";
 import { CreatableMasterDataField, type CreatableValue } from "@/components/saving-cards/creatable-master-data-field";
 import { ResultsTab } from "@/components/saving-cards/results-tab";
@@ -11,9 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { currencies, phaseLabels, roleLabels } from "@/lib/constants";
+import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
@@ -62,13 +64,15 @@ export function SavingCardDetailWorkspace({
   referenceData,
   canApprove,
   canLock,
-  currentUserId
+  currentUserId,
+  canRequestPhaseChange
 }: {
   card: SavingCardWithRelations;
   referenceData: ReferenceData;
   canApprove: boolean;
   canLock: boolean;
   currentUserId: string;
+  canRequestPhaseChange: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("overview");
@@ -77,6 +81,8 @@ export function SavingCardDetailWorkspace({
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [phaseRequestOpen, setPhaseRequestOpen] = useState(false);
+  const [phaseRequestLoading, setPhaseRequestLoading] = useState(false);
 
   const baselineEntries = [
     { label: "Baseline Supplier", value: `${card.supplier.name} · ${formatCurrency(card.baselinePrice, card.currency)}` },
@@ -103,6 +109,15 @@ export function SavingCardDetailWorkspace({
     }))
   ];
   const bestOption = [...comparisonOptions].sort((a, b) => a.price - b.price)[0];
+  const pendingPhaseRequest =
+    card.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
+  const nextPhase = getPrimaryNextPhase(card.phase);
+  const showPhaseRequestButton =
+    !pendingPhaseRequest &&
+    canRequestPhaseChange &&
+    card.phase !== "ACHIEVED" &&
+    card.phase !== "CANCELLED" &&
+    Boolean(nextPhase);
 
   async function submitAlternativeSupplier() {
     setError(null);
@@ -182,18 +197,106 @@ export function SavingCardDetailWorkspace({
     router.refresh();
   }
 
+  async function requestPhaseChange() {
+    if (!nextPhase) {
+      return;
+    }
+
+    setError(null);
+    setPhaseRequestLoading(true);
+
+    try {
+      const response = await fetch("/api/phase-change-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          savingCardId: card.id,
+          requestedPhase: nextPhase,
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setError(result?.error ?? "Unable to request a phase change.");
+        setPhaseRequestLoading(false);
+        return;
+      }
+
+      setPhaseRequestOpen(false);
+      router.refresh();
+    } catch {
+      setError("Unable to reach the workflow service. Please retry.");
+    } finally {
+      setPhaseRequestLoading(false);
+    }
+  }
+
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-6">
         <div className="space-y-3">
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+            <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
               Record Workspace
             </p>
             <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">Business Detail</h2>
             <p className="max-w-3xl text-sm leading-6 text-[var(--muted-foreground)]">
               Core record information stays here. Workflow review and approval activity are separated into the right rail so they do not compete with the business detail.
             </p>
+          </div>
+
+          <div className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+                <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                  {nextPhase ? phaseLabels[nextPhase] : "Sonraki faz yok"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {pendingPhaseRequest ? (
+                  <Badge tone="amber">Onay Bekleniyor</Badge>
+                ) : null}
+                {showPhaseRequestButton ? (
+                  <Button
+                    type="button"
+                    onClick={() => setPhaseRequestOpen((open) => !open)}
+                  >
+                    Faz Değişikliği İste
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            {phaseRequestOpen && showPhaseRequestButton && nextPhase ? (
+              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {phaseLabels[card.phase]} fazından {phaseLabels[nextPhase]} fazına geçiş isteği oluşturulacak.
+                </p>
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Bu kayıt mevcut onay akışını kullanır ve onay tamamlanana kadar kart mevcut fazında kalır.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    onClick={requestPhaseChange}
+                    disabled={phaseRequestLoading}
+                  >
+                    {phaseRequestLoading ? "Gönderiliyor..." : "İsteği Gönder"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setPhaseRequestOpen(false)}
+                    disabled={phaseRequestLoading}
+                  >
+                    İptal
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -299,7 +402,7 @@ export function SavingCardDetailWorkspace({
 
             <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-[var(--muted)]/18 p-5">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
                   Sourcing Scenario Comparison
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
@@ -311,12 +414,12 @@ export function SavingCardDetailWorkspace({
                 <div className="space-y-3">
                   {baselineEntries.map((item) => (
                     <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-white p-4">
-                      <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{item.label}</p>
+                      <p className="text-xs text-[var(--muted-foreground)]">{item.label}</p>
                       <p className="mt-1 text-sm font-semibold">{item.value}</p>
                     </div>
                   ))}
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-emerald-700">Best Price Option</p>
+                    <p className="text-xs text-emerald-700">Best Price Option</p>
                     <p className="mt-1 text-sm font-semibold text-emerald-900">
                       {bestOption ? `${bestOption.type}: ${bestOption.label} · ${formatCurrency(bestOption.price, bestOption.currency)}` : "No alternatives yet"}
                     </p>
@@ -715,7 +818,9 @@ export function SavingCardDetailWorkspace({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--muted-foreground)]">No comments recorded for this saving card yet.</p>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Henüz yorum yok. Finans ekibi veya onaylayıcılarla notlarınızı burada paylaşabilirsiniz.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -743,7 +848,7 @@ function Field({ label, children, className }: { label: string; children: React.
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/28 p-4">
-      <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+      <p className="text-xs text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
   );
@@ -752,9 +857,19 @@ function Metric({ label, value }: { label: string; value: string }) {
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">{title}</p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
       <div className="grid gap-4">{children}</div>
     </div>
+  );
+}
+
+function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
+  const allowedTransitions = getAllowedPhaseTransitions(currentPhase);
+
+  return (
+    allowedTransitions.find((phase) => phase !== "CANCELLED") ??
+    allowedTransitions[0] ??
+    null
   );
 }
 
@@ -824,7 +939,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
 function WorkflowSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">{title}</p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -842,7 +957,7 @@ function WorkflowEventCard({
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
       <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
-      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{subtitle}</p>
+      <p className="mt-1 text-xs text-[var(--muted-foreground)]">{subtitle}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>
   );

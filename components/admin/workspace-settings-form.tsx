@@ -120,7 +120,7 @@ export function WorkspaceSettingsForm({
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+          <p className="text-xs text-[var(--muted-foreground)]">
             Workspace Slug
           </p>
           <p className="mt-2 text-sm font-medium text-[var(--foreground)]">

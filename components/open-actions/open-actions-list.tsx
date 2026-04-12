@@ -39,6 +39,9 @@ export function OpenActionsList({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [requestedPhaseFilter, setRequestedPhaseFilter] = useState("");
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   function getApprovalErrorMessage(status: number, apiMessage?: string) {
     switch (status) {
@@ -58,6 +61,7 @@ export function OpenActionsList({
   async function submitDecision(requestId: string, approved: boolean) {
     setLoadingId(requestId);
     setError(null);
+    setBulkSummary(null);
 
     try {
       const response = await fetch("/api/approve-phase-change", {
@@ -107,6 +111,7 @@ export function OpenActionsList({
   }, [actions, requestedPhaseFilter, search]);
 
   const activeFilters = Boolean(search.trim() || requestedPhaseFilter);
+  const canBulkApprove = !activeFilters && filteredActions.length >= 2;
   const workspaceCardCount = readiness?.counts.savingCards;
   const hasWorkspaceCards =
     typeof workspaceCardCount === "number" ? workspaceCardCount > 0 : true;
@@ -121,6 +126,54 @@ export function OpenActionsList({
   function clearFilters() {
     setSearch("");
     setRequestedPhaseFilter("");
+    setBulkConfirmOpen(false);
+    setBulkSummary(null);
+  }
+
+  async function approveAllActions() {
+    const total = actions.length;
+
+    if (total < 2) {
+      return;
+    }
+
+    setBulkConfirmOpen(false);
+    setBulkSummary(null);
+    setError(null);
+
+    let approvedCount = 0;
+    let failedCount = 0;
+
+    for (const [index, action] of actions.entries()) {
+      setBulkProgress({ current: index + 1, total });
+
+      try {
+        const response = await fetch("/api/approve-phase-change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId: action.requestId, approved: true })
+        });
+
+        if (!response.ok) {
+          failedCount += 1;
+          continue;
+        }
+
+        approvedCount += 1;
+      } catch {
+        failedCount += 1;
+      }
+    }
+
+    setBulkProgress(null);
+    setBulkSummary({
+      message:
+        failedCount > 0
+          ? `${approvedCount} onaylandı, ${failedCount} başarısız oldu`
+          : `${approvedCount} inisiyatif onaylandı`,
+      tone: failedCount > 0 ? "error" : "success"
+    });
+    router.refresh();
   }
 
   if (!actions.length && !hasWorkspaceCards) {
@@ -129,7 +182,7 @@ export function OpenActionsList({
         <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
           <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
-              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-cyan-100">
+              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-cyan-100">
                 Workflow Launch
               </div>
               <div>
@@ -314,7 +367,7 @@ export function OpenActionsList({
               <Filter className="h-4 w-4 text-[var(--muted-foreground)]" />
             </div>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_auto]">
+          <CardContent className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_auto_auto]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
               <Input
@@ -340,6 +393,54 @@ export function OpenActionsList({
             >
               Clear filters
             </Button>
+            {canBulkApprove ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setBulkSummary(null);
+                  setBulkConfirmOpen(true);
+                }}
+                disabled={Boolean(bulkProgress)}
+              >
+                Tümünü Onayla
+              </Button>
+            ) : null}
+
+            {bulkConfirmOpen ? (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm md:col-span-4">
+                <p className="font-medium text-[var(--foreground)]">
+                  Bu sayfadaki [{actions.length}] onay isteğini onaylamak istediğinizden emin misiniz?
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <Button type="button" onClick={approveAllActions}>
+                    Evet, Onayla
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setBulkConfirmOpen(false)}>
+                    İptal
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {bulkProgress ? (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm text-[var(--foreground)] md:col-span-4">
+                {bulkProgress.current} / {bulkProgress.total} işleniyor...
+              </div>
+            ) : null}
+
+            {bulkSummary ? (
+              <div
+                className={cn(
+                  "rounded-xl px-4 py-3 text-sm md:col-span-4",
+                  bulkSummary.tone === "success"
+                    ? "border border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                    : "border border-rose-200 bg-rose-50/80 text-rose-900"
+                )}
+              >
+                {bulkSummary.message}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
@@ -388,10 +489,19 @@ export function OpenActionsList({
             {action.comment ? <p className="text-sm text-[var(--muted-foreground)]">{action.comment}</p> : null}
 
             <div className="flex flex-wrap gap-3">
-              <Button onClick={() => submitDecision(action.requestId, true)} disabled={loadingId === action.requestId}>
+              <Button
+                onClick={() => submitDecision(action.requestId, true)}
+                disabled={loadingId === action.requestId || Boolean(bulkProgress)}
+                className="rounded-[8px] bg-[#059669] px-5 py-2 text-white hover:bg-[#047857]"
+              >
                 {loadingId === action.requestId ? "Processing..." : "Approve"}
               </Button>
-              <Button variant="outline" onClick={() => submitDecision(action.requestId, false)} disabled={loadingId === action.requestId}>
+              <Button
+                variant="outline"
+                onClick={() => submitDecision(action.requestId, false)}
+                disabled={loadingId === action.requestId || Boolean(bulkProgress)}
+                className="rounded-[8px] border-[1.5px] border-[#f43f5e] bg-white px-5 py-2 text-[#e11d48] hover:bg-[#fff1f2] hover:text-[#e11d48]"
+              >
                 Reject
               </Button>
               <Link href={`/saving-cards/${action.savingCardId}`} className={cn(buttonVariants({ variant: "secondary" }))}>
@@ -416,7 +526,7 @@ function OpenActionsMetric({
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
         {label}
       </p>
       <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,14 @@ export type CreatableValue = {
 
 export function CreatableMasterDataField({
   label,
+  labelSuffix,
   items,
   value,
   onChange,
   helper
 }: {
   label: string;
+  labelSuffix?: ReactNode;
   items: Array<{ id: string; name: string }>;
   value: CreatableValue;
   onChange: (value: CreatableValue) => void;
@@ -38,7 +40,10 @@ export function CreatableMasterDataField({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <Label>{label}</Label>
+        <Label>
+          {label}
+          {labelSuffix ? <> {labelSuffix}</> : null}
+        </Label>
         {helper ? <span className="text-xs text-[var(--muted-foreground)]">{helper}</span> : null}
       </div>
 

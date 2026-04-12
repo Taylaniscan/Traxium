@@ -31,6 +31,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
+import { PhaseBadge, PhaseDot, getPhaseVisuals } from "@/components/ui/phase-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Toast } from "@/components/ui/toast";
 import { phaseLabels, phases } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -618,6 +620,7 @@ export function KanbanBoard({
   const [cancellationDraft, setCancellationDraft] =
     useState<CancellationDraft | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
+  const [toast, setToast] = useState<{ id: number; message: string; tone: "success" | "error" } | null>(null);
   const columnsRef = useRef<KanbanColumns>(initialColumns);
   const dragSnapshotRef = useRef<KanbanColumns | null>(null);
   const lastOverIdRef = useRef<string | null>(null);
@@ -737,10 +740,9 @@ export function KanbanBoard({
           | null;
 
         setColumns(cloneKanbanColumns(input.snapshot));
-        showNotice(
-          response.status >= 500 ? "error" : "warning",
-          payload?.error ?? "This move could not be saved."
-        );
+        const message = payload?.error ?? "This move could not be saved.";
+        showNotice(response.status >= 500 ? "error" : "warning", message);
+        setToast({ id: Date.now(), message, tone: "error" });
         setSavingCardId(null);
         return;
       }
@@ -758,13 +760,18 @@ export function KanbanBoard({
           result
         )
       );
+      setToast({
+        id: Date.now(),
+        message: "Faz değişikliği isteği gönderildi",
+        tone: "success"
+      });
       setSavingCardId(null);
     } catch (error) {
       setColumns(cloneKanbanColumns(input.snapshot));
-      showNotice(
-        "error",
-        error instanceof Error ? error.message : "This move could not be saved."
-      );
+      const message =
+        error instanceof Error ? error.message : "This move could not be saved.";
+      showNotice("error", message);
+      setToast({ id: Date.now(), message, tone: "error" });
       setSavingCardId(null);
     }
   }
@@ -1106,6 +1113,14 @@ export function KanbanBoard({
           </CardContent>
         </Card>
       ) : null}
+      {toast ? (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          tone={toast.tone}
+          onDone={() => setToast((current) => (current?.id === toast.id ? null : current))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1145,15 +1160,25 @@ function KanbanColumn({
         isOver && "border-[var(--primary)] bg-blue-50"
       )}
     >
-      <div className="mb-4 border-b border-[var(--border)] pb-3">
+      <div
+        className={cn(
+          "mb-4 rounded-2xl border px-4 py-3",
+          getPhaseVisuals(phase).headerClassName
+        )}
+      >
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="flex items-center gap-2">
+            <PhaseDot phase={phase} className="h-2.5 w-2.5" />
+            <div>
             <p className="text-sm font-semibold">{phaseLabels[phase]}</p>
             <p className="text-xs text-[var(--muted-foreground)]">
               {cards.length} card{cards.length === 1 ? "" : "s"}
             </p>
+            </div>
           </div>
-          <Badge tone="slate">{cards.length}</Badge>
+          <Badge className={cn("border", getPhaseVisuals(phase).countBadgeClassName)}>
+            {cards.length}
+          </Badge>
         </div>
         <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
           {formatCurrency(totalSavings, "EUR")}
@@ -1177,8 +1202,8 @@ function KanbanColumn({
               />
             ))
           ) : (
-            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/30 px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
-              Drop a card here
+            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/20 px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
+              Bu aşamada henüz inisiyatif yok
             </div>
           )}
         </div>
@@ -1334,7 +1359,7 @@ function KanbanCardBody({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-3">
-          <Badge tone="slate">{phaseLabels[card.phase]}</Badge>
+          <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
           {pendingRequest ? <Badge tone="amber">Pending approval</Badge> : null}
           {isSaving ? <Badge tone="blue">Requesting...</Badge> : null}
         </div>

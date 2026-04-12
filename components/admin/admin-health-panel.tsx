@@ -34,7 +34,7 @@ function HealthMetric({
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-      <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+      <p className="text-xs text-[var(--muted-foreground)]">
         {label}
       </p>
       <p

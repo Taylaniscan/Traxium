@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { OrganizationRole } from "@prisma/client";
 import type { ComponentType, ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -19,8 +20,10 @@ import {
   CircleDollarSign,
   Target,
   TrendingUp,
+  X,
 } from "lucide-react";
 
+import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -46,6 +49,7 @@ export type DashboardClientLoadState = {
 type DashboardChartDatum = {
   label: string;
   savings: number;
+  phase?: DashboardCardSummary["phase"];
 };
 
 type DashboardForecastDatum = {
@@ -199,6 +203,7 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
       0
     ),
     byPhase: phases.map((phase) => ({
+      phase,
       label:
         phaseLabels[phase] ?? normalizeDashboardLabel(phase, "Unknown phase"),
       savings: cards
@@ -271,6 +276,8 @@ function resolveChartState(input: {
   return hasData ? ("ready" as const) : ("empty" as const);
 }
 
+const WELCOME_DISMISSED_STORAGE_KEY = "traxium_welcome_dismissed";
+
 export function DashboardClient({
   data,
   readiness,
@@ -288,8 +295,66 @@ export function DashboardClient({
   const readinessError = loadState?.readinessError?.trim() || null;
   const metrics = deriveDashboardMetrics(data.cards);
   const debugInfo = inspectDashboardData(data.cards);
+  const annualTarget = normalizeDashboardNumber(
+    (data as DashboardData & { annualTarget?: unknown }).annualTarget
+  );
+  const annualTargetProgress =
+    annualTarget > 0 ? Math.min((metrics.achievedSavings / annualTarget) * 100, 100) : 0;
+  const recentAchievements = [...data.cards]
+    .filter((card) => {
+      if (card.phase !== "ACHIEVED") {
+        return false;
+      }
+
+      const updatedAt = (card as DashboardCardSummary & {
+        updatedAt?: Date | string | null;
+      }).updatedAt;
+
+      if (!updatedAt) {
+        return false;
+      }
+
+      const updatedAtTime = new Date(updatedAt).getTime();
+      return Number.isFinite(updatedAtTime) && Date.now() - updatedAtTime <= 24 * 60 * 60 * 1000;
+    })
+    .sort((left, right) => {
+      const leftDate = new Date(
+        ((left as DashboardCardSummary & { updatedAt?: Date | string | null }).updatedAt ?? 0) as
+          string | number | Date
+      ).getTime();
+      const rightDate = new Date(
+        ((right as DashboardCardSummary & { updatedAt?: Date | string | null }).updatedAt ?? 0) as
+          string | number | Date
+      ).getTime();
+
+      return rightDate - leftDate;
+    });
   const showDevWarning =
     isDevelopment() && (debugInfo.hasInvalidDates || debugInfo.hasInvalidSavings);
+  const [welcomeDismissed, setWelcomeDismissed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    try {
+      setWelcomeDismissed(
+        window.localStorage.getItem(WELCOME_DISMISSED_STORAGE_KEY) === "true"
+      );
+    } catch {
+      setWelcomeDismissed(false);
+    }
+  }, []);
+
+  const showWelcomeBanner =
+    !data.cards.length && welcomeDismissed === false;
+
+  function dismissWelcomeBanner() {
+    try {
+      window.localStorage.setItem(WELCOME_DISMISSED_STORAGE_KEY, "true");
+    } catch {
+      // Ignore storage errors and still hide the banner for this session.
+    }
+
+    setWelcomeDismissed(true);
+  }
 
   if (dataError) {
     return (
@@ -319,6 +384,9 @@ export function DashboardClient({
   if (!data.cards.length) {
     return (
       <div className="space-y-4">
+        {showWelcomeBanner ? (
+          <WelcomeBanner onDismiss={dismissWelcomeBanner} />
+        ) : null}
         {readinessError ? (
           <InlineNotice
             title="Workspace setup status is temporarily unavailable"
@@ -366,24 +434,68 @@ export function DashboardClient({
         <MetricCard
           label="Pipeline Savings"
           value={formatCurrency(metrics.pipelineSavings, "EUR")}
+          helper="Active portfolio"
+          gradient="bg-[linear-gradient(135deg,#4f46e5,#7c3aed)]"
           icon={CircleDollarSign}
         />
         <MetricCard
           label="Realised Savings"
           value={formatCurrency(metrics.realisedSavings, "EUR")}
+          helper="Currently in delivery"
+          gradient="bg-[linear-gradient(135deg,#0ea5e9,#2563eb)]"
           icon={TrendingUp}
         />
         <MetricCard
           label="Achieved Savings"
           value={formatCurrency(metrics.achievedSavings, "EUR")}
+          helper="Locked-in value"
+          gradient="bg-[linear-gradient(135deg,#059669,#10b981)]"
           icon={Target}
         />
         <MetricCard
           label="Savings Forecast"
           value={formatCurrency(metrics.forecastSavings, "EUR")}
+          helper="Expected outlook"
+          gradient="bg-[linear-gradient(135deg,#d97706,#f59e0b)]"
           icon={ArrowUpRight}
         />
       </div>
+
+      {annualTarget > 0 ? (
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                Yıllık Hedef İlerleme
+              </p>
+              <p className="text-sm font-semibold text-[#4f46e5]">
+                {Math.round(annualTargetProgress)}%
+              </p>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-[20px] bg-[#e0e7ff]">
+              <div
+                className="h-full rounded-[20px] bg-[linear-gradient(90deg,#4f46e5,#818cf8)]"
+                style={{ width: `${annualTargetProgress}%` }}
+              />
+            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {formatCurrency(metrics.achievedSavings, "EUR")} gerçekleşti /{" "}
+              {formatCurrency(annualTarget, "EUR")} hedef
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {recentAchievements.length ? (
+        <div className="rounded-xl border border-[#6ee7b7] bg-[linear-gradient(135deg,#ecfdf5,#d1fae5)] px-4 py-3">
+          <p className="text-sm font-semibold text-[#064e3b]">
+            {"\uD83C\uDF89"} {recentAchievements[0].title} bugün Achieved aşamasına geçti! ·{" "}
+            {recentAchievements[0].buyer.name} ·{" "}
+            {formatCurrency(recentAchievements[0].calculatedSavings, "EUR")}
+            {recentAchievements.length > 1 ? ` · +${recentAchievements.length - 1} daha` : ""}
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-3">
         <ChartCard
@@ -461,34 +573,70 @@ export function DashboardClient({
   );
 }
 
+function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <Card className="relative">
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
+        aria-label="Dismiss welcome banner"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <CardHeader>
+        <CardTitle>Traxium&apos;a hoş geldiniz 👋</CardTitle>
+        <CardDescription>
+          İlk tasarruf inisiyatifinizi ekleyin, örnek veri yükleyin ya da
+          ekibinizi davet edin.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+            İlk inisiyatifi ekle
+          </Link>
+          <LoadSampleDataButton size="sm">Örnek veri yükle</LoadSampleDataButton>
+          <Link
+            href="/admin/members"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Ekibi davet et
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function MetricCard({
   label,
   value,
+  helper,
+  gradient,
   icon: Icon,
 }: {
   label: string;
   value: string;
+  helper: string;
+  gradient: string;
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="rounded-xl bg-blue-50 p-2 text-[var(--primary)]">
+    <Card className={cn("border-0 text-white shadow-[0_18px_40px_rgba(79,70,229,0.18)]", gradient)}>
+      <CardContent className="space-y-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-medium text-white/80">{label}</p>
+            <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-white">
+              {value}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/20 p-2 text-white">
             <Icon className="h-5 w-5" />
           </div>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-foreground)]">
-            KPI
-          </span>
         </div>
-        <div className="space-y-1">
-          <p className="text-[32px] font-semibold leading-none tracking-tight text-[var(--foreground)]">
-            {value}
-          </p>
-          <p className="text-[13px] font-medium text-[var(--muted-foreground)]">
-            {label}
-          </p>
-        </div>
+        <p className="text-[10px] text-white/80">{helper}</p>
       </CardContent>
     </Card>
   );
@@ -568,7 +716,7 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
               "Savings",
             ]}
           />
-          <Bar dataKey="savings" fill="#2563EB" radius={[8, 8, 0, 0]} />
+          <Bar dataKey="savings" fill="#4f46e5" radius={[8, 8, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
