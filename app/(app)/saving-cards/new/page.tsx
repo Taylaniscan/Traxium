@@ -38,12 +38,10 @@ export default async function NewSavingCardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-3">
-        <SectionHeading title="New Saving Card" />
-        <p className="max-w-3xl text-[15px] leading-7 text-[var(--muted-foreground)]">
-          Build the sourcing case, assign ownership, and add financial assumptions without leaving the workflow.
-        </p>
-      </div>
+      <SectionHeading
+        title="New Saving Card"
+        subtitle="Build the sourcing case, assign ownership, and add financial assumptions without leaving the workflow."
+      />
 
       {missingCoreSetup.length ? (
         <Card className="border-amber-200 bg-amber-50/60">

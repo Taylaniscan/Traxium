@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toast } from "@/components/ui/toast";
@@ -36,6 +37,14 @@ export function ApprovalPanel({
   const hasPendingRequests = useMemo(
     () => card.phaseChangeRequests.some((request) => request.approvalStatus === "PENDING"),
     [card.phaseChangeRequests]
+  );
+  const openRequestCount = useMemo(
+    () => card.phaseChangeRequests.filter((request) => request.approvalStatus === "PENDING").length,
+    [card.phaseChangeRequests]
+  );
+  const decidedApprovalCount = useMemo(
+    () => card.approvals.filter((approval) => approval.status !== "PENDING").length,
+    [card.approvals]
   );
 
   function getApprovalErrorMessage(status: number, apiMessage?: string) {
@@ -74,7 +83,7 @@ export function ApprovalPanel({
 
       setToast({
         id: Date.now(),
-        message: approved ? "Onay kaydedildi" : "İşlem reddedildi",
+        message: approved ? "Approval recorded" : "Request rejected",
         tone: "success"
       });
       router.refresh();
@@ -104,19 +113,35 @@ export function ApprovalPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
-          Workflow
-        </p>
-        <CardTitle>Review Actions</CardTitle>
-        <CardDescription>Pending approvals and finance controls are kept here so review activity stays separate from the record detail.</CardDescription>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+        <div className="flex flex-col gap-4">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+              Workflow Control
+            </p>
+            <CardTitle>Review Actions</CardTitle>
+            <CardDescription>Pending approvals and finance controls stay here so the business record remains easy to scan while reviewers still have immediate action access.</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone={actionableRequests.length ? "amber" : "slate"}>
+              {actionableRequests.length} assigned to you
+            </Badge>
+            <Badge tone={openRequestCount ? "teal" : "slate"}>
+              {openRequestCount} open request{openRequestCount === 1 ? "" : "s"}
+            </Badge>
+            <Badge tone={card.financeLocked ? "lock" : "slate"}>
+              {card.financeLocked ? "Finance locked" : "Finance open"}
+            </Badge>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <WorkflowMetric label="Pending for You" value={String(actionableRequests.length)} />
+          <WorkflowMetric label="Open Requests" value={String(openRequestCount)} />
           <WorkflowMetric label="Finance Lock" value={card.financeLocked ? "Locked" : "Open"} />
         </div>
 
@@ -127,16 +152,24 @@ export function ApprovalPanel({
 
           {actionableRequests.length ? (
             actionableRequests.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
-                <p className="font-semibold">
-                  {phaseLabels[request.currentPhase]} to {phaseLabels[request.requestedPhase]}
-                </p>
-                <p className="mt-1 text-sm text-[var(--muted-foreground)]">{request.comment ?? "No request comment provided."}</p>
+              <div key={request.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">
+                      {phaseLabels[request.currentPhase]} to {phaseLabels[request.requestedPhase]}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                      {request.approvals.filter((approval) => approval.status === "PENDING").length} approver action pending
+                    </p>
+                  </div>
+                  <Badge tone="amber">Awaiting decision</Badge>
+                </div>
+                <p className="mt-3 text-sm text-[var(--muted-foreground)]">{request.comment ?? "No request comment provided."}</p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <Button
                     onClick={() => submitApproval(request.id, true)}
                     disabled={loading === request.id}
-                    className="rounded-[8px] bg-[#059669] px-5 py-2 text-white hover:bg-[#047857]"
+                    className="px-5 py-2"
                   >
                     {loading === request.id ? "Processing..." : "Approve Phase Change"}
                   </Button>
@@ -144,7 +177,7 @@ export function ApprovalPanel({
                     variant="outline"
                     onClick={() => submitApproval(request.id, false)}
                     disabled={loading === request.id}
-                    className="rounded-[8px] border-[1.5px] border-[#f43f5e] bg-white px-5 py-2 text-[#e11d48] hover:bg-[#fff1f2] hover:text-[#e11d48]"
+                    className="px-5 py-2 text-[var(--risk)]"
                   >
                     Reject
                   </Button>
@@ -165,18 +198,41 @@ export function ApprovalPanel({
             Finance control
           </p>
 
-          <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              {card.financeLocked ? "Finance fields are locked" : "Finance fields are open"}
-            </p>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              Locking prevents changes to core finance inputs once validation is complete.
-            </p>
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {card.financeLocked ? "Finance fields are locked" : "Finance fields are open"}
+                </p>
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Locking prevents changes to core finance inputs once validation is complete.
+                </p>
+              </div>
+              <Badge tone={card.financeLocked ? "lock" : "slate"}>
+                {card.financeLocked ? "Locked" : "Open"}
+              </Badge>
+            </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
               <Button variant="secondary" onClick={toggleFinanceLock} disabled={!canLock}>
                 {card.financeLocked ? "Unlock Finance Fields" : "Lock Finance Fields"}
               </Button>
+            </div>
+
+            {!canLock ? (
+              <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+                Only authorized finance reviewers can change the lock state.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 p-4">
+            <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+              Decision history
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <WorkflowMetric label="Decisions Recorded" value={String(decidedApprovalCount)} />
+              <WorkflowMetric label="All Requests" value={String(card.phaseChangeRequests.length)} />
             </div>
           </div>
         </div>

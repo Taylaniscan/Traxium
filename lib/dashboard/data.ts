@@ -12,6 +12,7 @@ export async function getDashboardData(
   context: TenantContextSource
 ): Promise<DashboardData> {
   const scope = resolveTenantScope(context);
+  const currentYear = new Date().getUTCFullYear();
 
   return getScopedCachedValue(
     {
@@ -20,12 +21,33 @@ export async function getDashboardData(
       ttlMs: DASHBOARD_DATA_CACHE_TTL_MS,
     },
     async () => {
-      const cards = await prisma.savingCard.findMany({
-        where: buildTenantScopeWhere(scope),
-        select: dashboardCardSelect,
-      });
+      const annualTargetAggregate =
+        typeof prisma.annualTarget?.aggregate === "function"
+          ? prisma.annualTarget.aggregate({
+              where: {
+                organizationId: scope.organizationId,
+                year: currentYear,
+              },
+              _sum: {
+                targetValue: true,
+              },
+            })
+          : Promise.resolve({
+              _sum: {
+                targetValue: 0,
+              },
+            });
 
-      return { cards };
+      const [cards, annualTargetSummary] = await Promise.all([
+        prisma.savingCard.findMany({
+          where: buildTenantScopeWhere(scope),
+          select: dashboardCardSelect,
+        }),
+        annualTargetAggregate,
+      ]);
+      const annualTarget = annualTargetSummary._sum.targetValue ?? 0;
+
+      return annualTarget > 0 ? { cards, annualTarget } : { cards };
     }
   );
 }

@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f0f4ff;
-  --foreground: #1e1b4b;
-  --card: #ffffff;
-  --card-foreground: #1e1b4b;
-  --popover: #ffffff;
-  --popover-foreground: #1e1b4b;
-  --primary: #4f46e5;
-  --primary-foreground: #eef2ff;
-  --secondary: #e0e7ff;
-  --secondary-foreground: #3730a3;
-  --muted: #f5f3ff;
-  --muted-foreground: #6d6aac;
-  --accent: #6366f1;
-  --accent-foreground: #eef2ff;
-  --destructive: #dc2626;
-  --destructive-foreground: #fef2f2;
-  --border: #ddd6fe;
-  --input: #e0e7ff;
-  --ring: rgba(99, 102, 241, 0.24);
-  --radius: 1rem;
+  /* Enterprise-first semantic foundation */
+  --canvas-background: #f4f6f8;
+  --surface: #ffffff;
+  --surface-elevated: #fbfcfd;
+  --surface-muted: #f0f3f6;
+  --primary-action: #17456b;
+  --primary-action-hover: #123754;
+  --success: #1f6b4d;
+  --success-surface: #edf6f0;
+  --warning: #8b5e15;
+  --warning-surface: #fbf5e8;
+  --risk: #a13b2d;
+  --risk-surface: #faeeeb;
+  --info-forecast: #355d7a;
+  --info-forecast-surface: #edf3f7;
+  --finance-lock: #475467;
+  --finance-lock-surface: #eef2f6;
+  --text-primary: #17212b;
+  --text-secondary: #5b6675;
+  --subtle-border: #d7dde5;
+  --input-surface: #e3e8ef;
+  --focus-ring: rgba(23, 69, 107, 0.18);
+  --radius: 0.75rem;
+
+  /* Compatibility aliases for existing UI primitives */
+  --background: var(--canvas-background);
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--primary-action);
+  --primary-foreground: #f8fafc;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--info-forecast);
+  --accent-foreground: #f8fafc;
+  --destructive: var(--risk);
+  --destructive-foreground: #fff7f5;
+  --border: var(--subtle-border);
+  --input: var(--input-surface);
+  --ring: var(--focus-ring);
 }
 
 @theme inline {
@@ -43,10 +67,22 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 0.25rem);
-  --radius-md: calc(var(--radius) - 0.125rem);
+  --color-canvas-background: var(--canvas-background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-primary-action: var(--primary-action);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-risk: var(--risk);
+  --color-info-forecast: var(--info-forecast);
+  --color-finance-lock: var(--finance-lock);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-subtle-border: var(--subtle-border);
+  --radius-sm: calc(var(--radius) - 0.1875rem);
+  --radius-md: calc(var(--radius) - 0.0625rem);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 0.25rem);
+  --radius-xl: calc(var(--radius) + 0.125rem);
 }
 
 * {
@@ -56,6 +92,7 @@
 
 html {
   min-height: 100%;
+  color-scheme: light;
   scroll-behavior: smooth;
 }
 
@@ -63,7 +100,7 @@ body {
   min-height: 100%;
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(180deg, #f0f4ff 0%, #eef2ff 100%);
+  background: var(--canvas-background);
   color: var(--foreground);
   font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -87,17 +124,17 @@ a {
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.18);
+  background: rgba(53, 93, 122, 0.16);
 }
 
 @keyframes toast-fade {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
 
-  12%,
-  88% {
+  10%,
+  90% {
     opacity: 1;
     transform: translateY(0);
   }

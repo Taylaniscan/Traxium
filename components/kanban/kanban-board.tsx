@@ -762,7 +762,7 @@ export function KanbanBoard({
       );
       setToast({
         id: Date.now(),
-        message: "Faz değişikliği isteği gönderildi",
+        message: "Phase change request sent",
         tone: "success"
       });
       setSavingCardId(null);
@@ -1203,7 +1203,7 @@ function KanbanColumn({
             ))
           ) : (
             <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/20 px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
-              Bu aşamada henüz inisiyatif yok
+              No initiatives in this phase yet
             </div>
           )}
         </div>

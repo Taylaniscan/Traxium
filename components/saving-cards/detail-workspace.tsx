@@ -15,6 +15,7 @@ import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { currencies, phaseLabels, roleLabels } from "@/lib/constants";
+import { formatEvidenceFileSize } from "@/lib/evidence-config";
 import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
@@ -112,6 +113,14 @@ export function SavingCardDetailWorkspace({
   const pendingPhaseRequest =
     card.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
   const nextPhase = getPrimaryNextPhase(card.phase);
+  const totalEvidenceSize = card.evidence.reduce((total, item) => total + item.fileSize, 0);
+  const latestEvidenceUpload = card.evidence.reduce<Date | null>((latest, item) => {
+    const uploadedAt = new Date(item.uploadedAt);
+    if (!latest || uploadedAt > latest) {
+      return uploadedAt;
+    }
+    return latest;
+  }, null);
   const showPhaseRequestButton =
     !pendingPhaseRequest &&
     canRequestPhaseChange &&
@@ -232,51 +241,64 @@ export function SavingCardDetailWorkspace({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1.08fr)_360px]">
       <div className="space-y-6">
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
               Record Workspace
             </p>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">Business Detail</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">
+              Narrative, Commercial Detail & Scenario Management
+            </h2>
             <p className="max-w-3xl text-sm leading-6 text-[var(--muted-foreground)]">
-              Core record information stays here. Workflow review and approval activity are separated into the right rail so they do not compete with the business detail.
+              Core record information stays here. Workflow review, finance control, and approval activity remain in the right rail so the operating story and the audit story can be scanned independently.
             </p>
           </div>
 
           <div className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
-                <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
-                <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
-                  {nextPhase ? phaseLabels[nextPhase] : "Sonraki faz yok"}
-                </span>
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+                  Workflow transition
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+                  <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                    {nextPhase ? phaseLabels[nextPhase] : "No next phase"}
+                  </span>
+                  <Badge tone={card.financeLocked ? "lock" : "slate"}>
+                    {card.financeLocked ? "Finance locked" : "Finance open"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Phase change requests continue to use the existing approval flow; this surface only makes the next eligible move easier to see.
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 {pendingPhaseRequest ? (
-                  <Badge tone="amber">Onay Bekleniyor</Badge>
+                  <Badge tone="amber">Pending approval</Badge>
                 ) : null}
                 {showPhaseRequestButton ? (
                   <Button
                     type="button"
                     onClick={() => setPhaseRequestOpen((open) => !open)}
                   >
-                    Faz Değişikliği İste
+                    Request Phase Change
                   </Button>
                 ) : null}
               </div>
             </div>
 
             {phaseRequestOpen && showPhaseRequestButton && nextPhase ? (
-              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/75 p-4">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {phaseLabels[card.phase]} fazından {phaseLabels[nextPhase]} fazına geçiş isteği oluşturulacak.
+                  A request will be created to move this card from {phaseLabels[card.phase]} to {phaseLabels[nextPhase]}.
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Bu kayıt mevcut onay akışını kullanır ve onay tamamlanana kadar kart mevcut fazında kalır.
+                  This request uses the existing approval flow, and the card will remain in its current phase until approval is complete.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Button
@@ -284,7 +306,7 @@ export function SavingCardDetailWorkspace({
                     onClick={requestPhaseChange}
                     disabled={phaseRequestLoading}
                   >
-                    {phaseRequestLoading ? "Gönderiliyor..." : "İsteği Gönder"}
+                    {phaseRequestLoading ? "Sending..." : "Send Request"}
                   </Button>
                   <Button
                     type="button"
@@ -292,14 +314,15 @@ export function SavingCardDetailWorkspace({
                     onClick={() => setPhaseRequestOpen(false)}
                     disabled={phaseRequestLoading}
                   >
-                    İptal
+                    Cancel
                   </Button>
                 </div>
               </div>
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/45 p-2">
+            <div className="flex flex-wrap gap-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -307,10 +330,10 @@ export function SavingCardDetailWorkspace({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${
                     activeTab === tab.id
-                      ? "border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm"
-                      : "border-[var(--border)] bg-white text-[var(--foreground)] hover:border-blue-200 hover:bg-blue-50"
+                      ? "border-[var(--primary)] bg-[rgba(53,93,122,0.08)] text-[var(--foreground)] shadow-sm"
+                      : "border-transparent bg-transparent text-[var(--muted-foreground)] hover:border-[var(--border)] hover:bg-white hover:text-[var(--foreground)]"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -318,6 +341,7 @@ export function SavingCardDetailWorkspace({
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
 
@@ -470,12 +494,27 @@ export function SavingCardDetailWorkspace({
       ) : null}
 
 {activeTab === "evidence" ? (
-  <Card className="rounded-3xl border border-[var(--border)] shadow-sm">
-    <CardHeader>
-      <CardTitle>Evidence</CardTitle>
-      <CardDescription>
-        Files supporting sourcing negotiations and finance validation.
-      </CardDescription>
+  <Card className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
+    <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+            Evidence Register
+          </p>
+          <CardTitle>Evidence</CardTitle>
+          <CardDescription>
+            Files supporting sourcing negotiations and finance validation.
+          </CardDescription>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={card.evidence.length ? "emerald" : "slate"}>
+            {card.evidence.length} file{card.evidence.length === 1 ? "" : "s"}
+          </Badge>
+          {card.evidence.length ? (
+            <Badge tone="slate">{formatEvidenceFileSize(totalEvidenceSize)} total</Badge>
+          ) : null}
+        </div>
+      </div>
     </CardHeader>
 
     <CardContent className="space-y-3">
@@ -483,28 +522,46 @@ export function SavingCardDetailWorkspace({
         card.evidence.map((item) => (
           <div
             key={item.id}
-            className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3"
+            className="grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4 lg:grid-cols-[auto_minmax(0,1fr)_auto]"
           >
-            <div>
-              <div className="text-sm font-medium">{item.fileName}</div>
-              <div className="text-xs text-[var(--muted-foreground)]">
-                {item.fileType}
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted-foreground)]">
+              <FileStack className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                  {item.fileName}
+                </p>
+                <Badge tone="emerald">On record</Badge>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
+                <span>{item.fileType}</span>
+                <span>{formatEvidenceFileSize(item.fileSize)}</span>
+                <span>Uploaded {formatDate(item.uploadedAt)}</span>
               </div>
             </div>
 
-            <a
-              href={`/api/evidence/${item.id}/download`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-[var(--primary)] underline-offset-2 hover:underline"
-            >
-              Open file
-            </a>
+            <div className="flex items-start justify-end">
+              <a
+                href={`/api/evidence/${item.id}/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-elevated)]"
+              >
+                Open file
+              </a>
+            </div>
           </div>
         ))
       ) : (
-        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/60 px-4 py-6 text-sm text-[var(--muted-foreground)]">
-          No evidence uploaded yet.
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-8 text-center">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            No evidence uploaded yet
+          </p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Upload contracts, quotations, and confirmations to make the commercial case and audit trail complete.
+          </p>
         </div>
       )}
     </CardContent>
@@ -819,7 +876,7 @@ export function SavingCardDetailWorkspace({
               ))
             ) : (
               <p className="text-sm text-[var(--muted-foreground)]">
-                Henüz yorum yok. Finans ekibi veya onaylayıcılarla notlarınızı burada paylaşabilirsiniz.
+                No comments yet. Share notes here with finance reviewers or approvers.
               </p>
             )}
           </CardContent>
@@ -829,6 +886,14 @@ export function SavingCardDetailWorkspace({
       </div>
 
       <div className="space-y-6 self-start xl:sticky xl:top-6">
+        <RecordSummaryRail
+          card={card}
+          nextPhase={nextPhase}
+          pendingPhaseRequest={pendingPhaseRequest}
+          totalEvidenceSize={totalEvidenceSize}
+          latestEvidenceUpload={latestEvidenceUpload}
+          selectedAlternativeCount={comparisonOptions.filter((option) => option.selected).length}
+        />
         <ApprovalPanel card={card} canApprove={canApprove} canLock={canLock} currentUserId={currentUserId} />
         <WorkflowActivityPanel card={card} />
       </div>
@@ -863,6 +928,102 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
+function RecordSummaryRail({
+  card,
+  nextPhase,
+  pendingPhaseRequest,
+  totalEvidenceSize,
+  latestEvidenceUpload,
+  selectedAlternativeCount,
+}: {
+  card: SavingCardWithRelations;
+  nextPhase: SavingCardWithRelations["phase"] | null;
+  pendingPhaseRequest: SavingCardWithRelations["phaseChangeRequests"][number] | null;
+  totalEvidenceSize: number;
+  latestEvidenceUpload: Date | null;
+  selectedAlternativeCount: number;
+}) {
+  const approvalStatusTone = pendingPhaseRequest ? "amber" : card.approvals.length ? "emerald" : "slate";
+  const approvalStatusLabel = pendingPhaseRequest
+    ? "Pending phase request"
+    : card.approvals.length
+      ? `${card.approvals.length} logged approval${card.approvals.length === 1 ? "" : "s"}`
+      : "No logged approvals";
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+        <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+          Record Summary
+        </p>
+        <CardTitle>Audit Snapshot</CardTitle>
+        <CardDescription>
+          High-value commercial, ownership, evidence, and control signals stay pinned here while you review the record.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/75 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+            <Badge tone={card.financeLocked ? "lock" : "slate"}>
+              {card.financeLocked ? "Finance locked" : "Finance open"}
+            </Badge>
+            <Badge tone={approvalStatusTone}>{approvalStatusLabel}</Badge>
+          </div>
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            Next eligible phase:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {nextPhase ? phaseLabels[nextPhase] : "No further transition"}
+            </span>
+          </p>
+        </div>
+
+        <RailSection title="Financial Summary">
+          <RailRow label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
+          <RailRow label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
+          <RailRow label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
+          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
+        </RailSection>
+
+        <RailSection title="Ownership & Scope">
+          <RailRow label="Buyer" value={card.buyer.name} />
+          <RailRow label="Category" value={card.category.name} />
+          <RailRow label="Business Unit" value={card.businessUnit.name} />
+          <RailRow label="Plant" value={card.plant.name} />
+        </RailSection>
+
+        <RailSection title="Evidence & Scenario">
+          <RailRow label="Evidence Files" value={String(card.evidence.length)} />
+          <RailRow label="Evidence Size" value={card.evidence.length ? formatEvidenceFileSize(totalEvidenceSize) : "No files"} />
+          <RailRow label="Latest Upload" value={latestEvidenceUpload ? formatDate(latestEvidenceUpload) : "No uploads"} />
+          <RailRow
+            label="Selected Alternative"
+            value={selectedAlternativeCount ? `${selectedAlternativeCount} marked as selected` : "No alternative selected"}
+          />
+        </RailSection>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
+      <div className="space-y-2.5">{children}</div>
+    </div>
+  );
+}
+
+function RailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3">
+      <span className="text-sm text-[var(--muted-foreground)]">{label}</span>
+      <span className="text-right text-sm font-semibold text-[var(--foreground)]">{value}</span>
+    </div>
+  );
+}
+
 function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
   const allowedTransitions = getAllowedPhaseTransitions(currentPhase);
 
@@ -875,8 +1036,8 @@ function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
 
 function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
         <CardTitle>Workflow Activity</CardTitle>
         <CardDescription>Phase requests, approvals, and phase progression are separated from the main business record.</CardDescription>
       </CardHeader>
@@ -887,7 +1048,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
           <Metric label="Phase Events" value={String(card.phaseHistory.length)} />
         </div>
 
-        <WorkflowSection title="Phase-change Requests">
+        <WorkflowSection title="Request Ledger">
           {card.phaseChangeRequests.length ? (
             card.phaseChangeRequests.map((request) => (
               <WorkflowEventCard
@@ -895,6 +1056,11 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
                 title={`${phaseLabels[request.currentPhase]} to ${phaseLabels[request.requestedPhase]}`}
                 subtitle={`Requested by ${request.requestedBy.name} on ${formatDate(request.createdAt)}`}
                 detail={request.comment ?? "No request comment provided."}
+                badge={
+                  <Badge tone={getApprovalTone(request.approvalStatus)}>
+                    {request.approvalStatus.toLowerCase()}
+                  </Badge>
+                }
               />
             ))
           ) : (
@@ -902,7 +1068,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
           )}
         </WorkflowSection>
 
-        <WorkflowSection title="Approval Log">
+        <WorkflowSection title="Approval Ledger">
           {card.approvals.length ? (
             card.approvals.map((approval) => (
               <WorkflowEventCard
@@ -910,6 +1076,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
                 title={`${phaseLabels[approval.phase]} · ${approval.approver.name}`}
                 subtitle={approval.status.toLowerCase()}
                 detail={approval.comment ?? "No comment"}
+                badge={<Badge tone={getApprovalTone(approval.status)}>{approval.status.toLowerCase()}</Badge>}
               />
             ))
           ) : (
@@ -949,14 +1116,19 @@ function WorkflowEventCard({
   title,
   subtitle,
   detail,
+  badge,
 }: {
   title: string;
   subtitle: string;
   detail: string;
+  badge?: React.ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-      <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+        {badge ? <div className="shrink-0">{badge}</div> : null}
+      </div>
       <p className="mt-1 text-xs text-[var(--muted-foreground)]">{subtitle}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>
@@ -1004,4 +1176,16 @@ function emptyMaterialForm(): MaterialForm {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(date));
+}
+
+function getApprovalTone(status: string): "amber" | "emerald" | "error" {
+  if (status === "PENDING") {
+    return "amber";
+  }
+
+  if (status === "APPROVED") {
+    return "emerald";
+  }
+
+  return "error";
 }

@@ -14,39 +14,39 @@ type PhaseVisual = {
 
 export const phaseVisuals: Record<Phase, PhaseVisual> = {
   IDEA: {
-    badgeClassName: "border-[#ddd6fe] bg-[#ede9fe] text-[#5b21b6]",
-    dotClassName: "bg-[#7c3aed]",
-    headerClassName: "border-[#ddd6fe] bg-[#f5f3ff] text-[#5b21b6]",
-    countBadgeClassName: "border-[#d8b4fe] bg-[#ede9fe] text-[#5b21b6]",
-    chartColor: "#7c3aed",
+    badgeClassName: "border-[var(--border)] bg-[rgba(91,102,117,0.08)] text-[var(--text-secondary)]",
+    dotClassName: "bg-[#667085]",
+    headerClassName: "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
+    countBadgeClassName: "border-[var(--border)] bg-[rgba(91,102,117,0.08)] text-[var(--text-secondary)]",
+    chartColor: "#667085",
   },
   VALIDATED: {
-    badgeClassName: "border-[#bfdbfe] bg-[#dbeafe] text-[#1e40af]",
-    dotClassName: "bg-[#2563eb]",
-    headerClassName: "border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af]",
-    countBadgeClassName: "border-[#93c5fd] bg-[#dbeafe] text-[#1e40af]",
-    chartColor: "#2563eb",
+    badgeClassName: "border-[rgba(53,93,122,0.18)] bg-[rgba(53,93,122,0.1)] text-[var(--info-forecast)]",
+    dotClassName: "bg-[#355d7a]",
+    headerClassName: "border-[rgba(53,93,122,0.18)] bg-[var(--info-forecast-surface)] text-[var(--info-forecast)]",
+    countBadgeClassName: "border-[rgba(53,93,122,0.18)] bg-[rgba(53,93,122,0.1)] text-[var(--info-forecast)]",
+    chartColor: "#355d7a",
   },
   REALISED: {
-    badgeClassName: "border-[#fde68a] bg-[#fef3c7] text-[#92400e]",
-    dotClassName: "bg-[#d97706]",
-    headerClassName: "border-[#fde68a] bg-[#fffbeb] text-[#92400e]",
-    countBadgeClassName: "border-[#fcd34d] bg-[#fef3c7] text-[#92400e]",
-    chartColor: "#d97706",
+    badgeClassName: "border-[rgba(139,94,21,0.18)] bg-[rgba(139,94,21,0.1)] text-[var(--warning)]",
+    dotClassName: "bg-[#8b5e15]",
+    headerClassName: "border-[rgba(139,94,21,0.18)] bg-[var(--warning-surface)] text-[var(--warning)]",
+    countBadgeClassName: "border-[rgba(139,94,21,0.18)] bg-[rgba(139,94,21,0.1)] text-[var(--warning)]",
+    chartColor: "#8b5e15",
   },
   ACHIEVED: {
-    badgeClassName: "border-[#a7f3d0] bg-[#d1fae5] text-[#064e3b]",
-    dotClassName: "bg-[#059669]",
-    headerClassName: "border-[#a7f3d0] bg-[#ecfdf5] text-[#064e3b]",
-    countBadgeClassName: "border-[#6ee7b7] bg-[#d1fae5] text-[#064e3b]",
-    chartColor: "#059669",
+    badgeClassName: "border-[rgba(31,107,77,0.18)] bg-[rgba(31,107,77,0.1)] text-[var(--success)]",
+    dotClassName: "bg-[#1f6b4d]",
+    headerClassName: "border-[rgba(31,107,77,0.18)] bg-[var(--success-surface)] text-[var(--success)]",
+    countBadgeClassName: "border-[rgba(31,107,77,0.18)] bg-[rgba(31,107,77,0.1)] text-[var(--success)]",
+    chartColor: "#1f6b4d",
   },
   CANCELLED: {
-    badgeClassName: "border-[#e5e7eb] bg-[#f3f4f6] text-[#6b7280]",
-    dotClassName: "bg-[#9ca3af]",
-    headerClassName: "border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280]",
-    countBadgeClassName: "border-[#d1d5db] bg-[#f3f4f6] text-[#6b7280]",
-    chartColor: "#9ca3af",
+    badgeClassName: "border-[rgba(161,59,45,0.18)] bg-[rgba(161,59,45,0.08)] text-[var(--risk)]",
+    dotClassName: "bg-[#a13b2d]",
+    headerClassName: "border-[rgba(161,59,45,0.18)] bg-[var(--risk-surface)] text-[var(--risk)]",
+    countBadgeClassName: "border-[rgba(161,59,45,0.18)] bg-[rgba(161,59,45,0.08)] text-[var(--risk)]",
+    chartColor: "#a13b2d",
   },
 };
 
@@ -66,7 +66,7 @@ export function PhaseBadge({
   return (
     <Badge
       className={cn(
-        "border px-2.5 py-1 text-[11px] font-semibold",
+        "rounded-full px-2.5 py-1 text-[11px] font-semibold",
         phaseVisuals[phase].badgeClassName,
         className
       )}

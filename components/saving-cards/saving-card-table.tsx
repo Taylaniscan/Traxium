@@ -70,14 +70,14 @@ export function SavingCardTable({
           </div>
           <div className="space-y-2">
             <h2 className="text-xl font-semibold text-[var(--foreground)]">
-              Henüz saving card yok
+              No saving cards yet
             </h2>
             <p className="text-sm text-[var(--muted-foreground)]">
-              İlk tasarruf inisiyatifinizi ekleyerek başlayın.
+              Start by adding your first savings initiative.
             </p>
           </div>
           <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-            İlk İnisiyatifi Ekle
+            Add First Initiative
           </Link>
         </CardContent>
       </Card>

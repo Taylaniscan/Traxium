@@ -169,8 +169,8 @@ export function OpenActionsList({
     setBulkSummary({
       message:
         failedCount > 0
-          ? `${approvedCount} onaylandı, ${failedCount} başarısız oldu`
-          : `${approvedCount} inisiyatif onaylandı`,
+          ? `${approvedCount} approved, ${failedCount} failed`
+          : `${approvedCount} initiative${approvedCount === 1 ? "" : "s"} approved`,
       tone: failedCount > 0 ? "error" : "success"
     });
     router.refresh();
@@ -403,21 +403,21 @@ export function OpenActionsList({
                 }}
                 disabled={Boolean(bulkProgress)}
               >
-                Tümünü Onayla
+                Approve All
               </Button>
             ) : null}
 
             {bulkConfirmOpen ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm md:col-span-4">
                 <p className="font-medium text-[var(--foreground)]">
-                  Bu sayfadaki [{actions.length}] onay isteğini onaylamak istediğinizden emin misiniz?
+                  Are you sure you want to approve the {actions.length} approval request{actions.length === 1 ? "" : "s"} on this page?
                 </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <Button type="button" onClick={approveAllActions}>
-                    Evet, Onayla
+                    Yes, Approve
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setBulkConfirmOpen(false)}>
-                    İptal
+                    Cancel
                   </Button>
                 </div>
               </div>
@@ -425,7 +425,7 @@ export function OpenActionsList({
 
             {bulkProgress ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm text-[var(--foreground)] md:col-span-4">
-                {bulkProgress.current} / {bulkProgress.total} işleniyor...
+                Processing {bulkProgress.current} / {bulkProgress.total}...
               </div>
             ) : null}
 

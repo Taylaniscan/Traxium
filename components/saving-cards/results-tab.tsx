@@ -302,39 +302,50 @@ export function ResultsTab({
     <div className="space-y-6">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ResultMetric
-          label="Static Forecast"
-          value={formatCurrency(Math.round(staticForecastSaving), currency)}
-          detail={`${formatVolume(annualVolume)} ${volumeUnit} annual baseline`}
-          tone="slate"
-        />
-        <ResultMetric
-          label="YTD Forecast Saving"
-          value={formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
-          detail={`${data.summary.totalForecastMonths} planned month${data.summary.totalForecastMonths === 1 ? "" : "s"}`}
-          tone="blue"
-        />
-        <ResultMetric
-          label="YTD Actual Saving"
-          value={formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
-          detail={`${data.summary.confirmedMonths} confirmed month${data.summary.confirmedMonths === 1 ? "" : "s"}`}
-          tone="emerald"
-        />
-        <ResultMetric
-          label="Volume Variance"
-          value={`${formatSignedVolume(data.summary.ytdVarianceQty)} ${volumeUnit}`}
-          detail={formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
-          tone={data.summary.ytdVarianceQty >= 0 ? "emerald" : "rose"}
-        />
-      </div>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+            Value Tracking
+          </p>
+          <CardTitle>Results & Realisation</CardTitle>
+          <CardDescription>
+            Track monthly forecast and actual consumption so the commercial case, realised savings, and variance stay visible in one operational surface.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <ResultMetric
+            label="Static Forecast"
+            value={formatCurrency(Math.round(staticForecastSaving), currency)}
+            detail={`${formatVolume(annualVolume)} ${volumeUnit} annual baseline`}
+            tone="slate"
+          />
+          <ResultMetric
+            label="YTD Forecast Saving"
+            value={formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
+            detail={`${data.summary.totalForecastMonths} planned month${data.summary.totalForecastMonths === 1 ? "" : "s"}`}
+            tone="blue"
+          />
+          <ResultMetric
+            label="YTD Actual Saving"
+            value={formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
+            detail={`${data.summary.confirmedMonths} confirmed month${data.summary.confirmedMonths === 1 ? "" : "s"}`}
+            tone="emerald"
+          />
+          <ResultMetric
+            label="Volume Variance"
+            value={`${formatSignedVolume(data.summary.ytdVarianceQty)} ${volumeUnit}`}
+            detail={formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
+            tone={data.summary.ytdVarianceQty >= 0 ? "emerald" : "rose"}
+          />
+        </CardContent>
+      </Card>
 
       {loading ? (
         <ResultsLoadingSkeleton />
       ) : data.summary.hasData ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
               <CardTitle>Monthly Volume Performance</CardTitle>
               <CardDescription>
                 Forecast versus actual consumption by month.
@@ -369,8 +380,8 @@ export function ResultsTab({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
               <CardTitle>Cumulative Savings S-Curve</CardTitle>
               <CardDescription>
                 Cumulative forecast versus actual savings progression.
@@ -414,18 +425,28 @@ export function ResultsTab({
           </Card>
         </div>
       ) : (
-        <Card>
-          <CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
             <CardTitle>No volume data yet</CardTitle>
             <CardDescription>
               Add monthly forecast rows to start tracking forecast versus actual savings impact.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-8 text-center">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                The result ledger is empty
+              </p>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Add monthly forecast periods below to start building realised-versus-forecast visibility for this initiative.
+              </p>
+            </div>
+          </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
           <CardTitle>Monthly Volume Table</CardTitle>
           <CardDescription>
             Forecast and actual consumption volumes for {materialName}.
@@ -545,8 +566,8 @@ export function ResultsTab({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
           <div>
             <CardTitle>CSV Import</CardTitle>
             <CardDescription>
@@ -749,7 +770,7 @@ function ResultMetric({
           : "text-slate-700";
 
   return (
-    <Card>
+    <Card className="border-[var(--border)] bg-[var(--surface)] shadow-none">
       <CardContent className="space-y-2">
         <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
           {label}

@@ -682,6 +682,60 @@ export type CommandCenterQualificationPoint = {
   savings: number;
 };
 
+export type CommandCenterPendingApprovalItem = {
+  requestId: string;
+  savingCardId: string;
+  savingCardTitle: string;
+  currentPhase: string;
+  requestedPhase: string;
+  requestedByName: string;
+  requestedByRole: string;
+  createdAt: string;
+  ageDays: number;
+  isOverdue: boolean;
+  pendingApproverCount: number;
+  pendingApproverRoles: string[];
+  savings: number;
+  financeLocked: boolean;
+};
+
+export type CommandCenterAttentionItem = {
+  savingCardId: string;
+  title: string;
+  phase: string;
+  buyerName: string;
+  categoryName: string;
+  dateLabel: string;
+  dateValue: string;
+  ageDays: number;
+  savings: number;
+  financeLocked: boolean;
+};
+
+export type CommandCenterDecisionItem = {
+  approvalId: string;
+  savingCardId: string;
+  savingCardTitle: string;
+  phase: string;
+  approverName: string;
+  approverRole: string;
+  status: string;
+  approved: boolean;
+  createdAt: string;
+  comment: string | null;
+};
+
+export type CommandCenterActivityItem = {
+  savingCardId: string;
+  savingCardTitle: string;
+  phase: string;
+  buyerName: string;
+  categoryName: string;
+  updatedAt: string;
+  financeLocked: boolean;
+  savings: number;
+};
+
 export type CommandCenterData = {
   filters: CommandCenterFilters;
   kpis: CommandCenterKpis;
@@ -690,6 +744,11 @@ export type CommandCenterData = {
   topSuppliers: CommandCenterTopSupplier[];
   savingsByRiskLevel: CommandCenterRiskPoint[];
   savingsByQualificationStatus: CommandCenterQualificationPoint[];
+  pendingApprovalQueue?: CommandCenterPendingApprovalItem[];
+  overdueItems?: CommandCenterAttentionItem[];
+  financeLockedItems?: CommandCenterAttentionItem[];
+  recentDecisions?: CommandCenterDecisionItem[];
+  recentActivity?: CommandCenterActivityItem[];
 };
 
 export type CommandCenterApiError = {

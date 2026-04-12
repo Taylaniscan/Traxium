@@ -5,10 +5,12 @@ import { type FormEvent, type ReactNode, useMemo, useRef, useState } from "react
 import { Check, Info } from "lucide-react";
 import { CreatableMasterDataField, type CreatableValue } from "@/components/saving-cards/creatable-master-data-field";
 import { EvidenceUploader, type UploadedEvidenceFile } from "@/components/saving-cards/evidence-uploader";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { calculateSavings } from "@/lib/calculations";
@@ -23,7 +25,7 @@ import {
   savingDrivers
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
 type ReferenceData = Awaited<ReturnType<typeof import("@/lib/data").getReferenceData>>;
@@ -68,9 +70,9 @@ type FormState = {
 type WizardStepId = 1 | 2 | 3;
 
 const createModeSteps: Array<{ id: WizardStepId; title: string }> = [
-  { id: 1, title: "Temel Bilgi" },
-  { id: 2, title: "Finansal Varsayımlar" },
-  { id: 3, title: "Ekip ve Dönem" },
+  { id: 1, title: "Basic Info" },
+  { id: 2, title: "Financial Assumptions" },
+  { id: 3, title: "Team & Timeline" },
 ];
 
 export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }: Props) {
@@ -145,6 +147,17 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
   const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
   const isCreateMode = mode === "create";
   const isFinalCreateStep = currentStep === createModeSteps.length;
+  const financeLockActive = Boolean(card?.financeLocked);
+  const linkedEvidenceCount = evidence.filter((item) => item.status !== "error" && item.id).length;
+  const evidenceIssueCount = evidence.filter((item) => item.status === "error").length;
+  const pendingPhaseRequest =
+    card?.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
+  const approvalStatus = getApprovalStatusLabel({
+    isCreateMode,
+    hasPendingRequest: Boolean(pendingPhaseRequest),
+    approvalCount: card?.approvals.length ?? 0,
+  });
+  const approvalStatusTone = pendingPhaseRequest ? "amber" : card?.approvals.length ? "emerald" : "slate";
 
   const supplierHelper = buildMasterDataHelper({
     count: referenceData.suppliers.length,
@@ -337,11 +350,11 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_360px] xl:items-start"
+      className="grid gap-8 xl:grid-cols-[minmax(0,1.18fr)_360px] xl:items-start"
     >
       <div className="space-y-8">
         <Card className="overflow-hidden">
-          <CardHeader>
+          <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
             <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
               Saving Card
             </p>
@@ -351,8 +364,17 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
             <CardDescription className="max-w-3xl text-[14px] leading-6">
               Capture the sourcing case, assign ownership, and keep the commercial assumptions easy to review before workflow approval.
             </CardDescription>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <PhaseBadge phase={form.phase}>{phaseLabels[form.phase]}</PhaseBadge>
+              <Badge tone="slate">
+                {isCreateMode ? `Step ${currentStep} of ${createModeSteps.length}` : "All sections open"}
+              </Badge>
+              <Badge tone={financeLockActive ? "lock" : "slate"}>
+                {financeLockActive ? "Finance lock active" : "Finance lock open"}
+              </Badge>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-10">
+          <CardContent className="space-y-8">
             {showSetupCallout ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
                 <p className="font-semibold">Shared setup is still in progress</p>
@@ -368,7 +390,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 1 ? (
               <>
-                <SectionBlock title="Card Basics" description="Start with the core narrative and workflow shape of the initiative.">
+                <SectionBlock title="Record Definition" description="Start with the business narrative and governance posture of the initiative before filling in commercial detail.">
                   <div className="grid gap-5 lg:grid-cols-2">
                     <Field label="Title">
                       <Input
@@ -416,7 +438,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Ownership & Scope" description="Map the card to the shared master data and keep business ownership aligned from the start.">
+                <SectionBlock title="Ownership & Scope" description="Map the record to shared master data so ownership, reporting, and accountability are aligned from the outset.">
                   <div className="grid gap-6 lg:grid-cols-2">
                     <CreatableMasterDataField
                       label="Category"
@@ -449,7 +471,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Project Attributes" description="Capture the nature of the saving initiative, delivery effort, and validation maturity.">
+                <SectionBlock title="Governance Attributes" description="Capture the driver, delivery effort, and validation maturity that shape how the initiative is reviewed.">
                   <div className="grid gap-5 lg:grid-cols-3">
                     <Field label="Saving Driver" tooltip="Root cause of the saving initiative.">
                       <Select value={form.savingDriver} onChange={(event) => setForm({ ...form, savingDriver: event.target.value })}>
@@ -500,7 +522,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 2 ? (
               <>
-                <SectionBlock title="Sourcing Scope" description="Map the commercial baseline and enable inline creation only where it is actually needed.">
+                <SectionBlock title="Commercial Baseline" description="Define the baseline sourcing position first, then capture any alternative supplier or material scenario that supports the case.">
                   <div className="space-y-6">
                     <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-4">
                       <div>
@@ -587,8 +609,22 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Financials" description="Enter the commercial assumptions first, then review the live savings output underneath.">
+                <SectionBlock title="Financial Assumptions" description="Enter finance-critical inputs in one place, then validate the live calculation before the record moves into workflow.">
                   <div className="space-y-6">
+                    {financeLockActive ? (
+                      <div className="rounded-2xl border border-[rgba(71,84,103,0.22)] bg-[var(--finance-lock-surface)] px-4 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone="lock">Finance lock active</Badge>
+                          <p className="text-sm font-semibold text-[var(--foreground)]">
+                            Finance-controlled fields stay visually grouped here.
+                          </p>
+                        </div>
+                        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                          Baseline price, new price, annual volume, currency, FX rate, and value recognition dates are the core finance control points for this record.
+                        </p>
+                      </div>
+                    ) : null}
+
                     <div className="space-y-4">
                       <SectionLabel title="Commercial Inputs" description="These values drive the live savings calculation immediately." />
                       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
@@ -596,6 +632,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           label="Baseline Price"
                           tooltip="Last purchase order price used as the starting commercial baseline."
                           helper="Use the latest purchase order price before the initiative starts."
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
                         >
                           <Input
                             type="number"
@@ -610,6 +649,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           label="New Price"
                           tooltip="Expected or negotiated future price after the initiative is implemented."
                           helper="Enter the expected negotiated or scenario price."
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
                         >
                           <Input
                             type="number"
@@ -624,6 +666,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           label="Annual Volume"
                           tooltip="Expected yearly purchased volume affected by the saving case."
                           helper="Used directly in the savings formula."
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
                         >
                           <Input
                             type="number"
@@ -637,7 +682,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       </div>
 
                       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-                        <Field label="Currency">
+                        <Field
+                          label="Currency"
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
+                        >
                           <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}>
                             {currencies.map((currency) => (
                               <option key={currency} value={currency}>
@@ -658,7 +708,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             ))}
                           </Select>
                         </Field>
-                        <Field label="FX Rate" optional>
+                        <Field
+                          label="FX Rate"
+                          optional
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Conversion input"}
+                        >
                           <Input
                             type="number"
                             step="0.0001"
@@ -671,6 +727,29 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       </div>
                     </div>
 
+                    <div className="grid gap-3 xl:grid-cols-4">
+                      <InlineCalculationCue
+                        label="Baseline Annual Spend"
+                        value={formatCurrency(Math.round(Number(form.baselinePrice || 0) * Number(form.annualVolume || 0)), form.currency)}
+                        detail="Baseline price x annual volume"
+                      />
+                      <InlineCalculationCue
+                        label="Projected Annual Spend"
+                        value={formatCurrency(Math.round(Number(form.newPrice || 0) * Number(form.annualVolume || 0)), form.currency)}
+                        detail="New price x annual volume"
+                      />
+                      <InlineCalculationCue
+                        label="Unit Delta"
+                        value={formatCurrency(Math.round(Number(form.baselinePrice || 0) - Number(form.newPrice || 0)), form.currency)}
+                        detail="Per-unit price difference"
+                      />
+                      <InlineCalculationCue
+                        label="FX Translation"
+                        value={`${form.currency} x ${form.fxRate || "1"}`}
+                        detail="Applied before EUR and USD outputs"
+                      />
+                    </div>
+
                     <div
                       className={cn(
                         "rounded-[8px] border px-4 py-3",
@@ -680,10 +759,10 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       )}
                     >
                       <p className="text-sm font-semibold">
-                        Hesaplanan Tasarruf: {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
+                        Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
                       </p>
                       {isNegativeSavings ? (
-                        <p className="mt-1 text-sm">⚠ Yeni fiyat daha yüksek</p>
+                        <p className="mt-1 text-sm">⚠ New price is higher</p>
                       ) : null}
                     </div>
 
@@ -702,11 +781,15 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 3 ? (
               <>
-                <SectionBlock title="Timing" description="Keep project delivery dates separate from the dates used for value recognition and reporting.">
+                <SectionBlock title="Execution & Value Timing" description="Keep operational delivery dates separate from the dates used by finance to recognize value.">
                   <div className="grid gap-5 lg:grid-cols-2">
                     <SubsectionPanel title="Execution Timeline" description="When the initiative work starts and ends.">
                       <div className="grid gap-5">
-                        <Field label="Start Date">
+                        <Field
+                          label="Start Date"
+                          emphasis="timeline"
+                          statusLabel={financeLockActive ? "Finance-visible" : "Timeline input"}
+                        >
                           <Input
                             type="date"
                             value={form.startDate}
@@ -714,7 +797,11 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             required
                           />
                         </Field>
-                        <Field label="End Date">
+                        <Field
+                          label="End Date"
+                          emphasis="timeline"
+                          statusLabel={financeLockActive ? "Finance-visible" : "Timeline input"}
+                        >
                           <Input
                             type="date"
                             value={form.endDate}
@@ -726,7 +813,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                     </SubsectionPanel>
                     <SubsectionPanel title="Value Recognition" description="When finance should recognize the commercial impact.">
                       <div className="grid gap-5">
-                        <Field label="Impact Start Date" optional>
+                        <Field
+                          label="Impact Start Date"
+                          optional
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Recognition date"}
+                        >
                           <Input
                             type="date"
                             value={form.impactStartDate}
@@ -734,7 +827,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             required
                           />
                         </Field>
-                        <Field label="Impact End Date" optional>
+                        <Field
+                          label="Impact End Date"
+                          optional
+                          emphasis="finance"
+                          locked={financeLockActive}
+                          statusLabel={financeLockActive ? "Finance-controlled" : "Recognition date"}
+                        >
                           <Input
                             type="date"
                             value={form.impactEndDate}
@@ -747,7 +846,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Stakeholders" description="Select the people who should see the card and contribute to the workflow.">
+                <SectionBlock title="Stakeholder Coverage" description="Select the people who should see the record, provide evidence, or contribute to the approval journey.">
                   <Field
                     label="Stakeholders"
                     optional
@@ -762,7 +861,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </Field>
                 </SectionBlock>
 
-                <SectionBlock title="Evidence & Attachments" description="Keep supporting documents with the card once the base record exists.">
+                <SectionBlock title="Evidence Register" description="Keep supporting documents with the record so review and finance validation can happen from one place.">
                   {card?.id ? (
                     <EvidenceUploader
                       savingCardId={card.id}
@@ -798,15 +897,15 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       }}
                       disabled={currentStep === 1 || loading}
                     >
-                      Geri
+                      Back
                     </Button>
                     {isFinalCreateStep ? (
                       <Button type="submit" disabled={loading}>
-                        {loading ? "Kaydediliyor..." : "Kaydet"}
+                        {loading ? "Saving..." : "Save"}
                       </Button>
                     ) : (
                       <Button type="button" onClick={goToNextCreateStep}>
-                        İleri
+                        Next
                       </Button>
                     )}
                   </div>
@@ -828,46 +927,82 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
       <div className="space-y-6">
         <Card className="sticky top-6 overflow-hidden">
-          <CardHeader>
-            <CardTitle>Review</CardTitle>
-            <CardDescription>Keep the most decision-relevant details visible while you complete the form.</CardDescription>
+          <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+            <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+              Record Summary
+            </p>
+            <CardTitle>Decision Snapshot</CardTitle>
+            <CardDescription>Keep the most decision-relevant signals visible while you complete or update the record.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-4">
-              <p className="text-[11px] text-[var(--muted-foreground)]">Indicative Savings</p>
-              <p className="mt-2 text-[1.4rem] font-semibold tracking-[-0.03em]">
-                {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
-              </p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/75 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] text-[var(--muted-foreground)]">Indicative Savings</p>
+                  <p className="mt-2 text-[1.4rem] font-semibold tracking-[-0.03em]">
+                    {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    {isNegativeSavings ? "Current assumptions indicate value erosion." : "Current assumptions indicate positive annualized value."}
+                  </p>
+                </div>
+                <PhaseBadge phase={form.phase}>{phaseLabels[form.phase]}</PhaseBadge>
+              </div>
             </div>
 
-            <SummaryGroup title="Workflow">
-              <InfoRow label="Current Phase" value={phaseLabels[form.phase]} />
+            <SummaryGroup title="Financial Summary">
+              <InfoRow
+                label="Baseline Price"
+                value={form.baselinePrice ? formatCurrency(Number(form.baselinePrice), form.currency) : "Not set"}
+              />
+              <InfoRow
+                label="New Price"
+                value={form.newPrice ? formatCurrency(Number(form.newPrice), form.currency) : "Not set"}
+              />
+              <InfoRow
+                label="Annual Volume"
+                value={form.annualVolume ? formatPlainNumber(Number(form.annualVolume)) : "Not set"}
+              />
+              <InfoRow label="Currency / FX" value={`${form.currency} / ${form.fxRate || "1"}`} />
+            </SummaryGroup>
+
+            <SummaryGroup title="Calculation Summary">
+              <InfoRow label="Calculated Savings (EUR)" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
+              <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
+              <InfoRow label="Formula" value="(Baseline - New) x Annual Volume" />
+              <InfoRow label="Frequency" value={form.frequency.replaceAll("_", " ")} />
+            </SummaryGroup>
+
+            <SummaryGroup title="Ownership & Scope">
+              <InfoRow label="Buyer" value={form.buyer.name || "Not set"} />
+              <InfoRow label="Category" value={form.category.name || "Not set"} />
+              <InfoRow label="Business Unit" value={form.businessUnit.name || "Not set"} />
+              <InfoRow label="Plant" value={form.plant.name || "Not set"} />
+            </SummaryGroup>
+
+            <SummaryGroup title="Evidence & Workflow">
               <InfoRow label="Alternative Sourcing" value={alternativeSourcingEnabled ? "Enabled" : "Not involved"} />
               <InfoRow label="Stakeholders" value={selectedStakeholders.length ? String(selectedStakeholders.length) : "None"} />
               <InfoRow
                 label="Evidence Files"
-                value={String(evidence.filter((item) => item.status !== "error" && item.id).length)}
+                value={`${linkedEvidenceCount}${evidenceIssueCount ? ` linked, ${evidenceIssueCount} issue` : " linked"}`}
+              />
+              <InfoRow
+                label="Approval Status"
+                value={<Badge tone={approvalStatusTone}>{approvalStatus}</Badge>}
+              />
+              <InfoRow
+                label="Finance Lock"
+                value={<Badge tone={financeLockActive ? "lock" : "slate"}>{financeLockActive ? "Locked" : "Open"}</Badge>}
               />
             </SummaryGroup>
 
-            <SummaryGroup title="Delivery Profile">
-              <InfoRow label="Saving Driver" value={form.savingDriver || "Not set"} />
-              <InfoRow label="Implementation Complexity" value={form.implementationComplexity || "Not set"} />
-              <InfoRow label="Qualification Status" value={form.qualificationStatus || "Not set"} />
-              {alternativeSourcingEnabled ? (
-                <>
-                  <InfoRow label="Alternative Supplier" value={form.alternativeSupplier.name || "Not specified"} />
-                  <InfoRow label="Alternative Material" value={form.alternativeMaterial.name || "Not specified"} />
-                </>
-              ) : null}
-            </SummaryGroup>
-
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
-              Savings calculation:
-              <span className="font-semibold text-[var(--foreground)]"> (Baseline price - New price) x Annual volume</span>
-            </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
-              Finance lock protects baseline price, new price, annual volume, currency, and impact dates once finance validates the card.
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
+              Finance-controlled fields:{" "}
+              <span className="font-semibold text-[var(--foreground)]">
+                baseline price, new price, annual volume, currency, FX rate, and impact dates
+              </span>
+              .
             </div>
           </CardContent>
         </Card>
@@ -931,6 +1066,9 @@ function Field({
   tooltip,
   helper,
   optional,
+  emphasis,
+  locked,
+  statusLabel,
   children
 }: {
   label: string;
@@ -938,20 +1076,34 @@ function Field({
   tooltip?: string;
   helper?: string;
   optional?: boolean;
+  emphasis?: "default" | "finance" | "timeline";
+  locked?: boolean;
+  statusLabel?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={cn("space-y-2.5", className)}>
-      <div className="flex items-center gap-2">
-        <Label className="text-[13px] font-medium text-[var(--foreground)]">
-          {label}
-          {optional ? <> <OptionalLabelText /></> : null}
-        </Label>
-        {tooltip ? (
-          <span title={tooltip}>
-            <Info className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-          </span>
-        ) : null}
+    <div
+      className={cn(
+        "space-y-2.5",
+        emphasis === "finance" && "rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4",
+        emphasis === "finance" && locked && "border-[rgba(71,84,103,0.22)] bg-[var(--finance-lock-surface)]",
+        emphasis === "timeline" && "rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4",
+        className
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Label className="text-[13px] font-medium text-[var(--foreground)]">
+            {label}
+            {optional ? <> <OptionalLabelText /></> : null}
+          </Label>
+          {tooltip ? (
+            <span title={tooltip}>
+              <Info className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+            </span>
+          ) : null}
+        </div>
+        {statusLabel ? <Badge tone={locked ? "lock" : "slate"}>{statusLabel}</Badge> : null}
       </div>
       {children}
       {helper ? <p className="text-[12px] leading-5 text-[var(--muted-foreground)]">{helper}</p> : null}
@@ -962,7 +1114,7 @@ function Field({
 function OptionalLabelText() {
   return (
     <span className="text-[11px] font-normal text-[var(--muted-foreground)]">
-      (opsiyonel)
+      (optional)
     </span>
   );
 }
@@ -1076,11 +1228,29 @@ function SummaryGroup({ title, children }: { title: string; children: ReactNode 
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-3">
       <span className="text-[13px] text-[var(--muted-foreground)]">{label}</span>
-      <span className="text-right text-[13px] font-semibold">{value}</span>
+      <div className="text-right text-[13px] font-semibold text-[var(--foreground)]">{value}</div>
+    </div>
+  );
+}
+
+function InlineCalculationCue({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/65 p-4">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{label}</p>
+      <p className="mt-2 text-base font-semibold tracking-[-0.02em] text-[var(--foreground)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--muted-foreground)]">{detail}</p>
     </div>
   );
 }
@@ -1152,4 +1322,28 @@ function SearchableUserMultiSelect({
 function toDateValue(value?: string | Date) {
   if (!value) return "";
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function getApprovalStatusLabel({
+  isCreateMode,
+  hasPendingRequest,
+  approvalCount,
+}: {
+  isCreateMode: boolean;
+  hasPendingRequest: boolean;
+  approvalCount: number;
+}) {
+  if (isCreateMode) {
+    return "Workflow starts after save";
+  }
+
+  if (hasPendingRequest) {
+    return "Pending approval";
+  }
+
+  if (approvalCount > 0) {
+    return `${approvalCount} recorded decision${approvalCount === 1 ? "" : "s"}`;
+  }
+
+  return "No approval history yet";
 }

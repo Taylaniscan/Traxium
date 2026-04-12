@@ -5,17 +5,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-md border border-transparent text-sm font-semibold tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-[var(--muted)] disabled:text-[var(--muted-foreground)] disabled:shadow-none",
   {
     variants: {
       variant: {
-        default: "bg-[var(--primary)] px-4 py-2 text-[var(--primary-foreground)] hover:bg-[#1d4ed8]",
-        secondary: "bg-[var(--secondary)] px-4 py-2 text-[var(--secondary-foreground)] hover:bg-[#bfdbfe]",
-        ghost: "px-3 py-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
-        outline: "border border-[var(--border)] bg-white px-4 py-2 text-[var(--foreground)] hover:bg-[var(--muted)]"
+        default:
+          "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_1px_2px_rgba(15,23,42,0.08)] hover:bg-[var(--primary-action-hover)]",
+        secondary:
+          "border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:bg-[var(--surface-elevated)]",
+        ghost:
+          "bg-transparent text-[var(--text-secondary)] hover:bg-[rgba(23,33,43,0.04)] hover:text-[var(--text-primary)]",
+        outline:
+          "border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
       },
       size: {
-        default: "h-10",
+        default: "h-10 px-4",
         sm: "h-8 px-3 text-xs",
         lg: "h-11 px-5"
       }

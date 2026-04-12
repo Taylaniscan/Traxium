@@ -29,6 +29,11 @@ const EMPTY_COMMAND_CENTER_DATA: CommandCenterData = {
   topSuppliers: [],
   savingsByRiskLevel: [],
   savingsByQualificationStatus: [],
+  pendingApprovalQueue: [],
+  overdueItems: [],
+  financeLockedItems: [],
+  recentDecisions: [],
+  recentActivity: [],
 };
 
 const EMPTY_COMMAND_CENTER_FILTER_OPTIONS: CommandCenterFilterOptions = {
@@ -99,24 +104,25 @@ async function loadCommandCenterReadinessState(organizationId: string) {
 
 export default async function CommandCenterPage() {
   const user = await requireUser();
-  const [
-    { initialData, dataError },
-    { filterOptions, filterOptionsError },
-    { workspaceReadiness, readinessError },
-  ] = await Promise.all([
-    loadCommandCenterDataState(user.organizationId),
-    loadCommandCenterFilterOptionsState(user.organizationId),
-    loadCommandCenterReadinessState(user.organizationId),
-  ]);
+  const { initialData, dataError } = await loadCommandCenterDataState(
+    user.organizationId
+  );
+  const { filterOptions, filterOptionsError } =
+    await loadCommandCenterFilterOptionsState(user.organizationId);
+  const { workspaceReadiness, readinessError } =
+    await loadCommandCenterReadinessState(user.organizationId);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <SectionHeading title="Command Center" />
+      <SectionHeading
+        title="Command Center"
+        subtitle="A focused operating view for approvals, blockers, finance-controlled records, and the portfolio context behind them."
+        action={
           <a href="/api/export" className={SERVER_OUTLINE_BUTTON_CLASS}>
             Export workbook
           </a>
-      </div>
+        }
+      />
       <CommandCenterClient
         initialData={initialData}
         filterOptions={filterOptions}

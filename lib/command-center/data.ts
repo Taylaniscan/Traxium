@@ -1,14 +1,20 @@
 import { ApprovalStatus, Phase, Prisma } from "@prisma/client";
 import { getForecastMultiplier } from "@/lib/calculations";
-import { phaseLabels } from "@/lib/constants";
+import { phaseLabels, roleLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere } from "@/lib/tenant-scope";
 import type {
+  CommandCenterActivityItem,
+  CommandCenterAttentionItem,
   CommandCenterData,
+  CommandCenterDecisionItem,
   CommandCenterFilterOptions,
   CommandCenterFilters,
+  CommandCenterPendingApprovalItem,
   TenantContextSource,
 } from "@/lib/types";
+
+const COMMAND_CENTER_PENDING_OVERDUE_DAYS = 7;
 
 export function resolveCommandCenterForecastBucket(value: unknown) {
   const date = value instanceof Date ? value : new Date(String(value ?? ""));
@@ -45,33 +51,37 @@ function buildCommandCenterWhere(
 export async function getCommandCenterFilterOptions(
   context: TenantContextSource
 ): Promise<CommandCenterFilterOptions> {
-  const [categories, businessUnits, buyers, plants, suppliers] = await Promise.all([
-    prisma.category.findMany({
-      where: buildTenantScopeWhere(context),
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.businessUnit.findMany({
-      where: buildTenantScopeWhere(context),
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.buyer.findMany({
-      where: buildTenantScopeWhere(context),
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.plant.findMany({
-      where: buildTenantScopeWhere(context),
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.supplier.findMany({
-      where: buildTenantScopeWhere(context),
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  const tenantWhere = buildTenantScopeWhere(context);
+  const { categories, businessUnits, buyers, plants, suppliers } =
+    await prisma.$transaction(async (tx) => {
+      const categories = await tx.category.findMany({
+        where: tenantWhere,
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      const businessUnits = await tx.businessUnit.findMany({
+        where: tenantWhere,
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      const buyers = await tx.buyer.findMany({
+        where: tenantWhere,
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      const plants = await tx.plant.findMany({
+        where: tenantWhere,
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      const suppliers = await tx.supplier.findMany({
+        where: tenantWhere,
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+
+      return { categories, businessUnits, buyers, plants, suppliers };
+    });
 
   return { categories, businessUnits, buyers, plants, suppliers };
 }
@@ -81,8 +91,8 @@ export async function getCommandCenterData(
   filters?: CommandCenterFilters
 ): Promise<CommandCenterData> {
   const where = buildCommandCenterWhere(context, filters);
-
-  const [
+  const now = new Date();
+  const {
     phaseSavings,
     forecastCards,
     supplierSavings,
@@ -90,13 +100,19 @@ export async function getCommandCenterData(
     pendingApprovals,
     activeProjects,
     riskCards,
-  ] = await Promise.all([
-    prisma.savingCard.groupBy({
+    pendingApprovalQueue,
+    overdueItems,
+    financeLockedItems,
+    recentDecisions,
+    recentActivity,
+    suppliers,
+  } = await prisma.$transaction(async (tx) => {
+    const phaseSavings = await tx.savingCard.groupBy({
       by: ["phase"],
       where,
       _sum: { calculatedSavings: true },
-    }),
-    prisma.savingCard.findMany({
+    });
+    const forecastCards = await tx.savingCard.findMany({
       where,
       select: {
         impactStartDate: true,
@@ -104,8 +120,8 @@ export async function getCommandCenterData(
         frequency: true,
         phase: true,
       },
-    }),
-    prisma.savingCard.groupBy({
+    });
+    const supplierSavings = await tx.savingCard.groupBy({
       by: ["supplierId"],
       where: {
         ...where,
@@ -118,25 +134,25 @@ export async function getCommandCenterData(
         },
       },
       take: 10,
-    }),
-    prisma.savingCard.groupBy({
+    });
+    const qualificationGroups = await tx.savingCard.groupBy({
       by: ["qualificationStatus"],
       where,
       _sum: { calculatedSavings: true },
-    }),
-    prisma.phaseChangeRequest.count({
+    });
+    const pendingApprovals = await tx.phaseChangeRequest.count({
       where: {
         approvalStatus: ApprovalStatus.PENDING,
         savingCard: where,
       },
-    }),
-    prisma.savingCard.count({
+    });
+    const activeProjects = await tx.savingCard.count({
       where: {
         ...where,
         phase: { not: Phase.CANCELLED },
       },
-    }),
-    prisma.savingCard.findMany({
+    });
+    const riskCards = await tx.savingCard.findMany({
       where,
       select: {
         calculatedSavings: true,
@@ -149,8 +165,182 @@ export async function getCommandCenterData(
           select: { riskLevel: true },
         },
       },
-    }),
-  ]);
+    });
+    const pendingApprovalQueue = await tx.phaseChangeRequest.findMany({
+      where: {
+        approvalStatus: ApprovalStatus.PENDING,
+        savingCard: where,
+      },
+      orderBy: { createdAt: "asc" },
+      take: 8,
+      select: {
+        id: true,
+        currentPhase: true,
+        requestedPhase: true,
+        createdAt: true,
+        requestedBy: {
+          select: {
+            name: true,
+            role: true,
+          },
+        },
+        approvals: {
+          where: { status: ApprovalStatus.PENDING },
+          select: {
+            role: true,
+          },
+        },
+        savingCard: {
+          select: {
+            id: true,
+            title: true,
+            calculatedSavings: true,
+            financeLocked: true,
+          },
+        },
+      },
+    });
+    const overdueItems = await tx.savingCard.findMany({
+      where: {
+        ...where,
+        phase: {
+          notIn: [Phase.ACHIEVED, Phase.CANCELLED],
+        },
+        endDate: {
+          lt: now,
+        },
+      },
+      orderBy: { endDate: "asc" },
+      take: 8,
+      select: {
+        id: true,
+        title: true,
+        phase: true,
+        endDate: true,
+        calculatedSavings: true,
+        financeLocked: true,
+        buyer: {
+          select: {
+            name: true,
+          },
+        },
+        category: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+    const financeLockedItems = await tx.savingCard.findMany({
+      where: {
+        ...where,
+        financeLocked: true,
+        phase: {
+          not: Phase.CANCELLED,
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        title: true,
+        phase: true,
+        updatedAt: true,
+        calculatedSavings: true,
+        financeLocked: true,
+        buyer: {
+          select: {
+            name: true,
+          },
+        },
+        category: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+    const recentDecisions = await tx.approval.findMany({
+      where: {
+        status: {
+          not: ApprovalStatus.PENDING,
+        },
+        savingCard: where,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        phase: true,
+        approved: true,
+        status: true,
+        comment: true,
+        createdAt: true,
+        approver: {
+          select: {
+            name: true,
+            role: true,
+          },
+        },
+        savingCard: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
+    const recentActivity = await tx.savingCard.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        title: true,
+        phase: true,
+        updatedAt: true,
+        calculatedSavings: true,
+        financeLocked: true,
+        buyer: {
+          select: {
+            name: true,
+          },
+        },
+        category: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+    const supplierIds = supplierSavings
+      .map((item) => item.supplierId)
+      .filter((value): value is string => Boolean(value));
+    const suppliers = supplierIds.length
+      ? await tx.supplier.findMany({
+          where: buildTenantScopeWhere(context, {
+            id: { in: supplierIds },
+          }),
+          select: { id: true, name: true },
+        })
+      : [];
+
+    return {
+      phaseSavings,
+      forecastCards,
+      supplierSavings,
+      qualificationGroups,
+      pendingApprovals,
+      activeProjects,
+      riskCards,
+      pendingApprovalQueue,
+      overdueItems,
+      financeLockedItems,
+      recentDecisions,
+      recentActivity,
+      suppliers,
+    };
+  });
 
   const phaseMap = new Map(
     phaseSavings.map((item) => [item.phase, item._sum.calculatedSavings ?? 0])
@@ -191,16 +381,6 @@ export async function getCommandCenterData(
       return acc;
     }, {})
   ).sort((left, right) => left.sortValue - right.sortValue);
-
-  const supplierIds = supplierSavings.map((item) => item.supplierId);
-  const suppliers = supplierIds.length
-    ? await prisma.supplier.findMany({
-        where: buildTenantScopeWhere(context, {
-          id: { in: supplierIds },
-        }),
-        select: { id: true, name: true },
-      })
-    : [];
 
   const supplierNameMap = new Map(suppliers.map((item) => [item.id, item.name]));
 
@@ -247,6 +427,76 @@ export async function getCommandCenterData(
   const realisedSavings = phaseMap.get(Phase.REALISED) ?? 0;
   const achievedSavings = phaseMap.get(Phase.ACHIEVED) ?? 0;
   const savingsForecast = forecastCurve.reduce((sum, item) => sum + item.forecast, 0);
+  const normalizedPendingApprovalQueue: CommandCenterPendingApprovalItem[] =
+    pendingApprovalQueue.map((item) => {
+      const ageDays = getCommandCenterAgeDays(item.createdAt, now);
+      const uniquePendingRoles = Array.from(
+        new Set(item.approvals.map((approval) => formatCommandCenterRoleLabel(approval.role)))
+      );
+
+      return {
+        requestId: item.id,
+        savingCardId: item.savingCard.id,
+        savingCardTitle: item.savingCard.title,
+        currentPhase: phaseLabels[item.currentPhase],
+        requestedPhase: phaseLabels[item.requestedPhase],
+        requestedByName: item.requestedBy.name,
+        requestedByRole: formatCommandCenterRoleLabel(item.requestedBy.role),
+        createdAt: item.createdAt.toISOString(),
+        ageDays,
+        isOverdue: ageDays >= COMMAND_CENTER_PENDING_OVERDUE_DAYS,
+        pendingApproverCount: item.approvals.length,
+        pendingApproverRoles: uniquePendingRoles,
+        savings: item.savingCard.calculatedSavings,
+        financeLocked: item.savingCard.financeLocked,
+      };
+    });
+  const normalizedOverdueItems: CommandCenterAttentionItem[] = overdueItems.map((item) => ({
+    savingCardId: item.id,
+    title: item.title,
+    phase: phaseLabels[item.phase],
+    buyerName: item.buyer.name,
+    categoryName: item.category.name,
+    dateLabel: "Due date",
+    dateValue: item.endDate.toISOString(),
+    ageDays: getCommandCenterAgeDays(item.endDate, now),
+    savings: item.calculatedSavings,
+    financeLocked: item.financeLocked,
+  }));
+  const normalizedFinanceLockedItems: CommandCenterAttentionItem[] = financeLockedItems.map((item) => ({
+    savingCardId: item.id,
+    title: item.title,
+    phase: phaseLabels[item.phase],
+    buyerName: item.buyer.name,
+    categoryName: item.category.name,
+    dateLabel: "Last updated",
+    dateValue: item.updatedAt.toISOString(),
+    ageDays: getCommandCenterAgeDays(item.updatedAt, now),
+    savings: item.calculatedSavings,
+    financeLocked: item.financeLocked,
+  }));
+  const normalizedRecentDecisions: CommandCenterDecisionItem[] = recentDecisions.map((item) => ({
+    approvalId: item.id,
+    savingCardId: item.savingCard.id,
+    savingCardTitle: item.savingCard.title,
+    phase: phaseLabels[item.phase],
+    approverName: item.approver.name,
+    approverRole: formatCommandCenterRoleLabel(item.approver.role),
+    status: item.status,
+    approved: item.approved,
+    createdAt: item.createdAt.toISOString(),
+    comment: item.comment,
+  }));
+  const normalizedRecentActivity: CommandCenterActivityItem[] = recentActivity.map((item) => ({
+    savingCardId: item.id,
+    savingCardTitle: item.title,
+    phase: phaseLabels[item.phase],
+    buyerName: item.buyer.name,
+    categoryName: item.category.name,
+    updatedAt: item.updatedAt.toISOString(),
+    financeLocked: item.financeLocked,
+    savings: item.calculatedSavings,
+  }));
 
   return {
     filters: filters ?? {},
@@ -263,6 +513,11 @@ export async function getCommandCenterData(
     topSuppliers,
     savingsByRiskLevel,
     savingsByQualificationStatus,
+    pendingApprovalQueue: normalizedPendingApprovalQueue,
+    overdueItems: normalizedOverdueItems,
+    financeLockedItems: normalizedFinanceLockedItems,
+    recentDecisions: normalizedRecentDecisions,
+    recentActivity: normalizedRecentActivity,
   };
 }
 
@@ -279,4 +534,15 @@ function normalizeRiskLevel(value: string) {
     default:
       return "Unrated";
   }
+}
+
+function getCommandCenterAgeDays(value: Date, now: Date) {
+  return Math.max(
+    0,
+    Math.floor((now.getTime() - value.getTime()) / (1000 * 60 * 60 * 24))
+  );
+}
+
+function formatCommandCenterRoleLabel(role: string) {
+  return roleLabels[role as keyof typeof roleLabels] ?? role;
 }

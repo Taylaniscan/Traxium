@@ -60,7 +60,10 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <SectionHeading title="Dashboard" />
+        <SectionHeading
+          title="Dashboard"
+          subtitle="Executive procurement-finance control surface across the active savings portfolio."
+        />
           <a href="/api/export" className={SERVER_OUTLINE_BUTTON_CLASS}>
             Export workbook
           </a>
