@@ -12,6 +12,8 @@ import {
 } from "@/lib/audit";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import { getScopedCachedValue } from "@/lib/cache";
+import { isDevelopmentEnvironment } from "@/lib/env";
+import { writeStructuredLog } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import type {
   ActiveOrganizationContext,
@@ -32,6 +34,7 @@ const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
 const ADMIN_ORGANIZATION_ROLE: OrganizationRole = "ADMIN";
 const OWNER_ORGANIZATION_ROLE: OrganizationRole = "OWNER";
 const DEFAULT_FIRST_LOGIN_USER_ROLE: Role = "TACTICAL_BUYER";
+const DEFAULT_WORKSPACE_TRIAL_DAYS = 14;
 
 const activeOrganizationContextUserSelect = {
   activeOrganizationId: true,
@@ -392,20 +395,82 @@ async function createInitialOrganization(
   workspaceName: string
 ) {
   const slug = await createUniqueOrganizationSlug(tx, workspaceName);
+  const workspaceTrialEndsAt = new Date();
+  workspaceTrialEndsAt.setDate(
+    workspaceTrialEndsAt.getDate() + DEFAULT_WORKSPACE_TRIAL_DAYS
+  );
 
-  return tx.organization.create({
-    data: {
-      name: workspaceName,
-      slug,
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  try {
+    return await tx.organization.create({
+      data: {
+        name: workspaceName,
+        slug,
+        workspaceTrialEndsAt,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  } catch (error) {
+    if (shouldRetryWorkspaceCreationWithoutTrialEnd(error)) {
+      writeStructuredLog("warn", {
+        event: "workspace.onboarding.workspace_trial_fallback_used",
+        message:
+          "workspaceTrialEndsAt is not available in the current development database yet. Retrying workspace creation without the trial column.",
+        payload: {
+          fallback: "organization_create_without_workspace_trial_ends_at",
+          workspaceSlug: slug,
+        },
+        error,
+      });
+
+      return tx.organization.create({
+        data: {
+          name: workspaceName,
+          slug,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    }
+
+    throw error;
+  }
+}
+
+function shouldRetryWorkspaceCreationWithoutTrialEnd(error: unknown) {
+  if (!isDevelopmentEnvironment()) {
+    return false;
+  }
+
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2022"
+  ) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("workspacetrialendsat") &&
+    (normalizedMessage.includes("column") ||
+      normalizedMessage.includes("field") ||
+      normalizedMessage.includes("unknown arg"))
+  );
 }
 
 async function createInitialOwnerMembership(

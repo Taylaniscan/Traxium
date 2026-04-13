@@ -1,6 +1,7 @@
 import {
   MembershipStatus,
   OrganizationRole,
+  Prisma,
   Role,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +15,7 @@ import {
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const updateUserByIdMock = vi.hoisted(() => vi.fn());
+const writeStructuredLogMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
@@ -31,6 +33,15 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: createSupabaseServerClientMock,
   createSupabaseAdminClient: createSupabaseAdminClientMock,
 }));
+
+vi.mock("@/lib/logger", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/logger")>();
+
+  return {
+    ...actual,
+    writeStructuredLog: writeStructuredLogMock,
+  };
+});
 
 import { POST } from "@/app/api/onboarding/workspace/route";
 
@@ -277,6 +288,7 @@ describe("workspace onboarding route", () => {
       data: {
         name: "Atlas Procurement",
         slug: "atlas-procurement",
+        workspaceTrialEndsAt: expect.any(Date),
       },
       select: {
         id: true,
@@ -675,8 +687,117 @@ describe("workspace onboarding route", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           slug: "atlas-procurement-3",
+          workspaceTrialEndsAt: expect.any(Date),
         }),
       })
     );
+  });
+
+  it("retries workspace creation without workspaceTrialEndsAt in development when the local database column is missing", async () => {
+    const previousAppEnv = process.env.APP_ENV;
+    process.env.APP_ENV = "development";
+
+    mockPrisma.user.findUnique
+      .mockResolvedValueOnce(createResolvedUserRecord())
+      .mockResolvedValueOnce(
+        createResolvedUserRecord({
+          activeOrganizationId: "org-new",
+          memberships: [
+            createMembership("org-new", {
+              role: OrganizationRole.OWNER,
+            }),
+          ],
+        })
+      );
+    tx.user.findUnique.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      memberships: [],
+    });
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError(
+          "The column `workspaceTrialEndsAt` does not exist in the current database.",
+          {
+            clientVersion: "5.0.0",
+            code: "P2022",
+          }
+        )
+      )
+      .mockResolvedValueOnce({
+        id: "org-new",
+        name: "Atlas Procurement",
+        slug: "atlas-procurement",
+        createdAt: new Date("2026-03-24T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+      });
+    tx.organizationMembership.upsert.mockResolvedValueOnce({
+      id: "membership-org-new",
+      organizationId: "org-new",
+      role: OrganizationRole.OWNER,
+      status: MembershipStatus.ACTIVE,
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.user.update.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      organizationId: "org-new",
+      activeOrganizationId: "org-new",
+    });
+
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/onboarding/workspace", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "Atlas Procurement",
+          }),
+        })
+      );
+
+      expect(response.status).toBe(201);
+      expect(tx.organization.create).toHaveBeenNthCalledWith(1, {
+        data: {
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+          workspaceTrialEndsAt: expect.any(Date),
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      expect(tx.organization.create).toHaveBeenNthCalledWith(2, {
+        data: {
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      expect(writeStructuredLogMock).toHaveBeenCalledWith(
+        "warn",
+        expect.objectContaining({
+          event: "workspace.onboarding.workspace_trial_fallback_used",
+        })
+      );
+    } finally {
+      if (previousAppEnv === undefined) {
+        delete process.env.APP_ENV;
+      } else {
+        process.env.APP_ENV = previousAppEnv;
+      }
+    }
   });
 });
