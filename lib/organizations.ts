@@ -14,6 +14,7 @@ import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import { getScopedCachedValue } from "@/lib/cache";
 import { isDevelopmentEnvironment } from "@/lib/env";
 import { writeStructuredLog } from "@/lib/logger";
+import { captureException } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
 import type {
   ActiveOrganizationContext,
@@ -599,6 +600,30 @@ function normalizeOrganizationDescription(value: string | null | undefined) {
   return normalized ? normalized : null;
 }
 
+function captureWorkspaceOnboardingStepFailure(input: {
+  event:
+    | "onboarding.workspace.user_lookup_failed"
+    | "onboarding.workspace.organization_create_failed"
+    | "onboarding.workspace.membership_create_failed"
+    | "onboarding.workspace.user_update_failed"
+    | "onboarding.workspace.audit_write_failed"
+    | "onboarding.workspace.first_login_user_create_failed";
+  error: unknown;
+  userId?: string;
+  organizationId?: string;
+  payload?: Record<string, unknown>;
+}) {
+  captureException(input.error, {
+    event: input.event,
+    userId: input.userId ?? null,
+    organizationId: input.organizationId ?? null,
+    payload: {
+      workflow: "initial_workspace_onboarding",
+      ...input.payload,
+    },
+  });
+}
+
 export async function createInitialWorkspaceForUser(
   userId: string,
   workspaceName: string
@@ -610,10 +635,25 @@ export async function createInitialWorkspaceForUser(
   }
 
   return prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: initialWorkspaceUserSelect,
-    });
+    let user: InitialWorkspaceUserRecord | null;
+
+    try {
+      user = await tx.user.findUnique({
+        where: { id: userId },
+        select: initialWorkspaceUserSelect,
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.user_lookup_failed",
+        error,
+        userId,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
     if (!user) {
       throw new WorkspaceOnboardingError("User not found.", 404);
@@ -625,29 +665,89 @@ export async function createInitialWorkspaceForUser(
       return mapInitialWorkspaceResult(existingMembership);
     }
 
-    const organization = await createInitialOrganization(tx, normalizedWorkspaceName);
-    const membership = await createInitialOwnerMembership(tx, userId, organization.id);
+    let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
-    await tx.user.update({
-      where: { id: userId },
-      data: {
+    try {
+      organization = await createInitialOrganization(tx, normalizedWorkspaceName);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.organization_create_failed",
+        error,
+        userId,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
+
+    let membership: Awaited<ReturnType<typeof createInitialOwnerMembership>>;
+
+    try {
+      membership = await createInitialOwnerMembership(tx, userId, organization.id);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.membership_create_failed",
+        error,
+        userId,
         organizationId: organization.id,
-        activeOrganizationId: organization.id,
-      },
-    });
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
-    await writeAuditEvent(tx, {
-      organizationId: organization.id,
-      actorUserId: userId,
-      targetUserId: userId,
-      targetEntityId: organization.id,
-      eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
-      detail: `Workspace ${organization.name} was created.`,
-      payload: {
-        membershipRole: OWNER_ORGANIZATION_ROLE,
-        organizationSlug: organization.slug,
-      },
-    });
+    try {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          organizationId: organization.id,
+          activeOrganizationId: organization.id,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.user_update_failed",
+        error,
+        userId,
+        organizationId: organization.id,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
+
+    try {
+      await writeAuditEvent(tx, {
+        organizationId: organization.id,
+        actorUserId: userId,
+        targetUserId: userId,
+        targetEntityId: organization.id,
+        eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
+        detail: `Workspace ${organization.name} was created.`,
+        payload: {
+          membershipRole: OWNER_ORGANIZATION_ROLE,
+          organizationSlug: organization.slug,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.audit_write_failed",
+        error,
+        userId,
+        organizationId: organization.id,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
     return {
       created: true,
@@ -683,33 +783,98 @@ export async function createInitialWorkspaceForAuthenticatedUser(
   }
 
   return prisma.$transaction(async (tx) => {
-    const organization = await createInitialOrganization(tx, normalizedWorkspaceName);
-    const user = await tx.user.create({
-      data: {
-        organizationId: organization.id,
-        activeOrganizationId: organization.id,
-        name: normalizedName,
-        email: normalizedEmail,
-        role: input.role ?? DEFAULT_FIRST_LOGIN_USER_ROLE,
-      },
-      select: {
-        id: true,
-      },
-    });
-    const membership = await createInitialOwnerMembership(tx, user.id, organization.id);
+    let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
-    await writeAuditEvent(tx, {
-      organizationId: organization.id,
-      actorUserId: user.id,
-      targetUserId: user.id,
-      targetEntityId: organization.id,
-      eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
-      detail: `Workspace ${organization.name} was created.`,
-      payload: {
-        membershipRole: OWNER_ORGANIZATION_ROLE,
-        organizationSlug: organization.slug,
-      },
-    });
+    try {
+      organization = await createInitialOrganization(tx, normalizedWorkspaceName);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.organization_create_failed",
+        error,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    let user: { id: string };
+
+    try {
+      user = await tx.user.create({
+        data: {
+          organizationId: organization.id,
+          activeOrganizationId: organization.id,
+          name: normalizedName,
+          email: normalizedEmail,
+          role: input.role ?? DEFAULT_FIRST_LOGIN_USER_ROLE,
+        },
+        select: {
+          id: true,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.first_login_user_create_failed",
+        error,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    let membership: Awaited<ReturnType<typeof createInitialOwnerMembership>>;
+
+    try {
+      membership = await createInitialOwnerMembership(tx, user.id, organization.id);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.membership_create_failed",
+        error,
+        userId: user.id,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    try {
+      await writeAuditEvent(tx, {
+        organizationId: organization.id,
+        actorUserId: user.id,
+        targetUserId: user.id,
+        targetEntityId: organization.id,
+        eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
+        detail: `Workspace ${organization.name} was created.`,
+        payload: {
+          membershipRole: OWNER_ORGANIZATION_ROLE,
+          organizationSlug: organization.slug,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.audit_write_failed",
+        error,
+        userId: user.id,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
 
     return {
       created: true,

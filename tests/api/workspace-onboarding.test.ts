@@ -15,6 +15,7 @@ import {
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const updateUserByIdMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 const writeStructuredLogMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
@@ -40,6 +41,16 @@ vi.mock("@/lib/logger", async (importOriginal) => {
   return {
     ...actual,
     writeStructuredLog: writeStructuredLogMock,
+  };
+});
+
+vi.mock("@/lib/observability", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/observability")>();
+
+  return {
+    ...actual,
+    captureException: captureExceptionMock,
   };
 });
 
@@ -799,5 +810,91 @@ describe("workspace onboarding route", () => {
         process.env.APP_ENV = previousAppEnv;
       }
     }
+  });
+
+  it("captures the first failing step when organization creation fails for an existing user", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(createResolvedUserRecord());
+    tx.user.findUnique.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      memberships: [],
+    });
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create.mockRejectedValueOnce(
+      new Error("Organization insert failed.")
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/onboarding/workspace", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Atlas Procurement",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "onboarding.workspace.organization_create_failed",
+        userId: DEFAULT_USER_ID,
+        payload: expect.objectContaining({
+          flow: "existing_user",
+          workspaceName: "Atlas Procurement",
+        }),
+      })
+    );
+  });
+
+  it("captures the first failing step when first-login user creation fails", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        email: "new.user@example.com",
+        app_metadata: {},
+        user_metadata: {
+          full_name: "New User",
+        },
+      })
+    );
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.findMany.mockResolvedValueOnce([]);
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create.mockResolvedValueOnce({
+      id: "org-new",
+      name: "Atlas Procurement",
+      slug: "atlas-procurement",
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.user.create.mockRejectedValueOnce(new Error("User insert failed."));
+
+    const response = await POST(
+      new Request("http://localhost/api/onboarding/workspace", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Atlas Procurement",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "onboarding.workspace.first_login_user_create_failed",
+        organizationId: "org-new",
+        payload: expect.objectContaining({
+          flow: "first_login",
+          workspaceName: "Atlas Procurement",
+          email: "new.user@example.com",
+        }),
+      })
+    );
   });
 });
