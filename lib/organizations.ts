@@ -396,82 +396,68 @@ async function createInitialOrganization(
   workspaceName: string
 ) {
   const slug = await createUniqueOrganizationSlug(tx, workspaceName);
-  const workspaceTrialEndsAt = new Date();
-  workspaceTrialEndsAt.setDate(
-    workspaceTrialEndsAt.getDate() + DEFAULT_WORKSPACE_TRIAL_DAYS
-  );
+  const shouldPersistWorkspaceTrialEnd = await canPersistWorkspaceTrialEnd(tx);
+  const organizationCreateData: {
+    name: string;
+    slug: string;
+    workspaceTrialEndsAt?: Date;
+  } = {
+    name: workspaceName,
+    slug,
+  };
 
-  try {
-    return await tx.organization.create({
-      data: {
-        name: workspaceName,
-        slug,
-        workspaceTrialEndsAt,
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  } catch (error) {
-    if (shouldRetryWorkspaceCreationWithoutTrialEnd(error)) {
+  if (shouldPersistWorkspaceTrialEnd) {
+    const workspaceTrialEndsAt = new Date();
+    workspaceTrialEndsAt.setDate(
+      workspaceTrialEndsAt.getDate() + DEFAULT_WORKSPACE_TRIAL_DAYS
+    );
+    organizationCreateData.workspaceTrialEndsAt = workspaceTrialEndsAt;
+  } else {
+    if (isDevelopmentEnvironment()) {
       writeStructuredLog("warn", {
         event: "workspace.onboarding.workspace_trial_fallback_used",
         message:
-          "workspaceTrialEndsAt is not available in the current development database yet. Retrying workspace creation without the trial column.",
+          "workspaceTrialEndsAt is not available in the current development database yet. Creating the workspace without the trial column.",
         payload: {
-          fallback: "organization_create_without_workspace_trial_ends_at",
+          fallback: "organization_create_without_workspace_trial_ends_at_preflight",
           workspaceSlug: slug,
-        },
-        error,
-      });
-
-      return tx.organization.create({
-        data: {
-          name: workspaceName,
-          slug,
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true,
-          updatedAt: true,
         },
       });
     }
-
-    throw error;
   }
+
+  return tx.organization.create({
+    data: organizationCreateData,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 }
 
-function shouldRetryWorkspaceCreationWithoutTrialEnd(error: unknown) {
+async function canPersistWorkspaceTrialEnd(tx: OrganizationWriteClient) {
   if (!isDevelopmentEnvironment()) {
-    return false;
+    return true;
   }
 
   if (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2022"
+    (await tx.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'Organization'
+          AND column_name = 'workspaceTrialEndsAt'
+      ) AS "exists"
+    `))[0]?.exists
   ) {
     return true;
   }
 
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const normalizedMessage = error.message.toLowerCase();
-
-  return (
-    normalizedMessage.includes("workspacetrialendsat") &&
-    (normalizedMessage.includes("column") ||
-      normalizedMessage.includes("field") ||
-      normalizedMessage.includes("unknown arg"))
-  );
+  return false;
 }
 
 async function createInitialOwnerMembership(

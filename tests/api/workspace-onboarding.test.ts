@@ -156,6 +156,7 @@ function mockAuthenticatedSession(authUser: ReturnType<typeof createAuthSessionU
 
 function createTransactionMock() {
   return {
+    $queryRaw: vi.fn(),
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -180,6 +181,7 @@ describe("workspace onboarding route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tx = createTransactionMock();
+    tx.$queryRaw.mockResolvedValue([{ exists: true }]);
 
     mockAuthenticatedSession(
       createAuthSessionUser({
@@ -704,7 +706,7 @@ describe("workspace onboarding route", () => {
     );
   });
 
-  it("retries workspace creation without workspaceTrialEndsAt in development when the local database column is missing", async () => {
+  it("skips workspaceTrialEndsAt in development when the local database column is missing", async () => {
     const previousAppEnv = process.env.APP_ENV;
     process.env.APP_ENV = "development";
 
@@ -725,23 +727,14 @@ describe("workspace onboarding route", () => {
       memberships: [],
     });
     tx.organization.findMany.mockResolvedValueOnce([]);
-    tx.organization.create
-      .mockRejectedValueOnce(
-        new Prisma.PrismaClientKnownRequestError(
-          "The column `workspaceTrialEndsAt` does not exist in the current database.",
-          {
-            clientVersion: "5.0.0",
-            code: "P2022",
-          }
-        )
-      )
-      .mockResolvedValueOnce({
-        id: "org-new",
-        name: "Atlas Procurement",
-        slug: "atlas-procurement",
-        createdAt: new Date("2026-03-24T00:00:00.000Z"),
-        updatedAt: new Date("2026-03-24T00:00:00.000Z"),
-      });
+    tx.$queryRaw.mockResolvedValueOnce([{ exists: false }]);
+    tx.organization.create.mockResolvedValueOnce({
+      id: "org-new",
+      name: "Atlas Procurement",
+      slug: "atlas-procurement",
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
     tx.organizationMembership.upsert.mockResolvedValueOnce({
       id: "membership-org-new",
       organizationId: "org-new",
@@ -770,21 +763,8 @@ describe("workspace onboarding route", () => {
       );
 
       expect(response.status).toBe(201);
-      expect(tx.organization.create).toHaveBeenNthCalledWith(1, {
-        data: {
-          name: "Atlas Procurement",
-          slug: "atlas-procurement",
-          workspaceTrialEndsAt: expect.any(Date),
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
-      expect(tx.organization.create).toHaveBeenNthCalledWith(2, {
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(tx.organization.create).toHaveBeenCalledWith({
         data: {
           name: "Atlas Procurement",
           slug: "atlas-procurement",
