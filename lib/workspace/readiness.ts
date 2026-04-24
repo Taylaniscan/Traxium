@@ -46,6 +46,7 @@ export async function getWorkspaceReadiness(
           select: {
             id: true,
             name: true,
+            description: true,
             slug: true,
             createdAt: true,
             updatedAt: true,

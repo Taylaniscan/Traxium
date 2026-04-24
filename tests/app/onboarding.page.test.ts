@@ -103,6 +103,7 @@ function createWorkspaceReadiness(
     workspace: {
       id: "org-1",
       name: "Atlas Procurement",
+      description: "SME procurement savings pilot.",
       slug: "atlas-procurement",
       createdAt: new Date("2026-04-01T00:00:00.000Z"),
       updatedAt: new Date("2026-04-01T00:00:00.000Z"),
@@ -258,9 +259,17 @@ describe("onboarding page", () => {
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
     expect(markup).toContain("Set up Atlas Procurement for first value");
-    expect(markup).toContain("4 of 7 steps completed");
-    expect(markup).toContain("Set up buyers");
+    expect(markup).toContain("2 of 7 steps completed");
+    expect(markup).toContain("First-value progress");
+    expect(markup).toContain("80%");
+    expect(markup).toContain("Workspace identity");
+    expect(markup).toContain("SME procurement savings pilot.");
+    expect(markup).toContain("Business structure and master data");
+    expect(markup).toContain("Buyers");
     expect(markup).toContain("Set up suppliers");
+    expect(markup).toContain("Plants");
+    expect(markup).toContain("Business Units");
+    expect(markup).toContain("Current count");
     expect(markup).toContain("Upload first");
     expect(markup).toContain("Download template");
     expect(markup).toContain("Field guide");
@@ -270,13 +279,133 @@ describe("onboarding page", () => {
     expect(markup).toContain("Example row");
     expect(markup).toContain("CSV (.csv)");
     expect(markup).toContain("Excel workbook (.xlsx)");
-    expect(markup).toContain("name, email, code, department");
+    expect(markup).toContain("name, code, country, contactEmail");
     expect(markup).toContain("Result summary");
+    expect(markup).toContain("Team and roles");
+    expect(markup).toContain("Financial Controller");
     expect(markup).toContain("Create first saving card");
-    expect(markup).toContain("Invite teammate or load sample data");
-    expect(markup).toContain("Workspace readiness");
-    expect(markup).toContain("22%");
-    expect(markup).toContain("data-launchpad=\"Invite teammate or load sample data\"");
+    expect(markup).toContain("At least one saving card exists, so this step is complete.");
+    expect(markup).toContain("Evidence and finance trust");
+    expect(markup).toContain("Reporting and dashboard");
+    expect(markup).toContain("Go to Dashboard");
+    expect(markup).toContain("Go to Reports");
+    expect(markup).toContain("Go to Kanban");
+    expect(markup).toContain("Required for first value");
+    expect(markup).toContain("Recommended for better reporting");
+    expect(markup).toContain("Continue later");
+    expect(markup).toContain('href="/dashboard"');
+    expect(markup).toContain("data-launchpad=\"Training and acceleration\"");
+  });
+
+  it("shows first-value blockers for an empty workspace", async () => {
+    getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
+      ok: true,
+      needsWorkspace: false,
+      user: {
+        id: "user-1",
+        name: "Taylor Buyer",
+        email: "taylor@example.com",
+      },
+    });
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: true,
+      repaired: false,
+      user: createSessionUser({
+        role: Role.TACTICAL_BUYER,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: "org-1",
+          membershipRole: OrganizationRole.ADMIN,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      }),
+    });
+    getWorkspaceReadinessMock.mockResolvedValueOnce(
+      createWorkspaceReadiness({
+        counts: {
+          users: 1,
+          buyers: 0,
+          suppliers: 0,
+          materials: 0,
+          categories: 0,
+          plants: 0,
+          businessUnits: 0,
+          savingCards: 0,
+        },
+        coverage: {
+          masterDataReadyCount: 0,
+          masterDataTotal: 6,
+          workflowReadyCount: 0,
+          workflowTotal: 3,
+          overallPercent: 0,
+        },
+      })
+    );
+
+    const page = await OnboardingPage();
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(markup).toContain("20%");
+    expect(markup).toContain("At least one buyer");
+    expect(markup).toContain("At least one supplier");
+    expect(markup).toContain("At least one material or category");
+    expect(markup).toContain("At least one saving card");
+    expect(markup).toContain("Remaining blockers");
+    expect(markup).toContain("Create first saving card");
+  });
+
+  it("keeps optional reporting gaps from blocking first-value readiness", async () => {
+    getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
+      ok: true,
+      needsWorkspace: false,
+      user: {
+        id: "user-1",
+        name: "Taylor Buyer",
+        email: "taylor@example.com",
+      },
+    });
+    bootstrapCurrentUserMock.mockResolvedValueOnce({
+      ok: true,
+      repaired: false,
+      user: createSessionUser({
+        role: Role.TACTICAL_BUYER,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: "org-1",
+          membershipRole: OrganizationRole.ADMIN,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      }),
+    });
+    getWorkspaceReadinessMock.mockResolvedValueOnce(
+      createWorkspaceReadiness({
+        counts: {
+          users: 1,
+          buyers: 1,
+          suppliers: 1,
+          materials: 1,
+          categories: 0,
+          plants: 0,
+          businessUnits: 0,
+          savingCards: 1,
+        },
+        coverage: {
+          masterDataReadyCount: 3,
+          masterDataTotal: 6,
+          workflowReadyCount: 0,
+          workflowTotal: 3,
+          overallPercent: 33,
+        },
+      })
+    );
+
+    const page = await OnboardingPage();
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(markup).toContain("100%");
+    expect(markup).toContain("Your workspace is ready for first portfolio review.");
+    expect(markup).toContain("Recommended gaps such as Plants, Business units, More complete categories");
+    expect(markup).toContain("Open dashboard");
   });
 
   it("keeps onboarding available when readiness cannot be loaded", async () => {
@@ -312,7 +441,7 @@ describe("onboarding page", () => {
     expect(markup).toContain(
       "Live workspace progress could not be refreshed right now."
     );
-    expect(markup).toContain("Invite teammate or load sample data");
+    expect(markup).toContain("Training and acceleration");
     expect(captureExceptionMock).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({

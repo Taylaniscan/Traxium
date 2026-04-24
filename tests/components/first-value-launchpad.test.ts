@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const useStateMock = vi.hoisted(() => vi.fn());
 
@@ -94,7 +95,6 @@ import { FirstValueLaunchpad } from "@/components/onboarding/first-value-launchp
 
 type ReactElementWithProps = React.ReactElement<{
   children?: React.ReactNode;
-  onSubmit?: (event: { preventDefault: () => void }) => Promise<void> | void;
 }>;
 
 function collectElements(
@@ -122,66 +122,26 @@ function collectElements(
 describe("first value launchpad", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("shows a queued delivery confirmation without exposing an unusable fallback link", async () => {
-    const setEmail = vi.fn();
-    const setRole = vi.fn();
-    const setInviteError = vi.fn();
-    const setInviteLink = vi.fn();
-    const setInviteSuccess = vi.fn();
-    const setInviteLoading = vi.fn();
-    const setCopyState = vi.fn();
-    const preventDefault = vi.fn();
-    const fetchMock = vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        invitation: {
-          token: "token-123",
-        },
-        delivery: {
-          transport: "job-queued",
-          state: "queued",
-          jobId: "job-1",
-        },
-      }),
-    } as unknown as Response);
-
-    useStateMock
-      .mockReturnValueOnce(["teammate@example.com", setEmail])
-      .mockReturnValueOnce(["ADMIN", setRole])
-      .mockReturnValueOnce([null, setInviteError])
-      .mockReturnValueOnce([null, setInviteLink])
-      .mockReturnValueOnce([null, setInviteSuccess])
-      .mockReturnValueOnce([false, setInviteLoading])
-      .mockReturnValueOnce(["idle", setCopyState]);
-
+  it("shows first-value actions without duplicating the invitation form", () => {
     const tree = FirstValueLaunchpad({
       viewerMembershipRole: "OWNER",
     });
-    const [form] = collectElements(
+    const markup = renderToStaticMarkup(tree);
+    const forms = collectElements(
       tree,
       (element) => typeof element.type === "string" && element.type === "form"
     );
 
-    expect(form).toBeDefined();
-
-    await form.props.onSubmit?.({ preventDefault });
-
-    expect(fetchMock).toHaveBeenCalledWith("/api/invitations", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        email: "teammate@example.com",
-        role: "ADMIN",
-      }),
-    });
-    expect(setInviteLink).toHaveBeenCalledWith(null);
-    expect(setInviteSuccess).toHaveBeenCalledWith(
-      "Invitation queued. The teammate will receive an email shortly."
+    expect(forms).toHaveLength(0);
+    expect(markup).toContain("Fastest path to first value");
+    expect(markup).toContain("Create first saving card");
+    expect(markup).toContain("Load sample data");
+    expect(markup).toContain("Invite team members in Admin Members");
+    expect(markup).toContain('href="/admin/members"');
+    expect(markup).toContain(
+      "Use sample data only for demo/training. Use real data when preparing a pilot or customer workspace."
     );
   });
 });

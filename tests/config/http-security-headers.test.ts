@@ -29,7 +29,7 @@ describe("http security headers", () => {
   });
 
   it("builds a production-grade header set with CSP, HSTS, and clickjacking protection", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.APP_ENV = "production";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://atlas.supabase.co";
     process.env.NEXT_PUBLIC_ANALYTICS_HOST = "https://analytics.traxium.app";
@@ -76,7 +76,7 @@ describe("http security headers", () => {
   });
 
   it("keeps development CSP compatible with local Next.js tooling", () => {
-    process.env.NODE_ENV = "development";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "development";
     process.env.APP_ENV = "development";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
 
@@ -90,7 +90,7 @@ describe("http security headers", () => {
   });
 
   it("treats preview as a hardened environment instead of a local-development exception", () => {
-    process.env.NODE_ENV = "development";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "development";
     process.env.APP_ENV = "preview";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://previewci.supabase.co";
 
@@ -106,7 +106,7 @@ describe("http security headers", () => {
   });
 
   it("deduplicates normalized CSP origins and drops invalid external origins", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.APP_ENV = "production";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
     process.env.NEXT_PUBLIC_ANALYTICS_HOST = "https://analytics.traxium.app";

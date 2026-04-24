@@ -38,7 +38,7 @@ vi.mock("@/lib/jobs", () => {
 vi.mock("@sentry/nextjs", () => sentryState);
 
 describe("instrumentation client browser boundary", () => {
-  const globals = globalThis as typeof globalThis & {
+  const globals = globalThis as Record<string, unknown> & {
     window?: {
       location?: {
         href?: string;
@@ -59,7 +59,7 @@ describe("instrumentation client browser boundary", () => {
       return;
     }
 
-    delete globals.window;
+    delete (globals as { window?: unknown }).window;
   });
 
   it("keeps the client instrumentation import graph free of static jobs and prisma imports", () => {

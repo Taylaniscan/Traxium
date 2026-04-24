@@ -22,6 +22,12 @@ const workspaceOnboardingSchema = z.object({
       (value) => /[\p{L}\p{N}]/u.test(value),
       "Workspace name must contain letters or numbers."
     ),
+  description: z
+    .string()
+    .trim()
+    .max(240, "Workspace description must be 240 characters or fewer.")
+    .nullable()
+    .optional(),
 });
 
 function jsonError(error: string, status: number, code?: string) {
@@ -70,7 +76,10 @@ export async function POST(request: Request) {
     }
 
     const payload = workspaceOnboardingSchema.parse(body.data);
-    const result = await createInitialWorkspaceOnboarding(payload.name);
+    const result = await createInitialWorkspaceOnboarding(
+      payload.name,
+      payload.description ?? null
+    );
 
     trackServerEvent({
       ...requestContext,

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
+import { MasterDataStarterTable } from "@/components/onboarding/master-data-starter-table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
 import {
   getMasterDataOnboardingStepConfig,
   getMasterDataTemplateDownloadHref,
+  isMasterDataImportEntityKey,
   type MasterDataOnboardingColumnDefinition,
   type MasterDataOnboardingEntityKey,
 } from "@/lib/onboarding/master-data-config";
@@ -36,7 +37,7 @@ type OnboardingMasterDataImportResult = {
 };
 
 type OnboardingMasterDataImportResponse = {
-  importType: "buyers" | "suppliers" | "materials";
+  importType: "buyers" | "suppliers" | "materials" | "categories";
   summary: {
     created: number;
     skipped: number;
@@ -50,7 +51,6 @@ type MasterDataUploadStepProps = {
   entityKey: MasterDataOnboardingEntityKey;
   status: "complete" | "current" | "pending";
   count: number;
-  manualHref: string;
 };
 
 function getStatusBadge(status: MasterDataUploadStepProps["status"]) {
@@ -69,7 +69,6 @@ export function MasterDataUploadStep({
   entityKey,
   status,
   count,
-  manualHref,
 }: MasterDataUploadStepProps) {
   const router = useRouter();
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
@@ -84,8 +83,7 @@ export function MasterDataUploadStep({
   const exampleRowValues = config.templateHeaders.map(
     (header) => config.exampleRow[header] ?? ""
   );
-  const uploadImportType =
-    entityKey === "buyers" || entityKey === "suppliers" ? entityKey : null;
+  const uploadImportType = isMasterDataImportEntityKey(entityKey) ? entityKey : null;
   const uploadEnabled = config.uploadEnabled && uploadImportType !== null;
 
   function handleFileSelection() {
@@ -234,12 +232,12 @@ export function MasterDataUploadStep({
                       ? "Upload file"
                       : "Upload coming soon"}
                 </Button>
-                <Link
-                  href={manualHref}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  Add manually
-                </Link>
+                <MasterDataStarterTable
+                  entityKey={entityKey}
+                  count={count}
+                  compact
+                  panelId={`starter-data-upload-${entityKey}`}
+                />
                 <a
                   href={getMasterDataTemplateDownloadHref(entityKey)}
                   className={buttonVariants({ variant: "ghost", size: "sm" })}

@@ -553,6 +553,7 @@ export type DashboardData = {
 export type WorkspaceIdentity = {
   id: string;
   name: string;
+  description?: string | null;
   slug: string;
   createdAt: Date;
   updatedAt: Date;

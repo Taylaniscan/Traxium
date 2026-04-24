@@ -10,6 +10,7 @@ import {
   captureException,
   trackClientEvent,
 } from "@/lib/observability";
+import { Textarea } from "@/components/ui/textarea";
 
 type WorkspaceOnboardingFormProps = {
   userName: string;
@@ -24,6 +25,7 @@ export function WorkspaceOnboardingForm({
   userName,
 }: WorkspaceOnboardingFormProps) {
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const submissionInFlightRef = useRef(false);
@@ -45,7 +47,10 @@ export function WorkspaceOnboardingForm({
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          description: description.trim() || null,
+        }),
       });
 
       if (!response.ok) {
@@ -111,7 +116,7 @@ export function WorkspaceOnboardingForm({
             </div>
             <CardTitle>Create your first workspace</CardTitle>
             <CardDescription>
-              Start with the workspace name. As soon as this step is done, Traxium will move you into a guided setup flow for upload-first master data, the first saving card, and team expansion.
+              This workspace is where your procurement savings initiatives, evidence, approvals, and reports will live.
             </CardDescription>
           </CardHeader>
 
@@ -152,6 +157,21 @@ export function WorkspaceOnboardingForm({
                 </p>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="workspace-description">Short description</Label>
+                <Textarea
+                  id="workspace-description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  maxLength={240}
+                  rows={4}
+                  placeholder="Example: SME procurement pilot for direct materials savings."
+                />
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Keep this practical. A short purpose helps admins and new teammates understand the workspace later.
+                </p>
+              </div>
+
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {error}
@@ -179,12 +199,12 @@ export function WorkspaceOnboardingForm({
           <CardContent className="space-y-3">
             {[
               "Workspace basics",
-              "Upload buyers",
-              "Upload suppliers",
-              "Upload materials",
-              "Upload categories",
+              "Business structure and master data",
+              "Team and roles",
               "Create first saving card",
-              "Invite teammate or load sample data",
+              "Evidence and finance trust",
+              "Dashboard and reporting",
+              "Finish or continue later",
             ].map((step, index) => (
               <div
                 key={step}

@@ -17,14 +17,14 @@ import {
 } from "@/lib/usage";
 import { savingCardSchema } from "@/lib/validation";
 import {
-  MASTER_DATA_ONBOARDING_ENTITY_KEYS,
-  type MasterDataOnboardingEntityKey,
+  MASTER_DATA_IMPORT_ENTITY_KEYS,
+  type MasterDataImportEntityKey,
 } from "@/lib/onboarding/master-data-config";
 
 const IMPORT_QUOTA_WINDOW = UsageWindow.MONTH;
-const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_ONBOARDING_ENTITY_KEYS;
+const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_IMPORT_ENTITY_KEYS;
 
-type MasterDataImportType = MasterDataOnboardingEntityKey;
+type MasterDataImportType = MasterDataImportEntityKey;
 type ImportType = MasterDataImportType | "saving_cards";
 type MasterDataImportStatus = "created" | "skipped" | "failed";
 
@@ -52,6 +52,9 @@ type ValidatedMasterDataImportRow = {
   department?: string;
   country?: string;
   contactEmail?: string;
+  description?: string;
+  unitOfMeasure?: string;
+  owner?: string;
 };
 
 class ImportFileError extends Error {
@@ -542,7 +545,7 @@ export async function POST(request: Request) {
 
     if (!importType) {
       return NextResponse.json(
-        { error: "Import type must be saving_cards, buyers, suppliers, or materials." },
+        { error: "Import type must be saving_cards, buyers, suppliers, materials, or categories." },
         { status: 422 }
       );
     }

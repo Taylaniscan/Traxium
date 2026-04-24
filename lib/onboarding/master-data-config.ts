@@ -3,10 +3,22 @@ export const MASTER_DATA_ONBOARDING_ENTITY_KEYS = [
   "suppliers",
   "materials",
   "categories",
+  "plants",
+  "businessUnits",
 ] as const;
 
 export type MasterDataOnboardingEntityKey =
   (typeof MASTER_DATA_ONBOARDING_ENTITY_KEYS)[number];
+
+export const MASTER_DATA_IMPORT_ENTITY_KEYS = [
+  "buyers",
+  "suppliers",
+  "materials",
+  "categories",
+] as const;
+
+export type MasterDataImportEntityKey =
+  (typeof MASTER_DATA_IMPORT_ENTITY_KEYS)[number];
 
 export type MasterDataOnboardingColumnDefinition = {
   key: string;
@@ -213,6 +225,78 @@ export const MASTER_DATA_ONBOARDING_STEP_CONFIG: Record<
     },
     templateHeaders: ["name", "code", "owner"],
   },
+  plants: {
+    entityKey: "plants",
+    singularLabel: "plant",
+    pluralLabel: "plants",
+    title: "Set up plants",
+    description:
+      "Add plants when you want savings cards and reports to show which operational locations are affected.",
+    helper:
+      "Plants improve reporting and accountability, but you can start first value without perfect plant coverage.",
+    uploadEnabled: false,
+    acceptedFileTypes: ["CSV (.csv)"],
+    fileInputAccept: ".csv,text/csv",
+    templateFileName: "traxium-plants-template.csv",
+    requiredColumns: [
+      {
+        key: "name",
+        label: "name",
+        description: "Plant or site name used in saving card reporting.",
+      },
+      {
+        key: "region",
+        label: "region",
+        description: "Region or country grouping for the plant.",
+      },
+    ],
+    optionalColumns: [
+      {
+        key: "code",
+        label: "code",
+        description: "Internal plant code, if your business uses one.",
+      },
+    ],
+    exampleRow: {
+      name: "Amsterdam Plant",
+      region: "Benelux",
+      code: "PLT-AMS",
+    },
+    templateHeaders: ["name", "region", "code"],
+  },
+  businessUnits: {
+    entityKey: "businessUnits",
+    singularLabel: "business unit",
+    pluralLabel: "business units",
+    title: "Set up business units",
+    description:
+      "Add business units when teams need savings performance split by division or operating group.",
+    helper:
+      "Business units are recommended for cleaner portfolio reporting, not required to create the first saving card.",
+    uploadEnabled: false,
+    acceptedFileTypes: ["CSV (.csv)"],
+    fileInputAccept: ".csv,text/csv",
+    templateFileName: "traxium-business-units-template.csv",
+    requiredColumns: [
+      {
+        key: "name",
+        label: "name",
+        description: "Business unit name used in dashboards and reports.",
+      },
+    ],
+    optionalColumns: [
+      {
+        key: "code",
+        label: "code",
+        description: "Internal business unit code, if available.",
+      },
+    ],
+    exampleRow: {
+      name: "Beverages",
+      code: "BU-BEV",
+    },
+    templateHeaders: ["name", "code"],
+  },
 };
 
 export function getMasterDataOnboardingStepConfig(
@@ -225,6 +309,12 @@ export function isMasterDataOnboardingEntityKey(
   value: string
 ): value is MasterDataOnboardingEntityKey {
   return value in MASTER_DATA_ONBOARDING_STEP_CONFIG;
+}
+
+export function isMasterDataImportEntityKey(
+  value: string
+): value is MasterDataImportEntityKey {
+  return (MASTER_DATA_IMPORT_ENTITY_KEYS as readonly string[]).includes(value);
 }
 
 function escapeCsvValue(value: string) {

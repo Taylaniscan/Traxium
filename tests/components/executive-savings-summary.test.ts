@@ -97,7 +97,7 @@ function createDashboardData(
     cards: [{ title: "Card 1" }, { title: "Card 2" }, { title: "Card 3" }],
     annualTarget: 350000,
     ...overrides,
-  } as DashboardData;
+  } as unknown as DashboardData;
 }
 
 describe("executive savings summary", () => {

@@ -259,6 +259,7 @@ describe("workspace onboarding route", () => {
         },
         body: JSON.stringify({
           name: "Atlas Procurement",
+          description: "SME procurement savings pilot.",
         }),
       })
     );
@@ -300,6 +301,7 @@ describe("workspace onboarding route", () => {
     expect(tx.organization.create).toHaveBeenCalledWith({
       data: {
         name: "Atlas Procurement",
+        description: "SME procurement savings pilot.",
         slug: "atlas-procurement",
         workspaceTrialEndsAt: expect.any(Date),
       },

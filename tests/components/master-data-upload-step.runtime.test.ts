@@ -33,6 +33,15 @@ vi.mock("next/link", async () => {
   };
 });
 
+vi.mock("@/components/onboarding/master-data-starter-table", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    MasterDataStarterTable: () =>
+      React.createElement("button", { type: "button" }, "Add manually"),
+  };
+});
+
 import * as React from "react";
 
 import { MasterDataUploadStep } from "@/components/onboarding/master-data-upload-step";
@@ -108,7 +117,6 @@ describe("master data upload step runtime", () => {
       entityKey: "buyers",
       status: "current",
       count: 0,
-      manualHref: "/saving-cards/new",
     });
     const [fileInput] = collectElements(
       tree,

@@ -393,18 +393,25 @@ async function createUniqueOrganizationSlug(
 
 async function createInitialOrganization(
   tx: OrganizationWriteClient,
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ) {
   const slug = await createUniqueOrganizationSlug(tx, workspaceName);
   const shouldPersistWorkspaceTrialEnd = await canPersistWorkspaceTrialEnd(tx);
+  const description = normalizeOrganizationDescription(workspaceDescription);
   const organizationCreateData: {
     name: string;
     slug: string;
+    description?: string;
     workspaceTrialEndsAt?: Date;
   } = {
     name: workspaceName,
     slug,
   };
+
+  if (description) {
+    organizationCreateData.description = description;
+  }
 
   if (shouldPersistWorkspaceTrialEnd) {
     const workspaceTrialEndsAt = new Date();
@@ -612,7 +619,8 @@ function captureWorkspaceOnboardingStepFailure(input: {
 
 export async function createInitialWorkspaceForUser(
   userId: string,
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ): Promise<InitialWorkspaceResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(workspaceName);
 
@@ -654,7 +662,11 @@ export async function createInitialWorkspaceForUser(
     let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
     try {
-      organization = await createInitialOrganization(tx, normalizedWorkspaceName);
+      organization = await createInitialOrganization(
+        tx,
+        normalizedWorkspaceName,
+        workspaceDescription
+      );
     } catch (error) {
       captureWorkspaceOnboardingStepFailure({
         event: "onboarding.workspace.organization_create_failed",
@@ -750,6 +762,7 @@ export async function createInitialWorkspaceForAuthenticatedUser(
     email: string;
     role?: Role;
     workspaceName: string;
+    workspaceDescription?: string | null;
   }
 ): Promise<InitialWorkspaceProvisioningResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(input.workspaceName);
@@ -772,7 +785,11 @@ export async function createInitialWorkspaceForAuthenticatedUser(
     let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
     try {
-      organization = await createInitialOrganization(tx, normalizedWorkspaceName);
+      organization = await createInitialOrganization(
+        tx,
+        normalizedWorkspaceName,
+        input.workspaceDescription
+      );
     } catch (error) {
       captureWorkspaceOnboardingStepFailure({
         event: "onboarding.workspace.organization_create_failed",

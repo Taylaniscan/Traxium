@@ -183,8 +183,26 @@ describe("saving card form", () => {
       React.createElement(SavingCardForm, {
         mode: "create",
         referenceData: createReferenceData({
-          categories: [{ id: "category-1", name: "Packaging" }],
-          buyers: [{ id: "buyer-1", name: "Casey Buyer" }],
+          categories: [
+            {
+              id: "category-1",
+              organizationId: "org-1",
+              name: "Packaging",
+              annualTarget: 0,
+              createdAt: new Date("2026-04-01T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+            },
+          ],
+          buyers: [
+            {
+              id: "buyer-1",
+              organizationId: "org-1",
+              name: "Casey Buyer",
+              email: null,
+              createdAt: new Date("2026-04-01T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+            },
+          ],
         }),
         workspaceReadiness: createWorkspaceReadiness(),
       })

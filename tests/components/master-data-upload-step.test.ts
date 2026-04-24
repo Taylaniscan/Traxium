@@ -33,13 +33,13 @@ describe("master data upload step", () => {
         entityKey: "buyers",
         status: "current",
         count: 0,
-        manualHref: "/saving-cards/new",
       })
     );
 
     expect(markup).toContain("Set up buyers");
     expect(markup).toContain("Upload file");
     expect(markup).toContain("Add manually");
+    expect(markup).not.toContain('href="/saving-cards/new"');
     expect(markup).toContain("Download template");
     expect(markup).toContain("Field guide");
     expect(markup).toContain("Accepted file types");
@@ -64,7 +64,6 @@ describe("master data upload step", () => {
         entityKey: "suppliers",
         status: "complete",
         count: 3,
-        manualHref: "/saving-cards/new",
       })
     );
 
@@ -79,14 +78,16 @@ describe("master data upload step", () => {
     const markup = renderToStaticMarkup(
       React.createElement(MasterDataUploadStep, {
         stepNumber: 4,
-        entityKey: "categories",
+        entityKey: "plants",
         status: "pending",
         count: 0,
-        manualHref: "/saving-cards/new",
       })
     );
 
+    expect(markup).toContain("Set up plants");
     expect(markup).toContain("Upload coming soon");
+    expect(markup).toContain("region");
+    expect(markup).toContain("Amsterdam Plant");
     expect(markup).toContain("Upload is not connected for this step yet.");
     expect(markup).toContain(
       "Template download is ready now. Upload processing for this step is not connected yet, so manual entry remains the live path."

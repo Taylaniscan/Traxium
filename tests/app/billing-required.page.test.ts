@@ -37,6 +37,8 @@ function createBlockedBootstrapResult(
       accessState: string;
       reasonCode: string;
       currentPeriodEnd: Date | null;
+      trialEndsAt: Date | null;
+      trialSource: string | null;
       plan: {
         planName: string | null;
         currencyCode: string | null;

@@ -61,7 +61,7 @@ describe("analytics browser boundary", () => {
     expect(analyticsSource).not.toMatch(/from ["']@\/lib\/jobs["']/);
     expect(analyticsSource).not.toMatch(/from ["']@\/lib\/prisma["']/);
     expect(analyticsSource).not.toMatch(
-      /import\s*{[^}]*isJobWorkerProcess[^}]*}\s*from ["']@\/lib\/env["']/s
+      /import\s*{[^}]*isJobWorkerProcess[^}]*}\s*from ["']@\/lib\/env["']/
     );
     expect(kanbanSource).not.toMatch(/from ["']@\/lib\/jobs["']/);
     expect(kanbanSource).not.toMatch(/from ["']@\/lib\/prisma["']/);

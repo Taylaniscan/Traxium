@@ -56,6 +56,15 @@ vi.mock("@/components/ui/label", async () => {
   };
 });
 
+vi.mock("@/components/ui/textarea", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    Textarea: (props: React.ComponentProps<"textarea">) =>
+      React.createElement("textarea", props),
+  };
+});
+
 import * as React from "react";
 
 import { WorkspaceOnboardingForm } from "@/components/onboarding/workspace-onboarding-form";
@@ -105,6 +114,7 @@ describe("workspace onboarding form", () => {
     useRefMock.mockReturnValue({ current: false });
     useStateMock
       .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
       .mockReturnValueOnce([null, vi.fn()])
       .mockReturnValueOnce([false, vi.fn()]);
 
@@ -131,6 +141,7 @@ describe("workspace onboarding form", () => {
     useRefMock.mockReturnValue(refState);
     useStateMock
       .mockReturnValueOnce(["Atlas Procurement", vi.fn()])
+      .mockReturnValueOnce(["SME pilot workspace", vi.fn()])
       .mockReturnValueOnce([null, setError])
       .mockReturnValueOnce([false, setLoading]);
 
@@ -155,7 +166,10 @@ describe("workspace onboarding form", () => {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ name: "Atlas Procurement" }),
+      body: JSON.stringify({
+        name: "Atlas Procurement",
+        description: "SME pilot workspace",
+      }),
     });
     expect(setError).toHaveBeenCalledWith(null);
     expect(setLoading).toHaveBeenCalledWith(true);
@@ -181,6 +195,7 @@ describe("workspace onboarding form", () => {
     useRefMock.mockReturnValue(refState);
     useStateMock
       .mockReturnValueOnce(["Atlas Procurement", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
       .mockReturnValueOnce([null, setError])
       .mockReturnValueOnce([false, setLoading]);
 

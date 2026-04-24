@@ -683,7 +683,8 @@ export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboarding
 }
 
 export async function createInitialWorkspaceOnboarding(
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ): Promise<WorkspaceOnboardingResult> {
   const resolved = await resolveAuthenticatedAppUser();
 
@@ -699,13 +700,18 @@ export async function createInitialWorkspaceOnboarding(
   let persistedUserId: string;
 
   if (resolved.user) {
-    result = await createInitialWorkspaceForUser(resolved.user.id, workspaceName);
+    result = await createInitialWorkspaceForUser(
+      resolved.user.id,
+      workspaceName,
+      workspaceDescription
+    );
     persistedUserId = resolved.user.id;
   } else {
     const provisionedResult = await createInitialWorkspaceForAuthenticatedUser({
       name: resolved.name,
       email: resolved.email,
       workspaceName,
+      workspaceDescription,
     });
 
     result = provisionedResult;

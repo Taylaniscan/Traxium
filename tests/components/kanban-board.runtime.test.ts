@@ -68,7 +68,7 @@ vi.mock("next/link", () => ({
     prefetch: _prefetch,
     ...props
   }: {
-    children: unknown;
+    children: React.ReactNode;
     href: string;
     prefetch?: boolean;
   }) => React.createElement("a", { href, ...props }, children),
@@ -83,7 +83,7 @@ vi.mock("@dnd-kit/core", () => ({
     onDragEnd,
     onDragCancel,
   }: {
-    children?: unknown;
+    children?: React.ReactNode;
     onDragStart?: (event: { active: { id: string } }) => void;
     onDragOver?: (event: {
       active: { id: string };
@@ -107,7 +107,7 @@ vi.mock("@dnd-kit/core", () => ({
 
     return React.createElement("div", { "data-dnd-context": true }, children);
   },
-  DragOverlay: ({ children }: { children?: unknown }) =>
+  DragOverlay: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", { "data-drag-overlay": true }, children),
   getFirstCollision: vi.fn((collisions: Array<{ id: string }> | null | undefined) =>
     collisions?.[0]?.id ?? null
@@ -132,7 +132,7 @@ vi.mock("@dnd-kit/sortable", () => ({
     next.splice(toIndex, 0, removed);
     return next;
   },
-  SortableContext: ({ children }: { children?: unknown }) =>
+  SortableContext: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", { "data-sortable-context": true }, children),
   sortableKeyboardCoordinates: vi.fn(),
   useSortable: ({ id }: { id: string }) => ({
@@ -269,7 +269,7 @@ function resolveRuntimeNode(node: unknown): RuntimeNode[] {
   return [];
 }
 
-function collectText(node: RuntimeNode | RuntimeNode[]) {
+function collectText(node: RuntimeNode | RuntimeNode[]): string {
   if (Array.isArray(node)) {
     return normalizeText(node.map((child) => collectText(child)).join(" "));
   }
