@@ -218,6 +218,34 @@ function normalizeJobId(jobId: string) {
   return normalized;
 }
 
+function toIsoString(value: Date | null | undefined) {
+  if (!(value instanceof Date)) {
+    return null;
+  }
+
+  return value.toISOString();
+}
+
+function logJobEvent(
+  level: "info" | "warn" | "error",
+  event: string,
+  payload: Record<string, unknown>
+) {
+  const logger =
+    level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : console.info;
+
+  logger(
+    JSON.stringify({
+      event,
+      ...payload,
+    })
+  );
+}
+
 function resolveRetryAt(
   job: Pick<Job, "attempts">,
   input: MarkJobFailedInput,
@@ -529,6 +557,25 @@ export async function markJobFailed(
     invalidateOrganizationJobsCache(updatedJob.organizationId);
   }
 
+  if (updatedJob) {
+    const retryPayload = {
+      jobId: updatedJob.id,
+      jobType: updatedJob.type,
+      organizationId: updatedJob.organizationId ?? null,
+      attempts: updatedJob.attempts,
+      maxAttempts: updatedJob.maxAttempts,
+      scheduledAt: toIsoString(updatedJob.scheduledAt),
+      processedAt: toIsoString(updatedJob.processedAt),
+      error: updatedJob.error,
+    };
+
+    if (updatedJob.status === JobStatus.QUEUED) {
+      logJobEvent("warn", "jobs.retry.scheduled", retryPayload);
+    } else if (updatedJob.status === JobStatus.FAILED) {
+      logJobEvent("error", "jobs.retry.exhausted", retryPayload);
+    }
+  }
+
   return updatedJob;
 }
 
@@ -558,6 +605,18 @@ export async function retryJob(
 
   if (job?.organizationId) {
     invalidateOrganizationJobsCache(job.organizationId);
+  }
+
+  if (job && retry.count > 0) {
+    logJobEvent("info", "jobs.retry.manually_queued", {
+      jobId: job.id,
+      jobType: job.type,
+      organizationId: job.organizationId ?? null,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      scheduledAt: toIsoString(job.scheduledAt),
+      source: "system",
+    });
   }
 
   return job;
@@ -667,6 +726,18 @@ export async function retryOrganizationJob(input: {
   }
 
   invalidateOrganizationJobsCache(organizationId);
+
+  if (retry.count > 0) {
+    logJobEvent("info", "jobs.retry.manually_queued", {
+      jobId: retriedJob.id,
+      jobType: retriedJob.type,
+      organizationId: retriedJob.organizationId ?? null,
+      attempts: retriedJob.attempts,
+      maxAttempts: retriedJob.maxAttempts,
+      scheduledAt: toIsoString(retriedJob.scheduledAt),
+      source: "admin",
+    });
+  }
 
   return {
     changed: retry.count > 0,

@@ -31,6 +31,7 @@ const RateLimitExceededErrorMock = vi.hoisted(
 );
 const enforceUsageQuotaMock = vi.hoisted(() => vi.fn());
 const recordUsageEventMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 const UsageQuotaExceededErrorMock = vi.hoisted(
   () =>
     class UsageQuotaExceededError extends Error {
@@ -82,6 +83,10 @@ vi.mock("@/lib/usage", () => ({
   enforceUsageQuota: enforceUsageQuotaMock,
   recordUsageEvent: recordUsageEventMock,
   UsageQuotaExceededError: UsageQuotaExceededErrorMock,
+}));
+
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
 }));
 
 import AdminPage from "@/app/(app)/admin/page";
@@ -155,19 +160,19 @@ function createWorkspaceReadiness() {
     workflowCoverage: [
       {
         key: "HEAD_OF_GLOBAL_PROCUREMENT",
-        label: "Head of Global Procurement",
+        label: "Procurement Manager",
         count: 1,
         ready: true,
       },
       {
         key: "GLOBAL_CATEGORY_LEADER",
-        label: "Global Category Leader",
+        label: "Procurement Specialist",
         count: 1,
         ready: true,
       },
       {
         key: "FINANCIAL_CONTROLLER",
-        label: "Financial Controller",
+        label: "Finance Approver",
         count: 1,
         ready: true,
       },
@@ -311,6 +316,25 @@ describe("admin RBAC", () => {
     expect(page).toBeTruthy();
     expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace");
     expect(getWorkspaceReadinessMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+  });
+
+  it("keeps rendering the admin page when workspace readiness fails and reports the exception", async () => {
+    getWorkspaceReadinessMock.mockRejectedValueOnce(
+      new Error("Workspace readiness query failed.")
+    );
+
+    const page = await AdminPage();
+
+    expect(page).toBeTruthy();
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "admin.page.readiness_load_failed",
+        route: "/admin",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+      })
+    );
   });
 
   it("allows an admin role to call admin-only APIs", async () => {

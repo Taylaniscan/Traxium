@@ -104,11 +104,22 @@ export function AdminJobsPanel({
 }: AdminJobsPanelProps) {
   return (
     <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-col gap-2 p-5">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            Separate worker dependency
+          </p>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Next.js web requests enqueue jobs, but they do not process the queue. If queued items rise while processing stays at zero, verify that the dedicated worker process is running and passes `npm run jobs:worker:healthcheck`.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Queued"
           value={String(summary.queued)}
-          detail="Ready for the worker to reserve and process."
+          detail="Ready for the dedicated worker to reserve and process."
         />
         <SummaryCard
           label="Processing"
@@ -217,7 +228,7 @@ export function AdminJobsPanel({
                 No recent jobs for this workspace
               </p>
               <p className="mt-2">
-                Organization-scoped email delivery and telemetry jobs will appear here after the active tenant triggers async work.
+                Organization-scoped email delivery and telemetry jobs will appear here after the active tenant triggers async work. If jobs are expected but do not appear or do not move, verify the separate worker process first.
               </p>
             </div>
           )}

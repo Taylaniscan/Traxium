@@ -6,6 +6,7 @@ This runbook is for release-day validation and post-release incidents across Tra
 
 - Export the current deployment URL to `POSTDEPLOY_BASE_URL`, then run `node --import tsx scripts/postdeploy-smoke.ts`.
 - Run the manual checks in [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md).
+- Run `npm run jobs:worker:healthcheck` in the deployed worker environment before declaring the release healthy.
 - Keep these three admin surfaces open in an `OWNER` or `ADMIN` session for the active release-validation workspace:
   - [admin/insights](/Users/atlas/Documents/Traxium/app/(app)/admin/insights/page.tsx)
   - [admin/jobs](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx)
@@ -27,8 +28,17 @@ This runbook is for release-day validation and post-release incidents across Tra
   - `admin.settings.update.failed`
   - `admin.insights.read.failed`
   - `admin.jobs.read.failed`
+  - `jobs.worker.healthcheck.started`
+  - `jobs.worker.healthcheck.passed`
+  - `jobs.process.started`
   - `jobs.process.failed`
+  - `jobs.process.succeeded`
   - `jobs.worker.crashed`
+  - `jobs.worker.idle_poll`
+  - `jobs.worker.idle_exit`
+  - `jobs.retry.scheduled`
+  - `jobs.retry.exhausted`
+  - `jobs.retry.manually_queued`
   - `jobs.auth_email.invitation_delivery.enqueue_failed`
   - `jobs.auth_email.password_recovery_delivery.enqueue_failed`
   - `observability.enqueue.failed`
@@ -99,19 +109,30 @@ This runbook is for release-day validation and post-release incidents across Tra
 
 ## Jobs / Worker Incident Flow
 
+- Confirm the separate worker process is deployed. The web application enqueues jobs, but it does not clear the queue.
+- Run `npm run jobs:worker:healthcheck` in the worker environment first. If this fails, treat the issue as worker deployment or configuration breakage before debugging the web app.
 - Open [admin jobs](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx) and inspect:
   - queued vs processing trend
   - fresh failed rows
   - retryable jobs
 - Search worker/runtime logs for:
   - `jobs.worker.started`
+  - `jobs.worker.healthcheck.passed`
   - `jobs.worker.finished`
   - `jobs.worker.crashed`
+  - `jobs.worker.idle_poll`
+  - `jobs.worker.idle_exit`
+  - `jobs.process.started`
   - `jobs.process.failed`
+  - `jobs.process.succeeded`
   - `jobs.process.completed`
+  - `jobs.retry.scheduled`
+  - `jobs.retry.exhausted`
+  - `jobs.retry.manually_queued`
   - `jobs.auth_email.invitation_delivery.completed`
   - `jobs.auth_email.password_recovery_delivery.completed`
 - Run `npm run jobs:worker:once` in the deployed worker environment when you need a safe one-shot drain or an immediate retry follow-up.
+- If queued jobs accumulate while running stays at zero on the admin page, assume the separate worker is down, mis-deployed, or pointed at the wrong environment until proven otherwise.
 - If only async delivery is unhealthy while the web app is otherwise stable, contain the incident at the worker layer first rather than rolling back the whole web release immediately.
 
 ## Rollback Notes
@@ -128,3 +149,4 @@ This runbook is for release-day validation and post-release incidents across Tra
   - Re-run `npm run predeploy` before re-deploying.
 - Worker containment:
   - If the incident is isolated to queue processing, pause the long-lived worker or switch to controlled `jobs:worker:once` runs while the fix is prepared.
+  - Re-run `npm run jobs:worker:healthcheck` after the mitigation to confirm the worker is back on the expected database and handler set.

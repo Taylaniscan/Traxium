@@ -39,6 +39,18 @@ const UsageQuotaExceededErrorMock = vi.hoisted(
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
+  buyer: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
+  supplier: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
+  material: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
   savingCard: {
     findFirst: vi.fn(),
   },
@@ -122,10 +134,13 @@ function createFormDataRequest(formData: FormData | Error) {
   } as unknown as Request;
 }
 
-function createImportForm(file?: File) {
+function createImportForm(file?: File, importType?: string) {
   const formData = new FormData();
   if (file) {
     formData.set("file", file);
+  }
+  if (importType) {
+    formData.set("importType", importType);
   }
   return formData;
 }
@@ -193,6 +208,12 @@ describe("import and evidence API routes", () => {
     importSavingCardsMock.mockResolvedValue(undefined);
     xlsxReadMock.mockReset();
     sheetToJsonMock.mockReset();
+    prismaMock.buyer.findMany.mockReset();
+    prismaMock.buyer.create.mockReset();
+    prismaMock.supplier.findMany.mockReset();
+    prismaMock.supplier.create.mockReset();
+    prismaMock.material.findMany.mockReset();
+    prismaMock.material.create.mockReset();
     prismaMock.savingCard.findFirst.mockReset();
     prismaMock.savingCardEvidence.findFirst.mockReset();
     prismaMock.savingCardEvidence.create.mockReset();
@@ -200,6 +221,12 @@ describe("import and evidence API routes", () => {
     storeEvidenceFileMock.mockReset();
     createEvidenceSignedUrlMock.mockReset();
     isManagedEvidenceStorageLocationMock.mockReset();
+    prismaMock.buyer.findMany.mockResolvedValue([]);
+    prismaMock.buyer.create.mockResolvedValue({ id: "buyer-1", name: "Buyer" });
+    prismaMock.supplier.findMany.mockResolvedValue([]);
+    prismaMock.supplier.create.mockResolvedValue({ id: "supplier-1", name: "Supplier" });
+    prismaMock.material.findMany.mockResolvedValue([]);
+    prismaMock.material.create.mockResolvedValue({ id: "material-1", name: "Material" });
   });
 
   describe("app/api/import/route.ts", () => {
@@ -258,6 +285,27 @@ describe("import and evidence API routes", () => {
       await expect(response.json()).resolves.toEqual({
         error: "The workbook does not contain any import rows.",
       });
+    });
+
+    it("returns 422 when a master-data upload is not CSV or XLSX", async () => {
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile(
+              "legacy-binary",
+              "buyers.xls",
+              "application/vnd.ms-excel"
+            ),
+            "buyers"
+          )
+        )
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        error: "Master-data imports accept CSV or XLSX files only.",
+      });
+      expect(xlsxReadMock).not.toHaveBeenCalled();
     });
 
     it("returns 422 when a normalized import row is invalid", async () => {
@@ -342,6 +390,249 @@ describe("import and evidence API routes", () => {
       );
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ count: 1 });
+    });
+
+    it("imports buyer master data from CSV and returns created, skipped, and failed row outcomes", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      prismaMock.buyer.findMany.mockResolvedValueOnce([{ name: "Existing Buyer" }]);
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "Casey Buyer",
+          Email: "casey@example.com",
+          Code: "BUY-100",
+          Department: "Procurement",
+        },
+        {
+          Name: "Existing Buyer",
+          Email: "existing@example.com",
+        },
+        {
+          Name: "Casey Buyer",
+          Email: "duplicate@example.com",
+        },
+        {
+          Name: "Broken Buyer",
+          Email: "not-an-email",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("name,email,code,department", "buyers.csv", "text/csv"),
+            "buyers"
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        importType: "buyers",
+        summary: {
+          created: 1,
+          skipped: 2,
+          failed: 1,
+        },
+        results: [
+          {
+            row: 2,
+            status: "created",
+            name: "Casey Buyer",
+            message: "Created buyer record.",
+          },
+          {
+            row: 3,
+            status: "skipped",
+            name: "Existing Buyer",
+            message: "Already exists in this workspace.",
+          },
+          {
+            row: 4,
+            status: "skipped",
+            name: "Casey Buyer",
+            message: "Duplicate name already appears earlier in this workbook.",
+          },
+          {
+            row: 5,
+            status: "failed",
+            name: "Broken Buyer",
+            message: "Email must be a valid email address.",
+          },
+        ],
+      });
+      expect(prismaMock.buyer.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.buyer.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: "org-1",
+          name: "Casey Buyer",
+          email: "casey@example.com",
+        },
+      });
+      expect(xlsxReadMock).toHaveBeenCalledWith("name,email,code,department", {
+        type: "string",
+      });
+      expect(getReferenceDataMock).not.toHaveBeenCalled();
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+      expect(enforceUsageQuotaMock).not.toHaveBeenCalled();
+      expect(recordUsageEventMock).not.toHaveBeenCalled();
+    });
+
+    it("imports supplier master data with row-level validation for optional contact email", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      prismaMock.supplier.findMany.mockResolvedValueOnce([{ name: "Existing Supplier" }]);
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "Atlas Chemicals",
+          Code: "SUP-100",
+          Country: "Netherlands",
+          ContactEmail: "sales@atlaschemicals.com",
+        },
+        {
+          Name: "Existing Supplier",
+          Code: "SUP-200",
+        },
+        {
+          Name: "Broken Supplier",
+          ContactEmail: "not-an-email",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("xlsx-bytes", "suppliers.xlsx"),
+            "suppliers"
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        importType: "suppliers",
+        summary: {
+          created: 1,
+          skipped: 1,
+          failed: 1,
+        },
+        results: [
+          {
+            row: 2,
+            status: "created",
+            name: "Atlas Chemicals",
+            message: "Created supplier record.",
+          },
+          {
+            row: 3,
+            status: "skipped",
+            name: "Existing Supplier",
+            message: "Already exists in this workspace.",
+          },
+          {
+            row: 4,
+            status: "failed",
+            name: "Broken Supplier",
+            message: "Contact email must be a valid email address.",
+          },
+        ],
+      });
+      expect(prismaMock.supplier.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.supplier.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: "org-1",
+          name: "Atlas Chemicals",
+        },
+      });
+      expect(getReferenceDataMock).not.toHaveBeenCalled();
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 422 when a master-data workbook omits the Name header", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          SupplierName: "Atlas Chemicals",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile(), "suppliers"))
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        error: "Supplier imports must include a Name column.",
+      });
+      expect(prismaMock.supplier.create).not.toHaveBeenCalled();
+    });
+
+    it("marks rows as failed when required master-data fields are blank", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "",
+        },
+        {
+          Name: "  ",
+        },
+        {
+          Name: "PET Resin",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile(), "materials"))
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        importType: "materials",
+        summary: {
+          created: 1,
+          skipped: 0,
+          failed: 2,
+        },
+        results: [
+          {
+            row: 2,
+            status: "failed",
+            name: "",
+            message: "Name is required.",
+          },
+          {
+            row: 3,
+            status: "failed",
+            name: "",
+            message: "Name is required.",
+          },
+          {
+            row: 4,
+            status: "created",
+            name: "PET Resin",
+            message: "Created material record.",
+          },
+        ],
+      });
+      expect(prismaMock.material.create).toHaveBeenCalledTimes(1);
     });
   });
 

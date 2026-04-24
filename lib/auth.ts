@@ -484,10 +484,13 @@ function getBillingRequiredMessage(accessState: OrganizationAccessStateResult) {
     case "incomplete_expired":
     case "no_subscription":
       return "Your workspace does not have an active subscription yet. Complete billing setup before product access can continue.";
+    case "trial_expired":
+      return "Your workspace trial has ended. Start a subscription before product access can continue.";
     case "unknown":
       return "Your workspace billing state could not be verified safely. Complete billing recovery before product access can continue.";
     case "active":
     case "trialing":
+    case "workspace_trial":
       return "Your workspace billing access is active.";
   }
 }

@@ -159,8 +159,43 @@ describe("workspace onboarding form", () => {
     });
     expect(setError).toHaveBeenCalledWith(null);
     expect(setLoading).toHaveBeenCalledWith(true);
-    expect(window.location.assign).toHaveBeenCalledWith("/dashboard");
+    expect(window.location.assign).toHaveBeenCalledWith("/onboarding");
     expect(refState.current).toBe(true);
     expect(preventDefault).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes workspace conflicts back into onboarding so the guided setup can continue", async () => {
+    const refState = { current: false };
+    const setError = vi.fn();
+    const setLoading = vi.fn();
+    const preventDefault = vi.fn();
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: vi.fn().mockResolvedValue({
+        error: "Workspace already exists.",
+      }),
+    } as unknown as Response);
+
+    useRefMock.mockReturnValue(refState);
+    useStateMock
+      .mockReturnValueOnce(["Atlas Procurement", vi.fn()])
+      .mockReturnValueOnce([null, setError])
+      .mockReturnValueOnce([false, setLoading]);
+
+    const tree = WorkspaceOnboardingForm({
+      userName: "Test User",
+    });
+    const [form] = collectElements(
+      tree,
+      (element) => typeof element.type === "string" && element.type === "form"
+    );
+
+    await form.props.onSubmit?.({ preventDefault });
+
+    expect(window.location.assign).toHaveBeenCalledWith("/onboarding");
+    expect(setError).toHaveBeenCalledWith(null);
+    expect(setLoading).toHaveBeenCalledWith(true);
   });
 });

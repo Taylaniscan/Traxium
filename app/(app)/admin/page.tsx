@@ -4,8 +4,16 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { isAuthGuardError, requirePermission } from "@/lib/auth";
+import { roleLabels } from "@/lib/constants";
 import { getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type { WorkspaceReadiness } from "@/lib/types";
+
+const WORKFLOW_COVERAGE_LABELS = [
+  roleLabels.HEAD_OF_GLOBAL_PROCUREMENT,
+  roleLabels.GLOBAL_CATEGORY_LEADER,
+  roleLabels.FINANCIAL_CONTROLLER,
+] as const;
 
 const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   workspace: {
@@ -72,19 +80,19 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   workflowCoverage: [
     {
       key: "HEAD_OF_GLOBAL_PROCUREMENT",
-      label: "Head of Global Procurement",
+      label: roleLabels.HEAD_OF_GLOBAL_PROCUREMENT,
       count: 0,
       ready: false,
     },
     {
       key: "GLOBAL_CATEGORY_LEADER",
-      label: "Global Category Leader",
+      label: roleLabels.GLOBAL_CATEGORY_LEADER,
       count: 0,
       ready: false,
     },
     {
       key: "FINANCIAL_CONTROLLER",
-      label: "Financial Controller",
+      label: roleLabels.FINANCIAL_CONTROLLER,
       count: 0,
       ready: false,
     },
@@ -104,11 +112,7 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   isWorkflowReady: false,
   isWorkspaceReady: false,
   missingCoreSetup: ["Buyers", "Suppliers", "Materials", "Categories", "Plants", "Business Units"],
-  missingWorkflowCoverage: [
-    "Head of Global Procurement",
-    "Global Category Leader",
-    "Financial Controller",
-  ],
+  missingWorkflowCoverage: [...WORKFLOW_COVERAGE_LABELS],
 };
 
 export default async function AdminPage() {
@@ -129,7 +133,17 @@ export default async function AdminPage() {
   try {
     readiness = await getWorkspaceReadiness(user.organizationId);
   } catch (error) {
-    console.log("Workspace readiness could not be loaded:", error);
+    captureException(error, {
+      event: "admin.page.readiness_load_failed",
+      route: "/admin",
+      organizationId: user.organizationId,
+      userId: user.id,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "admin_empty_readiness",
+      },
+    });
   }
 
   const workspaceName = readiness.workspace.name;

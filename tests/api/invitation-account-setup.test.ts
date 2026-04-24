@@ -90,6 +90,9 @@ function createTransactionMock() {
       findUnique: vi.fn(),
       updateMany: vi.fn(),
     },
+    notification: {
+      create: vi.fn().mockResolvedValue({ id: "notification-1" }),
+    },
     organizationMembership: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
@@ -253,6 +256,15 @@ describe("invitation account setup route", () => {
     });
     expect(authUpdateUserMock).not.toHaveBeenCalled();
     expect(updateUserByIdMock).not.toHaveBeenCalled();
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: "admin-user-1",
+        title: "Invitation accepted",
+        message: "new.user@example.com joined the workspace.",
+        href: "/admin/members",
+      },
+    });
   });
 
   it("rejects setup when the authenticated email does not match the invitation email", async () => {

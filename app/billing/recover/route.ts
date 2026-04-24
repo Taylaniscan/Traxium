@@ -62,6 +62,8 @@ async function readRecoveryIntent(request: Request) {
 
 function shouldStartCheckout(accessState: OrganizationAccessStateResult) {
   return (
+    accessState.reasonCode === "workspace_trial" ||
+    accessState.reasonCode === "trial_expired" ||
     accessState.reasonCode === "no_subscription" ||
     accessState.reasonCode === "incomplete" ||
     accessState.reasonCode === "incomplete_expired"
@@ -125,6 +127,13 @@ export async function POST(request: Request) {
     );
 
     if (!accessState.isBlocked) {
+      if (
+        shouldStartCheckout(accessState) &&
+        intent === "resume_subscription"
+      ) {
+        return redirectToCheckout(user, accessState);
+      }
+
       return createRedirectResponse("/dashboard");
     }
 

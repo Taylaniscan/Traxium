@@ -137,6 +137,8 @@ function createBlockedBootstrapResult() {
       isBlocked: true,
       reasonCode: "canceled",
       currentPeriodEnd: new Date("2026-03-20T00:00:00.000Z"),
+      trialEndsAt: null,
+      trialSource: null,
       plan: {
         productPlanId: "plan_growth",
         planCode: "growth",
@@ -263,6 +265,51 @@ describe("subscription gating regression", () => {
       accessState: "blocked_canceled",
       isBlocked: true,
       reasonCode: "canceled",
+    });
+  });
+
+  it("allows an active workspace trial, blocks an expired workspace trial, and prefers paid access after checkout", () => {
+    const activeTrial = resolveOrganizationAccessState({
+      organizationId: "org-1",
+      subscription: null,
+      workspaceTrialEndsAt: new Date("2026-04-10T00:00:00.000Z"),
+      now: NOW,
+    });
+    const expiredTrial = resolveOrganizationAccessState({
+      organizationId: "org-1",
+      subscription: null,
+      workspaceTrialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+      now: NOW,
+    });
+    const paidAfterTrial = resolveOrganizationAccessState({
+      organizationId: "org-1",
+      subscription: createSubscription({
+        status: SubscriptionStatus.ACTIVE,
+      }),
+      workspaceTrialEndsAt: new Date("2026-04-10T00:00:00.000Z"),
+      now: NOW,
+    });
+
+    expect(activeTrial).toMatchObject({
+      accessState: "trialing",
+      isBlocked: false,
+      reasonCode: "workspace_trial",
+      trialEndsAt: new Date("2026-04-10T00:00:00.000Z"),
+      trialSource: "workspace",
+    });
+    expect(expiredTrial).toMatchObject({
+      accessState: "trial_expired",
+      isBlocked: true,
+      reasonCode: "trial_expired",
+      trialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+      trialSource: "workspace",
+    });
+    expect(paidAfterTrial).toMatchObject({
+      accessState: "active",
+      isBlocked: false,
+      reasonCode: "active",
+      trialEndsAt: null,
+      trialSource: null,
     });
   });
 

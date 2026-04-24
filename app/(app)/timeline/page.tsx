@@ -4,6 +4,7 @@ import { TimelineBoard } from "@/components/timeline/timeline-board";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCards, getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type { WorkspaceReadiness } from "@/lib/types";
 
 type TimelineCards = Awaited<ReturnType<typeof getSavingCards>>;
@@ -40,19 +41,49 @@ export default async function TimelinePage() {
   if (cardsResult.status === "fulfilled") {
     cards = cardsResult.value;
   } else {
-    console.log("Timeline cards could not be loaded:", cardsResult.reason);
+    captureException(cardsResult.reason, {
+      event: "timeline.page.cards_load_failed",
+      route: "/timeline",
+      organizationId: user.organizationId,
+      userId: user.id,
+      payload: {
+        resource: "saving_cards",
+        degradedRender: true,
+        fallback: "empty_timeline_cards",
+      },
+    });
   }
 
   if (referenceDataResult.status === "fulfilled") {
     referenceData = referenceDataResult.value;
   } else {
-    console.log("Timeline reference data could not be loaded:", referenceDataResult.reason);
+    captureException(referenceDataResult.reason, {
+      event: "timeline.page.reference_data_load_failed",
+      route: "/timeline",
+      organizationId: user.organizationId,
+      userId: user.id,
+      payload: {
+        resource: "reference_data",
+        degradedRender: true,
+        fallback: "empty_timeline_filters",
+      },
+    });
   }
 
   if (readinessResult.status === "fulfilled") {
     workspaceReadiness = readinessResult.value;
   } else {
-    console.log("Workspace readiness could not be loaded:", readinessResult.reason);
+    captureException(readinessResult.reason, {
+      event: "timeline.page.readiness_load_failed",
+      route: "/timeline",
+      organizationId: user.organizationId,
+      userId: user.id,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "timeline_without_readiness",
+      },
+    });
   }
 
   const toFilterOption = (item: TimelineFilterOption) => ({

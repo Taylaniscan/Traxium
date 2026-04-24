@@ -105,6 +105,9 @@ function createTenantScopeTransactionMock() {
       }),
       delete: vi.fn().mockResolvedValue({ id: "alt-material-1" }),
     },
+    notification: {
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     auditLog: {
       create: vi.fn().mockResolvedValue({ id: "audit-1" }),
     },
@@ -410,6 +413,13 @@ describe("tenant-scoped mutations", () => {
     );
 
     expect(tx.savingCard.findFirst).toHaveBeenCalledWith({
+      include: {
+        stakeholders: {
+          select: {
+            userId: true,
+          },
+        },
+      },
       where: {
         id: "card-1",
         organizationId: OTHER_ORGANIZATION_ID,
@@ -423,6 +433,8 @@ describe("tenant-scoped mutations", () => {
       id: "card-1",
       organizationId: DEFAULT_ORGANIZATION_ID,
       phase: Phase.VALIDATED,
+      title: "Resin renegotiation",
+      stakeholders: [{ userId: "stakeholder-1" }, { userId: DEFAULT_USER_ID }],
     });
 
     const result = await setFinanceLock(
@@ -443,6 +455,17 @@ describe("tenant-scoped mutations", () => {
         action: "finance.locked",
         detail: "Finance lock enabled",
       },
+    });
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          userId: "stakeholder-1",
+          title: "Finance lock applied",
+          message: "Resin renegotiation was finance locked.",
+          href: "/saving-cards/card-1",
+        },
+      ],
     });
     expect(result).toEqual({
       id: "card-1",

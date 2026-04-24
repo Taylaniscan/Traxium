@@ -28,6 +28,10 @@ const INVITATION_ROLE_OPTIONS: Record<OrganizationRole, Array<{ value: Organizat
 
 type FirstValueLaunchpadProps = {
   viewerMembershipRole: OrganizationRole;
+  title?: string;
+  description?: string;
+  primaryActionLabel?: string;
+  reviewSetupLabel?: string;
 };
 
 type InvitationCreateResponse = {
@@ -59,6 +63,10 @@ type InvitationCreateError = {
 
 export function FirstValueLaunchpad({
   viewerMembershipRole,
+  title = "Fastest Path To First Value",
+  description = "Launch one real record, load a safe sample portfolio, or invite the next teammate without leaving the workspace.",
+  primaryActionLabel = "Start first record",
+  reviewSetupLabel = "Review setup",
 }: FirstValueLaunchpadProps) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrganizationRole>(
@@ -146,22 +154,20 @@ export function FirstValueLaunchpad({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Fastest Path To First Value</CardTitle>
-        <CardDescription>
-          Launch one real record, load a safe sample portfolio, or invite the next teammate without leaving the workspace.
-        </CardDescription>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-wrap gap-3">
           <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-            Start first record
+            {primaryActionLabel}
           </Link>
           <LoadSampleDataButton size="sm">Load sample data</LoadSampleDataButton>
           <Link
             href="/admin"
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
-            Review setup
+            {reviewSetupLabel}
           </Link>
         </div>
 

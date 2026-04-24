@@ -9,6 +9,9 @@ import {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    organization: {
+      findUnique: vi.fn(),
+    },
     subscription: {
       findMany: vi.fn(),
     },
@@ -24,6 +27,7 @@ import {
 import type {
   OrganizationAccessStateResult,
   OrganizationAccessSubscriptionRecord,
+  OrganizationAccessWorkspaceRecord,
 } from "@/lib/billing/types";
 
 const TEST_ORGANIZATION_ID = "org_access_state";
@@ -103,6 +107,16 @@ function createConfiguredBillingEnv(
   };
 }
 
+function createWorkspaceRecord(
+  overrides: Partial<OrganizationAccessWorkspaceRecord> = {}
+): OrganizationAccessWorkspaceRecord {
+  return {
+    id: TEST_ORGANIZATION_ID,
+    workspaceTrialEndsAt: null,
+    ...overrides,
+  };
+}
+
 describe("billing access state", () => {
   it("maps active and trialing subscriptions to allowed access states", () => {
     const active = resolveOrganizationAccessState({
@@ -128,12 +142,16 @@ describe("billing access state", () => {
       isBlocked: false,
       reasonCode: "active",
       currentPeriodEnd: new Date("2026-04-01T00:00:00.000Z"),
+      trialEndsAt: null,
+      trialSource: null,
     });
     expect(trialing).toMatchObject({
       rawSubscriptionStatus: SubscriptionStatus.TRIALING,
       accessState: "trialing",
       isBlocked: false,
       reasonCode: "trialing",
+      trialEndsAt: new Date("2026-04-05T00:00:00.000Z"),
+      trialSource: "subscription",
     });
     expect(active.plan).toEqual({
       productPlanId: "plan_growth",
@@ -192,6 +210,48 @@ describe("billing access state", () => {
     expect(isOrganizationAccessBlocked(unpaid)).toBe(true);
   });
 
+  it("allows access during an active workspace trial and blocks access after the trial expires", () => {
+    const activeTrial = resolveOrganizationAccessState({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscription: null,
+      workspaceTrialEndsAt: new Date("2026-04-10T00:00:00.000Z"),
+      now: NOW,
+    });
+    const expiredTrial = resolveOrganizationAccessState({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscription: null,
+      workspaceTrialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+      now: NOW,
+    });
+
+    expect(activeTrial).toEqual({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscriptionId: null,
+      stripeSubscriptionId: null,
+      rawSubscriptionStatus: null,
+      accessState: "trialing",
+      isBlocked: false,
+      reasonCode: "workspace_trial",
+      currentPeriodEnd: null,
+      trialEndsAt: new Date("2026-04-10T00:00:00.000Z"),
+      trialSource: "workspace",
+      plan: null,
+    });
+    expect(expiredTrial).toEqual({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscriptionId: null,
+      stripeSubscriptionId: null,
+      rawSubscriptionStatus: null,
+      accessState: "trial_expired",
+      isBlocked: true,
+      reasonCode: "trial_expired",
+      currentPeriodEnd: null,
+      trialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+      trialSource: "workspace",
+      plan: null,
+    });
+  });
+
   it("treats past due subscriptions as grace period before the period end and blocked afterward", () => {
     const gracePeriod = resolveOrganizationAccessState({
       organizationId: TEST_ORGANIZATION_ID,
@@ -242,6 +302,8 @@ describe("billing access state", () => {
       isBlocked: true,
       reasonCode: "no_subscription",
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialSource: null,
       plan: null,
     });
   });
@@ -260,6 +322,9 @@ describe("billing access state", () => {
             APP_ENV: "development",
           },
           prismaClient: {
+            organization: {
+              findUnique: vi.fn(),
+            },
             subscription: {
               findMany,
             },
@@ -277,6 +342,8 @@ describe("billing access state", () => {
         isBlocked: false,
         reasonCode: "active",
         currentPeriodEnd: null,
+        trialEndsAt: null,
+        trialSource: null,
         plan: null,
       });
       expect(findMany).not.toHaveBeenCalled();
@@ -306,6 +373,11 @@ describe("billing access state", () => {
   });
 
   it("returns a stable typed shape and resolves through the Prisma-backed helper", async () => {
+    const findUnique = vi.fn(async () =>
+      createWorkspaceRecord({
+        workspaceTrialEndsAt: new Date("2026-04-03T00:00:00.000Z"),
+      })
+    );
     const findMany = vi.fn(async () => [
       createSubscription({
         id: "subrec_old",
@@ -325,6 +397,9 @@ describe("billing access state", () => {
 
     const result = await getOrganizationSubscriptionState(TEST_ORGANIZATION_ID, {
       prismaClient: {
+        organization: {
+          findUnique,
+        },
         subscription: {
           findMany,
         },
@@ -332,6 +407,12 @@ describe("billing access state", () => {
       now: NOW,
     });
 
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        id: TEST_ORGANIZATION_ID,
+      },
+      select: expect.any(Object),
+    });
     expect(findMany).toHaveBeenCalledWith({
       where: {
         organizationId: TEST_ORGANIZATION_ID,
@@ -357,18 +438,44 @@ describe("billing access state", () => {
       accessState: "active",
       isBlocked: false,
       reasonCode: "active",
+      trialEndsAt: null,
+      trialSource: null,
     });
     expect(getOrganizationAccessState).toBe(getOrganizationSubscriptionState);
 
     expectTypeOf(result).toMatchTypeOf<OrganizationAccessStateResult>();
   });
 
+  it("prefers an active paid subscription over an expired workspace trial", () => {
+    const result = resolveOrganizationAccessState({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscription: createSubscription({
+        status: SubscriptionStatus.ACTIVE,
+      }),
+      workspaceTrialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+      now: NOW,
+    });
+
+    expect(result).toMatchObject({
+      rawSubscriptionStatus: SubscriptionStatus.ACTIVE,
+      accessState: "active",
+      isBlocked: false,
+      reasonCode: "active",
+      trialEndsAt: null,
+      trialSource: null,
+    });
+  });
+
   it("still enforces subscription blocking outside local fail-open mode", async () => {
+    const findUnique = vi.fn(async () => createWorkspaceRecord());
     const findMany = vi.fn(async () => []);
 
     const result = await getOrganizationSubscriptionState(TEST_ORGANIZATION_ID, {
       envSource: createConfiguredBillingEnv(),
       prismaClient: {
+        organization: {
+          findUnique,
+        },
         subscription: {
           findMany,
         },
@@ -386,6 +493,8 @@ describe("billing access state", () => {
       isBlocked: true,
       reasonCode: "no_subscription",
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialSource: null,
       plan: null,
     });
   });

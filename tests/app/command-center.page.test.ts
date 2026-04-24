@@ -7,6 +7,7 @@ const requireUserMock = vi.hoisted(() => vi.fn());
 const getCommandCenterDataMock = vi.hoisted(() => vi.fn());
 const getCommandCenterFilterOptionsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/command-center/command-center-client", () => ({
   CommandCenterClient: CommandCenterClientMock,
@@ -22,6 +23,10 @@ vi.mock("@/lib/data", () => ({
   getWorkspaceReadiness: getWorkspaceReadinessMock,
 }));
 
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
+}));
+
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 import CommandCenterPage from "@/app/(app)/command-center/page";
@@ -29,7 +34,6 @@ import CommandCenterPage from "@/app/(app)/command-center/page";
 describe("command center page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     requireUserMock.mockResolvedValue({
       id: "user-1",
       role: Role.GLOBAL_CATEGORY_LEADER,
@@ -99,5 +103,23 @@ describe("command center page", () => {
         },
       },
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "command_center.page.data_load_failed",
+        route: "/command-center",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "command_center.page.filter_options_load_failed",
+        route: "/command-center",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
   });
 });

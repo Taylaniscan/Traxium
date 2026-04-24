@@ -5,6 +5,7 @@ const KanbanBoardMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
 const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/kanban/kanban-board", () => ({
   KanbanBoard: KanbanBoardMock,
@@ -19,6 +20,10 @@ vi.mock("@/lib/data", () => ({
   getWorkspaceReadiness: getWorkspaceReadinessMock,
 }));
 
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
+}));
+
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 import KanbanPage from "@/app/(app)/kanban/page";
@@ -26,7 +31,6 @@ import KanbanPage from "@/app/(app)/kanban/page";
 describe("kanban page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     requireUserMock.mockResolvedValue({
       id: "user-1",
       organizationId: "org-1",
@@ -69,5 +73,14 @@ describe("kanban page", () => {
         },
       },
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "kanban.page.cards_load_failed",
+        route: "/kanban",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
   });
 });

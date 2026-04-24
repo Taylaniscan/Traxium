@@ -8,6 +8,7 @@ import {
   getCommandCenterFilterOptions,
   getWorkspaceReadiness,
 } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type {
   CommandCenterData,
   CommandCenterFilterOptions,
@@ -47,14 +48,29 @@ const EMPTY_COMMAND_CENTER_FILTER_OPTIONS: CommandCenterFilterOptions = {
 const SERVER_OUTLINE_BUTTON_CLASS =
   "inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
-async function loadCommandCenterDataState(organizationId: string) {
+async function loadCommandCenterDataState(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
-      initialData: (await getCommandCenterData(organizationId)) as CommandCenterData,
+      initialData: (await getCommandCenterData(
+        input.organizationId
+      )) as CommandCenterData,
       dataError: null,
     };
   } catch (error) {
-    console.error("Command Center data could not be loaded:", error);
+    captureException(error, {
+      event: "command_center.page.data_load_failed",
+      route: "/command-center",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "command_center_data",
+        degradedRender: true,
+        fallback: "empty_command_center_state",
+      },
+    });
 
     return {
       initialData: EMPTY_COMMAND_CENTER_DATA,
@@ -64,16 +80,29 @@ async function loadCommandCenterDataState(organizationId: string) {
   }
 }
 
-async function loadCommandCenterFilterOptionsState(organizationId: string) {
+async function loadCommandCenterFilterOptionsState(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
       filterOptions: (await getCommandCenterFilterOptions(
-        organizationId
+        input.organizationId
       )) as CommandCenterFilterOptions,
       filterOptionsError: null,
     };
   } catch (error) {
-    console.error("Command Center filter options could not be loaded:", error);
+    captureException(error, {
+      event: "command_center.page.filter_options_load_failed",
+      route: "/command-center",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "filter_options",
+        degradedRender: true,
+        fallback: "empty_command_center_filters",
+      },
+    });
 
     return {
       filterOptions: EMPTY_COMMAND_CENTER_FILTER_OPTIONS,
@@ -83,16 +112,29 @@ async function loadCommandCenterFilterOptionsState(organizationId: string) {
   }
 }
 
-async function loadCommandCenterReadinessState(organizationId: string) {
+async function loadCommandCenterReadinessState(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
       workspaceReadiness: (await getWorkspaceReadiness(
-        organizationId
+        input.organizationId
       )) as WorkspaceReadiness | null,
       readinessError: null,
     };
   } catch (error) {
-    console.error("Workspace readiness could not be loaded:", error);
+    captureException(error, {
+      event: "command_center.page.readiness_load_failed",
+      route: "/command-center",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "command_center_without_readiness",
+      },
+    });
 
     return {
       workspaceReadiness: null,
@@ -104,13 +146,20 @@ async function loadCommandCenterReadinessState(organizationId: string) {
 
 export default async function CommandCenterPage() {
   const user = await requireUser();
-  const { initialData, dataError } = await loadCommandCenterDataState(
-    user.organizationId
-  );
+  const { initialData, dataError } = await loadCommandCenterDataState({
+    organizationId: user.organizationId,
+    userId: user.id,
+  });
   const { filterOptions, filterOptionsError } =
-    await loadCommandCenterFilterOptionsState(user.organizationId);
+    await loadCommandCenterFilterOptionsState({
+      organizationId: user.organizationId,
+      userId: user.id,
+    });
   const { workspaceReadiness, readinessError } =
-    await loadCommandCenterReadinessState(user.organizationId);
+    await loadCommandCenterReadinessState({
+      organizationId: user.organizationId,
+      userId: user.id,
+    });
 
   return (
     <div className="space-y-6">

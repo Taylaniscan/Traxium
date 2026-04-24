@@ -25,6 +25,7 @@
     "release:verify": "npm run predeploy && npm run db:validate",
     "release:migrate": "npm run predeploy && npm run db:migrate:deploy",
     "jobs:run-once": "node --import tsx scripts/run-job-worker.ts --once",
+    "jobs:worker:healthcheck": "node --import tsx scripts/run-job-worker.ts --health-check",
     "jobs:worker": "node --import tsx scripts/run-job-worker.ts",
     "jobs:worker:once": "node --import tsx scripts/run-job-worker.ts --once",
     "test:ci:smoke": "vitest run tests/ci/smoke-contract.test.ts",

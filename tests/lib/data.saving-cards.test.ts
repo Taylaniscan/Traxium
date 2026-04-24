@@ -327,6 +327,8 @@ describe("lib/data saving card flows", () => {
     const result = await getSavingCards("org-1", {
       categoryId: "category-1",
       buyerId: "buyer-1",
+      stakeholderUserId: "user-1",
+      ids: ["card-1", "card-2"],
     });
 
     expect(mockPrisma.savingCard.findMany).toHaveBeenCalledWith({
@@ -334,6 +336,14 @@ describe("lib/data saving card flows", () => {
         organizationId: "org-1",
         categoryId: "category-1",
         buyerId: "buyer-1",
+        stakeholders: {
+          some: {
+            userId: "user-1",
+          },
+        },
+        id: {
+          in: ["card-1", "card-2"],
+        },
       },
       select: expect.objectContaining({
         buyer: expect.any(Object),
@@ -346,6 +356,15 @@ describe("lib/data saving card flows", () => {
     expect(query.select.evidence).toBeUndefined();
     expect(query.select.comments).toBeUndefined();
     expect(result).toEqual(cards);
+  });
+
+  it("short-circuits card retrieval when a scoped id list is empty", async () => {
+    const result = await getSavingCards("org-1", {
+      ids: [],
+    });
+
+    expect(mockPrisma.savingCard.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
   });
 
   it("retrieves saving card detail with organization-scoped rich relations", async () => {

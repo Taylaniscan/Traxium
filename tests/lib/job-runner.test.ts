@@ -30,6 +30,10 @@ function createReservedJob(
     type: string;
     organizationId: string | null;
     attempts: number;
+    maxAttempts: number;
+    scheduledAt: Date;
+    reservedAt: Date | null;
+    processedAt: Date | null;
     payload: Record<string, unknown>;
   }> = {}
 ) {
@@ -38,6 +42,10 @@ function createReservedJob(
     type: "analytics.track",
     organizationId: "org-1",
     attempts: 1,
+    maxAttempts: 3,
+    scheduledAt: new Date("2026-03-27T09:00:00.000Z"),
+    reservedAt: new Date("2026-03-27T09:01:00.000Z"),
+    processedAt: null,
     payload: {
       event: "invitation.sent",
     },
@@ -54,10 +62,12 @@ describe("lib/job-runner", () => {
   it("processes a reserved job with its registered handler and marks it completed", async () => {
     const reservedJob = createReservedJob();
     const handler = vi.fn().mockResolvedValue(undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     reserveNextJobMock.mockResolvedValueOnce(reservedJob);
     markJobCompletedMock.mockResolvedValueOnce({
       ...reservedJob,
       status: "COMPLETED",
+      processedAt: new Date("2026-03-27T09:02:00.000Z"),
     });
     registerJobHandler(reservedJob.type, handler);
 
@@ -77,6 +87,12 @@ describe("lib/job-runner", () => {
         attempts: 1,
       },
     });
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.process.started"')
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.process.succeeded"')
+    );
     expect(result).toEqual({
       ok: true,
       outcome: "completed",
@@ -122,10 +138,13 @@ describe("lib/job-runner", () => {
   it("marks a job failed when its handler throws", async () => {
     const reservedJob = createReservedJob();
     const handlerError = new Error("SMTP provider timed out.");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     reserveNextJobMock.mockResolvedValueOnce(reservedJob);
     markJobFailedMock.mockResolvedValueOnce({
       ...reservedJob,
-      status: "FAILED",
+      status: "QUEUED",
+      scheduledAt: new Date("2026-03-27T09:06:00.000Z"),
+      error: "SMTP provider timed out.",
     });
     registerJobHandler(
       reservedJob.type,
@@ -148,6 +167,12 @@ describe("lib/job-runner", () => {
         },
       }
     );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.process.failed"')
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"willRetry":true')
+    );
     expect(result).toEqual({
       ok: false,
       outcome: "failed",
@@ -157,6 +182,7 @@ describe("lib/job-runner", () => {
   });
 
   it("stops the worker loop when the queue is idle and stopWhenIdle is enabled", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     reserveNextJobMock.mockResolvedValueOnce(null);
 
     const result = await runJobLoop({
@@ -168,5 +194,39 @@ describe("lib/job-runner", () => {
       processedJobs: 0,
       idle: true,
     });
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.worker.idle_exit"')
+    );
+  });
+
+  it("logs idle polling and resumes processing when a later reservation succeeds", async () => {
+    vi.useFakeTimers();
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const reservedJob = createReservedJob();
+    reserveNextJobMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(reservedJob);
+    markJobCompletedMock.mockResolvedValueOnce({
+      ...reservedJob,
+      status: "COMPLETED",
+      processedAt: new Date("2026-03-27T09:03:00.000Z"),
+    });
+    registerJobHandler(reservedJob.type, vi.fn().mockResolvedValue(undefined));
+
+    const loopPromise = runJobLoop({
+      maxJobs: 1,
+      idleDelayMs: 100,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    const result = await loopPromise;
+
+    expect(result).toEqual({
+      processedJobs: 1,
+      idle: false,
+    });
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.worker.idle_poll"')
+    );
   });
 });

@@ -145,6 +145,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
   const isNegativeSavings = liveSavings.savingsEUR < 0;
   const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
   const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
+  const inlineFirstCardSetupGaps = getInlineFirstCardSetupGaps(referenceData);
+  const showInlineCreationPriorityCallout =
+    mode === "create" && inlineFirstCardSetupGaps.length > 0;
   const isCreateMode = mode === "create";
   const isFinalCreateStep = currentStep === createModeSteps.length;
   const financeLockActive = Boolean(card?.financeLocked);
@@ -163,13 +166,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     count: referenceData.suppliers.length,
     singular: "supplier",
     plural: "suppliers",
-    emptyMessage: "Create the first supplier inline to keep the card moving.",
+    emptyMessage: "Create the first supplier inline from this card.",
   });
   const materialHelper = buildMasterDataHelper({
     count: referenceData.materials.length,
     singular: "material",
     plural: "materials",
-    emptyMessage: "Create the first material inline so the sourcing baseline is defined.",
+    emptyMessage: "Create the first material inline from this card.",
   });
   const alternativeSupplierHelper = buildMasterDataHelper({
     count: referenceData.suppliers.length,
@@ -189,7 +192,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     count: referenceData.categories.length,
     singular: "category",
     plural: "categories",
-    emptyMessage: "Create the first category inline or finish shared setup in Settings.",
+    emptyMessage: "Create the first category inline from this card.",
   });
   const plantHelper = buildMasterDataHelper({
     count: referenceData.plants.length,
@@ -208,8 +211,8 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     count: referenceData.buyers.length,
     singular: "buyer",
     plural: "buyers",
-    emptyMessage: "Create the first buyer inline so the card has accountable ownership.",
-    availableMessage: "Select the accountable buyer from buyer master data or create one inline.",
+    emptyMessage: "Create the first buyer inline from this card.",
+    availableMessage: "Pick the accountable buyer or type a new one inline.",
   });
 
   function validateCreateStep(step: WizardStepId) {
@@ -379,7 +382,16 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
               <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
                 <p className="font-semibold">Shared setup is still in progress</p>
                 <p className="mt-1">
-                  Missing today: {missingCoreSetup.join(", ")}. This form stays usable, so choose existing records where available and create the missing ones inline from this section.
+                  Missing today: {missingCoreSetup.join(", ")}. This form stays usable, so keep moving here and create any missing records inline as you go.
+                </p>
+              </div>
+            ) : null}
+
+            {showInlineCreationPriorityCallout ? (
+              <div className="rounded-2xl border border-[rgba(37,99,235,0.2)] bg-[rgba(37,99,235,0.06)] px-4 py-4 text-sm text-[var(--foreground)]">
+                <p className="font-semibold">Start with the card. Shared setup can happen inline.</p>
+                <p className="mt-1 text-[var(--muted-foreground)]">
+                  No {formatInlineSetupList(inlineFirstCardSetupGaps)} exist in this workspace yet. Create them directly from this form and Traxium will add them to the active workspace when the card is saved.
                 </p>
               </div>
             ) : null}
@@ -438,7 +450,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Ownership & Scope" description="Map the record to shared master data so ownership, reporting, and accountability are aligned from the outset.">
+                <SectionBlock title="Ownership & Scope" description="Map the record to shared master data so ownership, reporting, and accountability are aligned from the outset. If a list is empty, create the first record inline and keep going.">
                   <div className="grid gap-6 lg:grid-cols-2">
                     <CreatableMasterDataField
                       label="Category"
@@ -522,7 +534,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 2 ? (
               <>
-                <SectionBlock title="Commercial Baseline" description="Define the baseline sourcing position first, then capture any alternative supplier or material scenario that supports the case.">
+                <SectionBlock title="Commercial Baseline" description="Define the baseline sourcing position first, then capture any alternative supplier or material scenario that supports the case. Missing suppliers or materials can be created inline without leaving this flow.">
                   <div className="space-y-6">
                     <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-4">
                       <div>
@@ -1034,6 +1046,33 @@ function toLookupPayload(value: CreatableValue) {
   };
 }
 
+function getInlineFirstCardSetupGaps(referenceData: ReferenceData) {
+  return [
+    { key: "buyers", label: "buyers", count: referenceData.buyers.length },
+    { key: "suppliers", label: "suppliers", count: referenceData.suppliers.length },
+    { key: "materials", label: "materials", count: referenceData.materials.length },
+    { key: "categories", label: "categories", count: referenceData.categories.length },
+  ]
+    .filter((item) => item.count === 0)
+    .map((item) => item.label);
+}
+
+function formatInlineSetupList(items: string[]) {
+  if (items.length === 0) {
+    return "";
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
 function buildMasterDataHelper({
   count,
   singular,
@@ -1048,16 +1087,16 @@ function buildMasterDataHelper({
   availableMessage?: string;
 }) {
   if (count === 0) {
-    return `No ${plural} are configured yet. ${emptyMessage}`;
+    return `No ${plural} yet. ${emptyMessage}`;
   }
 
   const availability = count === 1
-    ? `1 ${singular} is already available in this workspace.`
-    : `${count} ${plural} are already available in this workspace.`;
+    ? `1 ${singular} available`
+    : `${count} ${plural} available`;
 
   return availableMessage
-    ? `${availability} ${availableMessage}`
-    : `${availability} Select an existing record or create a new one inline.`;
+    ? `${availability}. ${availableMessage}`
+    : `${availability}. Select existing or type a new one inline.`;
 }
 
 function Field({

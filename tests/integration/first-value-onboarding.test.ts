@@ -143,19 +143,19 @@ function createWorkspaceReadiness(
   const workflowCoverage: WorkspaceReadiness["workflowCoverage"] = [
     {
       key: "HEAD_OF_GLOBAL_PROCUREMENT",
-      label: "Head of Global Procurement",
+      label: "Procurement Manager",
       count: 0,
       ready: false,
     },
     {
       key: "GLOBAL_CATEGORY_LEADER",
-      label: "Global Category Leader",
+      label: "Procurement Specialist",
       count: 0,
       ready: false,
     },
     {
       key: "FINANCIAL_CONTROLLER",
-      label: "Financial Controller",
+      label: "Finance Approver",
       count: 0,
       ready: false,
     },
@@ -199,9 +199,9 @@ function createWorkspaceReadiness(
     isWorkspaceReady: false,
     missingCoreSetup: ["Buyers", "Suppliers", "Materials", "Categories", "Plants", "Business Units"],
     missingWorkflowCoverage: [
-      "Head of Global Procurement",
-      "Global Category Leader",
-      "Financial Controller",
+      "Procurement Manager",
+      "Procurement Specialist",
+      "Finance Approver",
     ],
     ...overrides,
   };

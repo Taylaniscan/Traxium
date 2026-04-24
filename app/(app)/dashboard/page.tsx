@@ -4,20 +4,34 @@ import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getDashboardData, getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type { DashboardData, WorkspaceReadiness } from "@/lib/types";
 
 const EMPTY_DASHBOARD_DATA: DashboardData = {
   cards: [],
 };
 
-async function loadDashboardCards(organizationId: string) {
+async function loadDashboardCards(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
-      data: (await getDashboardData(organizationId)) as DashboardData,
+      data: (await getDashboardData(input.organizationId)) as DashboardData,
       dataError: null,
     };
   } catch (error) {
-    console.error("Dashboard data could not be loaded:", error);
+    captureException(error, {
+      event: "dashboard.page.data_load_failed",
+      route: "/dashboard",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "dashboard_data",
+        degradedRender: true,
+        fallback: "empty_dashboard_state",
+      },
+    });
 
     return {
       data: EMPTY_DASHBOARD_DATA,
@@ -27,16 +41,29 @@ async function loadDashboardCards(organizationId: string) {
   }
 }
 
-async function loadDashboardReadiness(organizationId: string) {
+async function loadDashboardReadiness(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
       workspaceReadiness: (await getWorkspaceReadiness(
-        organizationId
+        input.organizationId
       )) as WorkspaceReadiness | null,
       readinessError: null,
     };
   } catch (error) {
-    console.error("Workspace readiness could not be loaded:", error);
+    captureException(error, {
+      event: "dashboard.page.readiness_load_failed",
+      route: "/dashboard",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "dashboard_without_readiness",
+      },
+    });
 
     return {
       workspaceReadiness: null,
@@ -53,8 +80,14 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const [{ data, dataError }, { workspaceReadiness, readinessError }] =
     await Promise.all([
-      loadDashboardCards(user.organizationId),
-      loadDashboardReadiness(user.organizationId),
+      loadDashboardCards({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
+      loadDashboardReadiness({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
     ]);
 
   return (

@@ -1,12 +1,9 @@
-import Link from "next/link";
 import { SavingCardForm } from "@/components/saving-cards/saving-card-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getWorkspaceReadiness } from "@/lib/data";
-
-const SERVER_OUTLINE_BUTTON_SMALL_CLASS =
-  "inline-flex h-8 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+import { captureException } from "@/lib/observability";
 
 function formatSetupList(items: string[]) {
   if (!items.length) {
@@ -29,7 +26,17 @@ export default async function NewSavingCardPage() {
   const [referenceData, workspaceReadiness] = await Promise.all([
     getReferenceData(user.organizationId),
     getWorkspaceReadiness(user.organizationId).catch((error) => {
-      console.log("Workspace readiness could not be loaded:", error);
+      captureException(error, {
+        event: "saving_cards.new.page.readiness_load_failed",
+        route: "/saving-cards/new",
+        organizationId: user.organizationId,
+        userId: user.id,
+        payload: {
+          resource: "workspace_readiness",
+          degradedRender: true,
+          fallback: "new_saving_card_without_readiness",
+        },
+      });
       return null;
     }),
   ]);
@@ -44,11 +51,11 @@ export default async function NewSavingCardPage() {
       />
 
       {missingCoreSetup.length ? (
-        <Card className="border-amber-200 bg-amber-50/60">
+        <Card className="border-[rgba(37,99,235,0.2)] bg-[rgba(37,99,235,0.05)]">
           <CardHeader className="space-y-2">
-            <CardTitle>Workspace setup is still in progress</CardTitle>
+            <CardTitle>First-card setup can stay inside this form</CardTitle>
             <CardDescription>
-              Some shared master data is still missing. You can keep moving by creating records inline in the form, then standardize them in Settings for the rest of the workspace.
+              Some shared master data is still missing, but that should not slow down first value. Buyers, suppliers, materials, categories, plants, and business units can all be created inline below.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -56,20 +63,20 @@ export default async function NewSavingCardPage() {
               {missingCoreSetup.map((item) => (
                 <span
                   key={item}
-                  className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900"
+                  className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-[var(--foreground)]"
                 >
                   {item}
                 </span>
               ))}
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-amber-950">
+            <div className="text-sm text-[var(--foreground)]">
               <p>
                 {configuredCollections} of {workspaceReadiness?.masterData.length ?? 0} core master-data collections already have records. Missing today:{" "}
                 {formatSetupList(missingCoreSetup)}.
               </p>
-              <Link href="/admin" className={SERVER_OUTLINE_BUTTON_SMALL_CLASS}>
-                Open Settings
-              </Link>
+              <p className="mt-2 text-[var(--muted-foreground)]">
+                Stay in the saving card flow and create what you need inline first. Workspace cleanup and broader standardization can wait until after the first record is live.
+              </p>
             </div>
           </CardContent>
         </Card>

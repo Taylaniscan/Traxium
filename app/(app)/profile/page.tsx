@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChangePasswordForm } from "@/components/profile/change-password-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
@@ -23,6 +24,18 @@ export default async function ProfilePage() {
           <ProfileField label="Name" value={user.name} />
           <ProfileField label="Role" value={roleLabels[user.role as keyof typeof roleLabels]} />
           <ProfileField label="Email" value={user.email} />
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle>Security</CardTitle>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Change your password using your current credentials. This updates the password for your active Traxium sign-in.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ChangePasswordForm />
         </CardContent>
       </Card>
 

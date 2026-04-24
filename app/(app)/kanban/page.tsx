@@ -2,18 +2,32 @@ import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type { WorkspaceReadiness } from "@/lib/types";
 
 type KanbanCards = Awaited<ReturnType<typeof getSavingCards>>;
 
-async function loadKanbanCards(organizationId: string) {
+async function loadKanbanCards(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
-      cards: (await getSavingCards(organizationId)) as KanbanCards,
+      cards: (await getSavingCards(input.organizationId)) as KanbanCards,
       cardsError: null,
     };
   } catch (error) {
-    console.error("Kanban data could not be loaded:", error);
+    captureException(error, {
+      event: "kanban.page.cards_load_failed",
+      route: "/kanban",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "saving_cards",
+        degradedRender: true,
+        fallback: "empty_kanban_board",
+      },
+    });
 
     return {
       cards: [] as KanbanCards,
@@ -23,16 +37,29 @@ async function loadKanbanCards(organizationId: string) {
   }
 }
 
-async function loadWorkspaceReadinessState(organizationId: string) {
+async function loadWorkspaceReadinessState(input: {
+  organizationId: string;
+  userId: string;
+}) {
   try {
     return {
       workspaceReadiness: (await getWorkspaceReadiness(
-        organizationId
+        input.organizationId
       )) as WorkspaceReadiness | null,
       readinessError: null,
     };
   } catch (error) {
-    console.error("Workspace readiness could not be loaded:", error);
+    captureException(error, {
+      event: "kanban.page.readiness_load_failed",
+      route: "/kanban",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "kanban_without_readiness",
+      },
+    });
 
     return {
       workspaceReadiness: null,
@@ -46,8 +73,14 @@ export default async function KanbanPage() {
   const user = await requireUser();
   const [{ cards, cardsError }, { workspaceReadiness, readinessError }] =
     await Promise.all([
-      loadKanbanCards(user.organizationId),
-      loadWorkspaceReadinessState(user.organizationId),
+      loadKanbanCards({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
+      loadWorkspaceReadinessState({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
     ]);
 
   return (

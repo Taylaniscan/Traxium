@@ -62,6 +62,8 @@ function createBlockedBootstrapResult(
       isBlocked: true,
       reasonCode: "unpaid",
       currentPeriodEnd: new Date("2026-03-20T00:00:00.000Z"),
+      trialEndsAt: null,
+      trialSource: null,
       plan: {
         productPlanId: "plan_growth",
         planCode: "growth",
@@ -109,11 +111,16 @@ describe("billing required page", () => {
     });
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
+    expect(markup).toContain("Commercial summary");
+    expect(markup).toContain("Current plan");
+    expect(markup).toContain("Access state");
+    expect(markup).toContain("Recommended action");
     expect(markup).toContain("Workspace billing is unpaid");
     expect(markup).toContain("Recover workspace billing");
     expect(markup).toContain("Open billing portal");
     expect(markup).toContain("Update payment method");
     expect(markup).toContain("Resume subscription");
+    expect(markup).toContain("Resolve payment failure");
     expect(markup).toContain("Billing changes are being confirmed");
     expect(markup).toContain("Growth");
   });
@@ -190,6 +197,17 @@ describe("billing required page", () => {
       },
       {
         accessState: {
+          accessState: "trial_expired",
+          reasonCode: "trial_expired",
+          trialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
+          trialSource: "workspace",
+          plan: null,
+          currentPeriodEnd: null,
+        },
+        title: "Workspace trial has ended",
+      },
+      {
+        accessState: {
           accessState: "no_subscription",
           reasonCode: "no_subscription",
           plan: null,
@@ -240,6 +258,32 @@ describe("billing required page", () => {
     expect(markup).toContain("Workspace billing needs attention");
     expect(markup).toContain("Recover workspace billing");
     expect(markup).toContain("Open billing portal");
+  });
+
+  it("renders a no-subscription commercial summary with setup guidance", async () => {
+    bootstrapCurrentUserMock.mockResolvedValueOnce(
+      createBlockedBootstrapResult({
+        accessState: {
+          accessState: "no_subscription",
+          reasonCode: "no_subscription",
+          currentPeriodEnd: null,
+          trialEndsAt: null,
+          trialSource: null,
+          plan: null,
+        },
+      })
+    );
+
+    const page = await BillingRequiredPage({
+      searchParams: Promise.resolve({}),
+    });
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(markup).toContain("Workspace billing setup is required");
+    expect(markup).toContain("Commercial summary");
+    expect(markup).toContain("No paid plan yet");
+    expect(markup).toContain("Complete billing setup");
+    expect(markup).toContain("Start subscription");
   });
 
   it("redirects restored subscriptions back into the app instead of showing the paywall", async () => {

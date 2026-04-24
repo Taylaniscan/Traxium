@@ -116,8 +116,10 @@ describe("admin jobs page", () => {
     expect(markup).toContain("Job Health");
     expect(markup).toContain("jobs-panel");
     expect(markup).toContain("Worker Commands");
+    expect(markup).toContain("separate worker process");
     expect(markup).toContain("npm run jobs:worker");
     expect(markup).toContain("npm run jobs:worker:once");
+    expect(markup).toContain("npm run jobs:worker:healthcheck");
     expect(markup).toContain("data-job-count=\"1\"");
     expect(markup).toContain("data-failed-count=\"1\"");
   });

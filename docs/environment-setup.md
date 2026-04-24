@@ -152,3 +152,6 @@ These are optional and only used by `scripts/run-job-worker.ts`:
 - `npm run env:check`: validates the current environment against Traxium’s required configuration
 - `npm run dev`: runs env validation, Prisma generate, and the Next.js dev server
 - `npm run build`: runs env validation before the production build
+- `npm run jobs:worker`: runs the separate long-lived async worker process
+- `npm run jobs:worker:once`: drains the current queue once and exits
+- `npm run jobs:worker:healthcheck`: verifies the worker can reach the database and has registered handlers without mutating jobs

@@ -65,8 +65,14 @@ export async function getSavingCards(
     buyerId?: string;
     plantId?: string;
     supplierId?: string;
+    stakeholderUserId?: string;
+    ids?: string[];
   }
 ): Promise<SavingCardPortfolio[]> {
+  if (filters?.ids && !filters.ids.length) {
+    return [];
+  }
+
   return prisma.savingCard.findMany({
     where: buildTenantScopeWhere(context, {
       ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
@@ -74,6 +80,16 @@ export async function getSavingCards(
       ...(filters?.buyerId ? { buyerId: filters.buyerId } : {}),
       ...(filters?.plantId ? { plantId: filters.plantId } : {}),
       ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
+      ...(filters?.stakeholderUserId
+        ? {
+            stakeholders: {
+              some: {
+                userId: filters.stakeholderUserId,
+              },
+            },
+          }
+        : {}),
+      ...(filters?.ids ? { id: { in: filters.ids } } : {}),
     }),
     select: savingCardPortfolioSelect,
     orderBy: { updatedAt: "desc" },

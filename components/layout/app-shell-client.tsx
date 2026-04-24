@@ -21,6 +21,7 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { NotificationBell, type ShellNotification } from "@/components/layout/notification-bell";
 import { Button } from "@/components/ui/button";
 import { APP_NAME, roleLabels } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -46,11 +47,8 @@ type AppShellClientProps = {
   workspace: {
     name: string;
   } | null;
-  notifications: Array<{
-    id: string;
-    title: string;
-    message: string;
-  }>;
+  notifications: ShellNotification[];
+  unreadNotificationCount: number;
   pendingActionsCount: number;
   children: React.ReactNode;
 };
@@ -59,6 +57,7 @@ export function AppShellClient({
   user,
   workspace,
   notifications,
+  unreadNotificationCount,
   pendingActionsCount: _pendingActionsCount,
   children,
 }: AppShellClientProps) {
@@ -189,21 +188,27 @@ export function AppShellClient({
             >
               {APP_NAME.slice(0, 2).toUpperCase()}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="hidden flex-shrink-0 lg:inline-flex"
-              onClick={() => setCollapsed((value) => !value)}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              <NotificationBell
+                notifications={notifications}
+                unreadCount={unreadNotificationCount}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="hidden flex-shrink-0 lg:inline-flex"
+                onClick={() => setCollapsed((value) => !value)}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="mt-8 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
@@ -280,46 +285,6 @@ export function AppShellClient({
                 );
               })}
             </nav>
-
-            <div
-              className={cn(
-                "mt-8 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)]",
-                collapsed && "lg:hidden"
-              )}
-            >
-              <div className="border-b border-[var(--border)] px-4 py-3">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-[var(--primary)]" />
-                  <p className="text-sm font-semibold">Workflow Feed</p>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {notifications.length
-                    ? `${notifications.length} notification${notifications.length === 1 ? "" : "s"}`
-                    : "No workflow updates"}
-                </p>
-              </div>
-              <div className="space-y-2 px-4 py-3">
-                {notifications.length ? (
-                  notifications.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl bg-white p-2.5 text-xs shadow-[inset_0_0_0_1px_rgba(17,24,39,0.04)]"
-                    >
-                      <p className="font-semibold text-[var(--foreground)]">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 text-[var(--muted-foreground)]">
-                        {item.message}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    No open workflow notifications.
-                  </p>
-                )}
-              </div>
-            </div>
           </div>
 
           <SidebarWorkspaceAccount

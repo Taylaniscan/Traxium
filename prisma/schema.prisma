@@ -117,6 +117,7 @@ model Organization {
   name            String
   description     String?
   slug            String   @unique
+  workspaceTrialEndsAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -139,6 +140,7 @@ model Organization {
   subscriptions   Subscription[]
   webhookEvents   WebhookEvent[]
   auditLogs       AuditLog[]
+  notifications   Notification[]
 }
 
 model User {
@@ -560,14 +562,20 @@ model PhaseHistory {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  message   String
-  readAt    DateTime?
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String
+  title          String
+  message        String
+  href           String?
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, userId, createdAt])
 }
 
 model AuditLog {

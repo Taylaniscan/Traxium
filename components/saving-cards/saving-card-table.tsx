@@ -16,9 +16,17 @@ import { formatCurrency } from "@/lib/utils/numberFormatter";
 export function SavingCardTable({
   cards,
   readiness,
+  scope = "all",
+  viewOptions = [],
 }: {
   cards: SavingCardPortfolio[];
   readiness?: WorkspaceReadiness | null;
+  scope?: "all" | "mine" | "approvals";
+  viewOptions?: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
 }) {
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
@@ -61,31 +69,72 @@ export function SavingCardTable({
     cards.length > 0 && (cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
   const nextActions = buildPortfolioNextActions(readiness, cards.length);
 
+  const scopeTitle =
+    scope === "mine"
+      ? "My Cards"
+      : scope === "approvals"
+        ? "My Approvals"
+        : "All Cards";
+  const scopeDescription =
+    scope === "mine"
+      ? "Cards where you are assigned as a stakeholder."
+      : scope === "approvals"
+        ? "Cards currently waiting on your approval."
+        : "Portfolio-wide view of all saving cards in the workspace.";
+  const emptyState = getSavingCardScopeEmptyState(scope);
+
   if (!cards.length) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
-          <div className="text-4xl" aria-hidden="true">
-            📋
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-[var(--foreground)]">
-              No saving cards yet
-            </h2>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Start by adding your first savings initiative.
-            </p>
-          </div>
-          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-            Add First Initiative
-          </Link>
-        </CardContent>
-      </Card>
+      <div className="space-y-5">
+        {viewOptions.length ? (
+          <ViewScopeCard
+            title="Card Views"
+            description={scopeDescription}
+            options={viewOptions}
+          />
+        ) : null}
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+            <div className="text-4xl" aria-hidden="true">
+              📋
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-[var(--foreground)]">
+                {emptyState.title}
+              </h2>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {emptyState.description}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+                Add First Initiative
+              </Link>
+              {scope !== "all" ? (
+                <Link
+                  href="/saving-cards"
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  View All Cards
+                </Link>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-5">
+      {viewOptions.length ? (
+        <ViewScopeCard
+          title="Card Views"
+          description={scopeDescription}
+          options={viewOptions}
+        />
+      ) : null}
+
       {showRampUpState ? (
         <PortfolioRampUpCard
           readiness={readiness}
@@ -100,9 +149,9 @@ export function SavingCardTable({
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle>Portfolio Controls</CardTitle>
+            <CardTitle>{scopeTitle} Controls</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase across the live workspace register.
+              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase within the current card view.
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
@@ -142,7 +191,7 @@ export function SavingCardTable({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile label="Portfolio Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
+        <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
         <SummaryTile label="Realised or Achieved" value={String(realisedCount)} />
       </div>
@@ -181,9 +230,13 @@ export function SavingCardTable({
       <Card>
         <CardHeader className="flex flex-row items-end justify-between gap-4">
           <div>
-            <CardTitle>Saving Cards</CardTitle>
+            <CardTitle>{scopeTitle}</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Operational register of all initiatives, with phase, owner, supplier, and finance controls.
+              {scope === "mine"
+                ? "Stakeholder-assigned initiatives that belong to your day-to-day portfolio."
+                : scope === "approvals"
+                  ? "Initiatives that currently need your approval attention."
+                  : "Operational register of all initiatives, with phase, owner, supplier, and finance controls."}
             </p>
           </div>
         </CardHeader>
@@ -234,6 +287,68 @@ export function SavingCardTable({
       </Card>
     </div>
   );
+}
+
+function ViewScopeCard({
+  title,
+  description,
+  options,
+}: {
+  title: string;
+  description: string;
+  options: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => (
+            <Link
+              key={option.href}
+              href={option.href}
+              aria-current={option.active ? "page" : undefined}
+              className={buttonVariants({
+                variant: option.active ? "default" : "outline",
+                size: "sm",
+              })}
+            >
+              {option.label}
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getSavingCardScopeEmptyState(scope: "all" | "mine" | "approvals") {
+  switch (scope) {
+    case "mine":
+      return {
+        title: "No cards assigned to you yet",
+        description:
+          "Saving cards where you are listed as a stakeholder will appear here.",
+      };
+    case "approvals":
+      return {
+        title: "No cards need your approval right now",
+        description:
+          "Cards with pending phase-change approvals assigned to you will appear here.",
+      };
+    default:
+      return {
+        title: "No saving cards yet",
+        description: "Start by adding your first savings initiative.",
+      };
+  }
 }
 
 function PortfolioLaunchMetric({

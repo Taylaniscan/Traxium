@@ -34,9 +34,9 @@ export const phaseLabels: Record<(typeof phases)[number], string> = {
 };
 
 export const roleLabels: Record<(typeof roles)[number], string> = {
-  HEAD_OF_GLOBAL_PROCUREMENT: "Head of Global Procurement",
-  GLOBAL_CATEGORY_LEADER: "Global Category Leader",
-  TACTICAL_BUYER: "Tactical Buyer",
+  HEAD_OF_GLOBAL_PROCUREMENT: "Procurement Manager",
+  GLOBAL_CATEGORY_LEADER: "Procurement Specialist",
+  TACTICAL_BUYER: "Buyer",
   PROCUREMENT_ANALYST: "Procurement Analyst",
-  FINANCIAL_CONTROLLER: "Financial Controller"
+  FINANCIAL_CONTROLLER: "Finance Approver"
 };

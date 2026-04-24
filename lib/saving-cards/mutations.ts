@@ -31,6 +31,10 @@ import {
 } from "@/lib/saving-cards/shared";
 import { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surface-cache";
 
+function buildSavingCardPath(savingCardId: string) {
+  return `/saving-cards/${savingCardId}`;
+}
+
 export async function createSavingCard(
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
@@ -668,7 +672,23 @@ export async function setFinanceLock(
   const { organizationId } = resolveTenantScope(context);
 
   const updatedCard = await prisma.$transaction(async (tx) => {
-    const card = await getScopedSavingCard(tx, savingCardId, organizationId);
+    const card = await tx.savingCard.findFirst({
+      where: {
+        id: savingCardId,
+        organizationId,
+      },
+      include: {
+        stakeholders: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!card) {
+      throw new Error("Saving card not found.");
+    }
 
     if (locked && !canFinanceLockWorkflowPhase(card.phase)) {
       throw new WorkflowError(
@@ -690,6 +710,23 @@ export async function setFinanceLock(
         detail: locked ? "Finance lock enabled" : "Finance lock removed",
       },
     });
+
+    const recipientIds = [...new Set(card.stakeholders.map((stakeholder) => stakeholder.userId))]
+      .filter((userId) => userId !== actorId);
+
+    if (recipientIds.length) {
+      await tx.notification.createMany({
+        data: recipientIds.map((userId) => ({
+          organizationId,
+          userId,
+          title: locked ? "Finance lock applied" : "Finance lock removed",
+          message: locked
+            ? `${card.title} was finance locked.`
+            : `${card.title} finance lock was removed.`,
+          href: buildSavingCardPath(savingCardId),
+        })),
+      });
+    }
 
     return nextCard;
   });

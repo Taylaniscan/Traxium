@@ -25,6 +25,7 @@ export {
   createPhaseChangeRequest,
   getApprovalStatus,
   getPendingApprovals,
+  getPendingPhaseChangeRequests,
 } from "@/lib/workflow/service";
 export { WorkflowError } from "@/lib/workflow/errors";
 export { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surface-cache";

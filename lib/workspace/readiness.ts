@@ -1,5 +1,6 @@
 import { Role } from "@prisma/client";
 import { getScopedCachedValue } from "@/lib/cache";
+import { roleLabels } from "@/lib/constants";
 import { buildOrganizationUserWhere } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
@@ -146,19 +147,19 @@ export async function getWorkspaceReadiness(
   const workflowCoverage = [
     {
       key: "HEAD_OF_GLOBAL_PROCUREMENT",
-      label: "Head of Global Procurement",
+      label: roleLabels.HEAD_OF_GLOBAL_PROCUREMENT,
       count: headOfGlobalProcurementCount,
       ready: headOfGlobalProcurementCount > 0,
     },
     {
       key: "GLOBAL_CATEGORY_LEADER",
-      label: "Global Category Leader",
+      label: roleLabels.GLOBAL_CATEGORY_LEADER,
       count: globalCategoryLeaderCount,
       ready: globalCategoryLeaderCount > 0,
     },
     {
       key: "FINANCIAL_CONTROLLER",
-      label: "Financial Controller",
+      label: roleLabels.FINANCIAL_CONTROLLER,
       count: financialControllerCount,
       ready: financialControllerCount > 0,
     },

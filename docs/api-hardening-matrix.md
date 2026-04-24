@@ -7,6 +7,7 @@ This matrix reflects the current `app/api/**` implementation as of 2026-03-27. I
 | Route Family | Methods | Auth Required | Role Check | Validation | Tenant / Data Scope Check | Error Shape Standardized | Audit Log | Rate Limited | Quota Controlled | Overall Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `/api/auth/bootstrap` | `POST` | Yes | No | N/A | Current authenticated user only | Yes | No | No | No | Strong | Repairs first-login workspace context and returns `{ error, code }` on auth denial. |
+| `/api/auth/change-password` | `POST` | Yes | No | Yes | Current authenticated session only | Yes | No | Yes | No | Strong | Requires the current password, validates the next password locally, and uses the authenticated Supabase session for the final mutation. |
 | `/api/auth/forgot-password` | `POST` | No | No | Yes | Public, IP-scoped only | Yes | No | Yes | No | Strong | Distributed, fail-closed limiter on IP; async email queue path stays controlled. |
 | `/api/auth/reset-password` | `POST` | Reset session required | No | Yes | Supabase reset session only | Yes | No | Yes | No | Strong | Distributed, fail-closed limiter on IP before password mutation. |
 | `/api/onboarding/workspace` | `POST` | Yes | No | Yes | Current authenticated user only | Yes | No | No | No | Strong | Idempotent service-layer provisioning path with explicit `code` values on onboarding/auth failure. |

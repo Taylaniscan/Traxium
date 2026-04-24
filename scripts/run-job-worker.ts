@@ -1,3 +1,5 @@
+import { JobStatus } from "@prisma/client";
+
 import { prisma } from "../lib/prisma";
 import {
   getRegisteredJobTypes,
@@ -19,6 +21,95 @@ import {
 import { getJobWorkerEnvironment } from "../lib/env";
 import { jobTypes } from "../lib/jobs";
 
+function logWorkerEvent(
+  level: "info" | "warn" | "error",
+  event: string,
+  payload: Record<string, unknown>
+) {
+  const logger =
+    level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : console.info;
+
+  logger(
+    JSON.stringify({
+      event,
+      ...payload,
+    })
+  );
+}
+
+function buildWorkerScopeMetadata(input: {
+  stopWhenIdle: boolean;
+  maxJobs: number;
+  idleDelayMs: number;
+  organizationId?: string;
+  types?: string[];
+  registeredJobTypes: string[];
+  mode: "continuous" | "one_shot" | "health_check";
+}) {
+  return {
+    pid: process.pid,
+    nodeEnv: process.env.NODE_ENV ?? null,
+    requiresSeparateWorkerProcess: true,
+    mode: input.mode,
+    stopWhenIdle: input.stopWhenIdle,
+    maxJobs: input.maxJobs,
+    idleDelayMs: input.idleDelayMs,
+    organizationId: input.organizationId ?? null,
+    types: input.types ?? [],
+    registeredJobTypes: input.registeredJobTypes,
+  };
+}
+
+async function runWorkerHealthCheck(input: {
+  organizationId?: string;
+  types?: string[];
+  stopWhenIdle: boolean;
+  maxJobs: number;
+  idleDelayMs: number;
+  registeredJobTypes: string[];
+}) {
+  if (!input.registeredJobTypes.length) {
+    throw new Error(
+      "No job handlers are registered. The worker cannot process queued jobs."
+    );
+  }
+
+  const now = new Date();
+  const visibleDueJobs = await prisma.job.count({
+    where: {
+      status: JobStatus.QUEUED,
+      scheduledAt: {
+        lte: now,
+      },
+      ...(input.types?.length
+        ? {
+            type: {
+              in: input.types,
+            },
+          }
+        : {}),
+      ...(input.organizationId === undefined
+        ? {}
+        : {
+            organizationId: input.organizationId,
+          }),
+    },
+  });
+
+  logWorkerEvent("info", "jobs.worker.healthcheck.passed", {
+    ...buildWorkerScopeMetadata({
+      ...input,
+      mode: "health_check",
+    }),
+    visibleDueJobs,
+    checkedAt: now.toISOString(),
+  });
+}
+
 async function main() {
   process.env.JOB_WORKER = "true";
   registerJobHandlers({
@@ -34,24 +125,43 @@ async function main() {
   const { stopWhenIdle, maxJobs, idleDelayMs, organizationId, types } =
     getJobWorkerEnvironment();
   const registeredJobTypes = getRegisteredJobTypes();
+  const healthCheckOnly = process.argv.includes("--health-check");
+  const startedAt = Date.now();
+  const workerMetadata = buildWorkerScopeMetadata({
+    stopWhenIdle,
+    maxJobs,
+    idleDelayMs,
+    organizationId,
+    types,
+    registeredJobTypes,
+    mode: healthCheckOnly
+      ? "health_check"
+      : stopWhenIdle
+        ? "one_shot"
+        : "continuous",
+  });
 
   if (!registeredJobTypes.length) {
-    console.warn(
-      "No job handlers are registered. The worker will only process jobs after handlers are registered by the runtime."
-    );
+    logWorkerEvent("warn", "jobs.worker.no_handlers_registered", workerMetadata);
   }
 
-  console.info(
-    JSON.stringify({
-      event: "jobs.worker.started",
+  logWorkerEvent(
+    "info",
+    healthCheckOnly ? "jobs.worker.healthcheck.started" : "jobs.worker.started",
+    workerMetadata
+  );
+
+  if (healthCheckOnly) {
+    await runWorkerHealthCheck({
       stopWhenIdle,
       maxJobs,
       idleDelayMs,
-      organizationId: organizationId ?? null,
-      types: types ?? [],
+      organizationId,
+      types,
       registeredJobTypes,
-    })
-  );
+    });
+    return;
+  }
 
   const result = await runJobLoop({
     maxJobs,
@@ -61,26 +171,25 @@ async function main() {
     types,
   });
 
-  console.info(
-    JSON.stringify({
-      event: "jobs.worker.finished",
-      processedJobs: result.processedJobs,
-      idle: result.idle,
-      organizationId: organizationId ?? null,
-      types: types ?? [],
-      registeredJobTypes,
-    })
-  );
+  logWorkerEvent("info", "jobs.worker.finished", {
+    ...workerMetadata,
+    processedJobs: result.processedJobs,
+    idle: result.idle,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 main()
   .catch((error) => {
-    console.error(
-      JSON.stringify({
-        event: "jobs.worker.crashed",
-        error: error instanceof Error ? error.message : "Unexpected worker error.",
-      })
-    );
+    logWorkerEvent("error", "jobs.worker.crashed", {
+      pid: process.pid,
+      errorName: error instanceof Error ? error.name : "Error",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unexpected worker error.",
+      stack: error instanceof Error ? error.stack ?? null : null,
+    });
     process.exitCode = 1;
   })
   .finally(async () => {

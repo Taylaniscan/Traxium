@@ -26,6 +26,10 @@ const phaseChangeRequestResultInclude = {
   },
 } satisfies Prisma.PhaseChangeRequestInclude;
 
+function buildSavingCardPath(savingCardId: string) {
+  return `/saving-cards/${savingCardId}`;
+}
+
 export async function addApproval(
   _savingCardId: string,
   _phase: Phase,
@@ -180,9 +184,11 @@ export async function createPhaseChangeRequest(
 
     await tx.notification.createMany({
       data: approvers.map((approver) => ({
+        organizationId,
         userId: approver.id,
-        title: "Phase change approval required",
+        title: "Phase change requested",
         message: `${card.title} requests movement from ${card.phase} to ${requestedPhase}.`,
+        href: "/open-actions",
       })),
     });
 
@@ -260,9 +266,11 @@ export async function approvePhaseChangeRequest(
 
       await tx.notification.create({
         data: {
+          organizationId,
           userId: request.requestedById,
           title: "Phase change rejected",
           message: `${request.savingCard.title} phase change to ${request.requestedPhase} was rejected.`,
+          href: buildSavingCardPath(request.savingCardId),
         },
       });
 
@@ -367,9 +375,11 @@ async function finalizePhaseChangeRequest(
 
   await tx.notification.create({
     data: {
+      organizationId: request.savingCard.organizationId,
       userId: request.requestedById,
-      title: "Phase change completed",
+      title: "Phase change approved",
       message: `${request.savingCard.title} moved to ${request.requestedPhase}.`,
+      href: buildSavingCardPath(request.savingCardId),
     },
   });
 
@@ -409,6 +419,33 @@ export async function getPendingApprovals(
         },
       },
       approver: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getPendingPhaseChangeRequests(
+  context: TenantContextSource
+) {
+  const organizationId = resolveTenantScope(context).organizationId;
+
+  return prisma.phaseChangeRequest.findMany({
+    where: {
+      approvalStatus: ApprovalStatus.PENDING,
+      savingCard: buildTenantScopeWhere(organizationId),
+    },
+    include: {
+      savingCard: true,
+      requestedBy: true,
+      approvals: {
+        where: {
+          status: ApprovalStatus.PENDING,
+        },
+        include: {
+          approver: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

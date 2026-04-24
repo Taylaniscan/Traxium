@@ -7,6 +7,7 @@ import {
 export const organizationAccessStates = [
   "active",
   "trialing",
+  "trial_expired",
   "grace_period",
   "blocked_unpaid",
   "blocked_past_due",
@@ -19,6 +20,8 @@ export type OrganizationAccessState = (typeof organizationAccessStates)[number];
 export const organizationAccessReasonCodes = [
   "active",
   "trialing",
+  "workspace_trial",
+  "trial_expired",
   "past_due_grace_period",
   "past_due_blocked",
   "unpaid",
@@ -32,6 +35,8 @@ export const organizationAccessReasonCodes = [
 
 export type OrganizationAccessReasonCode =
   (typeof organizationAccessReasonCodes)[number];
+
+export type OrganizationAccessTrialSource = "subscription" | "workspace";
 
 export type OrganizationAccessPlanMetadata = {
   productPlanId: string | null;
@@ -88,6 +93,11 @@ export type OrganizationAccessSubscriptionRecord = {
   };
 };
 
+export type OrganizationAccessWorkspaceRecord = {
+  id: string;
+  workspaceTrialEndsAt: Date | null;
+};
+
 export type OrganizationAccessStateResult = {
   organizationId: string;
   subscriptionId: string | null;
@@ -97,5 +107,7 @@ export type OrganizationAccessStateResult = {
   isBlocked: boolean;
   reasonCode: OrganizationAccessReasonCode;
   currentPeriodEnd: Date | null;
+  trialEndsAt: Date | null;
+  trialSource: OrganizationAccessTrialSource | null;
   plan: OrganizationAccessPlanMetadata | null;
 };
