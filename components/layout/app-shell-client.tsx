@@ -33,7 +33,7 @@ const navItems = [
   { href: "/timeline", label: "Timeline", icon: CalendarRange },
   { href: "/command-center", label: "Command Center", icon: PanelsTopLeft },
   { href: "/reports", label: "Reports", icon: FileSpreadsheet },
-  { href: "/admin", label: "Settings", icon: Settings },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/open-actions", label: "Open Actions", icon: Bell },
 ] as const;
 
@@ -357,7 +357,7 @@ export function SidebarWorkspaceAccount({
           )}
         >
           <Link
-            href="/admin"
+            href="/admin/settings"
             className={cn(
               "inline-flex items-center justify-center rounded-xl border border-[var(--border)] px-3 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2",
               collapsed && "px-0"

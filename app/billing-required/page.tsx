@@ -18,10 +18,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { bootstrapCurrentUser, requireUser } from "@/lib/auth";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import type {
   OrganizationAccessReasonCode,
 } from "@/lib/billing/types";
-import { canManageOrganizationMembers } from "@/lib/organizations";
 
 type BillingRequiredPageProps = {
   searchParams: Promise<{
@@ -227,6 +227,20 @@ function getRecoveryBanner(recoveryCode: string | null, canManageBilling: boolea
         message:
           "Traxium could not launch the Stripe recovery flow. Try again from this page, or contact support if your team has a billing contact.",
       };
+    case "stripe_not_configured":
+      return {
+        tone: "rose" as const,
+        title: "Stripe billing is not configured",
+        message:
+          "Traxium could not open billing because the Stripe environment is not configured for this deployment.",
+      };
+    case "no_billing_customer":
+      return {
+        tone: "amber" as const,
+        title: "Billing customer is not ready yet",
+        message:
+          "This workspace does not have a Stripe customer record yet. Start checkout to create one and activate billing.",
+      };
     case "processing":
       return {
         tone: "blue" as const,
@@ -303,9 +317,10 @@ export default async function BillingRequiredPage({
     redirectTo: null,
   });
   const accessState = session.accessState;
-  const canManageBilling = canManageOrganizationMembers(
-    user.activeOrganization.membershipRole
-  );
+  const canManageBilling = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
   const reasonPresentation = getReasonPresentation(accessState.reasonCode);
   const recoveryBanner = getRecoveryBanner(recoveryCode, canManageBilling);
   const supportEmail = getSupportEmail();

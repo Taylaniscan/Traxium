@@ -10,7 +10,7 @@ import {
   createCheckoutSessionForOrganization,
 } from "@/lib/billing/checkout";
 import { stripePlanCatalogKeys } from "@/lib/billing/config";
-import { canManageOrganizationMembers } from "@/lib/organizations";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 
 const billingCheckoutSchema = z.object({
   planCode: z.enum(stripePlanCatalogKeys),
@@ -39,7 +39,12 @@ export async function POST(request: Request) {
       allowBillingBlocked: true,
     });
 
-    if (!canManageOrganizationMembers(user.activeOrganization.membershipRole)) {
+    if (
+      !canManageWorkspaceBilling({
+        appRole: user.role,
+        membershipRole: user.activeOrganization.membershipRole,
+      })
+    ) {
       return jsonError(
         "Only workspace admins and owners can manage billing checkout.",
         403

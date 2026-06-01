@@ -2,8 +2,10 @@ import { UsageFeature, UsageWindow } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
-import { createAuthGuardErrorResponse, requirePermission } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireOrganization } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
+import { canManageOrganizationMembers } from "@/lib/organizations";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import {
   createRateLimitErrorResponse,
@@ -117,6 +119,12 @@ function parseImportType(value: FormDataEntryValue | null): ImportType | null {
   return MASTER_DATA_IMPORT_TYPES.includes(value as MasterDataImportType)
     ? (value as MasterDataImportType)
     : null;
+}
+
+function getImportRateLimitAction(importType: ImportType) {
+  return importType === "saving_cards"
+    ? "saving-cards.import"
+    : `master-data.import.${importType}`;
 }
 
 function normalizeImportCell(value: unknown) {
@@ -510,10 +518,10 @@ async function importMasterDataRows(
 }
 
 export async function POST(request: Request) {
-  let user: Awaited<ReturnType<typeof requirePermission>>;
+  let user: Awaited<ReturnType<typeof requireOrganization>>;
 
   try {
-    user = await requirePermission("manageWorkspace", { redirectTo: null });
+    user = await requireOrganization({ redirectTo: null });
   } catch (error) {
     const response = createAuthGuardErrorResponse(error);
 
@@ -524,15 +532,14 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  try {
-    await enforceRateLimit({
-      policy: "bulkImport",
-      request,
-      userId: user.id,
-      organizationId: user.organizationId,
-      action: "saving-cards.import",
-    });
+  if (
+    !canManageOrganizationMembers(user.activeOrganization.membershipRole) &&
+    !hasPermission(user.role, "manageWorkspace")
+  ) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
 
+  try {
     let formData: FormData;
 
     try {
@@ -549,6 +556,14 @@ export async function POST(request: Request) {
         { status: 422 }
       );
     }
+
+    await enforceRateLimit({
+      policy: "bulkImport",
+      request,
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: getImportRateLimitAction(importType),
+    });
 
     const file = formData.get("file");
 

@@ -91,10 +91,11 @@ export function MasterDataUploadStep({
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
+    const input = event.currentTarget;
+    const file = input.files?.[0] ?? null;
 
     if (!file || !uploadImportType) {
-      event.currentTarget.value = "";
+      input.value = "";
       return;
     }
 
@@ -153,7 +154,7 @@ export function MasterDataUploadStep({
       });
     } finally {
       setIsUploading(false);
-      event.currentTarget.value = "";
+      input.value = "";
     }
   }
 

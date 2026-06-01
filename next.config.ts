@@ -73,7 +73,7 @@ export function buildContentSecurityPolicy() {
     `object-src 'none'`,
     `frame-ancestors 'none'`,
     `frame-src 'none'`,
-    `form-action 'self'`,
+    `form-action 'self' https://checkout.stripe.com https://billing.stripe.com`,
     `manifest-src 'self'`,
     `script-src ${scriptSources.join(" ")}`,
     `style-src 'self' 'unsafe-inline'`,

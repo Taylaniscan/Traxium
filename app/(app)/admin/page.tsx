@@ -1,9 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { WorkspaceBillingSettingsCard } from "@/components/billing/workspace-billing-settings-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { isAuthGuardError, requirePermission } from "@/lib/auth";
+import { getOrganizationAccessState } from "@/lib/billing/access";
+import {
+  getMissingStripeBillingEnvKeys,
+  isStripeBillingConfigured,
+} from "@/lib/billing/config";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
+import type { OrganizationAccessStateResult } from "@/lib/billing/types";
 import { roleLabels } from "@/lib/constants";
 import { getWorkspaceReadiness } from "@/lib/data";
 import { captureException } from "@/lib/observability";
@@ -115,6 +123,24 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   missingWorkflowCoverage: [...WORKFLOW_COVERAGE_LABELS],
 };
 
+function createUnknownAccessState(
+  organizationId: string
+): OrganizationAccessStateResult {
+  return {
+    organizationId,
+    subscriptionId: null,
+    stripeSubscriptionId: null,
+    rawSubscriptionStatus: null,
+    accessState: "no_subscription",
+    isBlocked: false,
+    reasonCode: "unknown",
+    currentPeriodEnd: null,
+    trialEndsAt: null,
+    trialSource: null,
+    plan: null,
+  };
+}
+
 export default async function AdminPage() {
   let user: Awaited<ReturnType<typeof requirePermission>>;
 
@@ -128,25 +154,48 @@ export default async function AdminPage() {
     throw error;
   }
 
-  let readiness: WorkspaceReadiness = EMPTY_WORKSPACE_READINESS;
+  const [readiness, accessState] = await Promise.all([
+    getWorkspaceReadiness(user.organizationId).catch((error) => {
+      captureException(error, {
+        event: "admin.page.readiness_load_failed",
+        route: "/admin",
+        organizationId: user.organizationId,
+        userId: user.id,
+        payload: {
+          resource: "workspace_readiness",
+          degradedRender: true,
+          fallback: "admin_empty_readiness",
+        },
+      });
 
-  try {
-    readiness = await getWorkspaceReadiness(user.organizationId);
-  } catch (error) {
-    captureException(error, {
-      event: "admin.page.readiness_load_failed",
-      route: "/admin",
-      organizationId: user.organizationId,
-      userId: user.id,
-      payload: {
-        resource: "workspace_readiness",
-        degradedRender: true,
-        fallback: "admin_empty_readiness",
-      },
-    });
-  }
+      return EMPTY_WORKSPACE_READINESS;
+    }),
+    getOrganizationAccessState(user.organizationId).catch((error) => {
+      captureException(error, {
+        event: "admin.page.billing_access_load_failed",
+        route: "/admin",
+        organizationId: user.organizationId,
+        userId: user.id,
+        payload: {
+          resource: "billing_access_state",
+          degradedRender: true,
+          fallback: "unknown_billing_state",
+        },
+      });
+
+      return createUnknownAccessState(user.organizationId);
+    }),
+  ]);
 
   const workspaceName = readiness.workspace.name;
+  const canManageBilling = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
+  const stripeBillingConfigured = isStripeBillingConfigured();
+  const missingStripeBillingEnvKeys = stripeBillingConfigured
+    ? []
+    : getMissingStripeBillingEnvKeys();
   const liveDataStatus =
     readiness.counts.savingCards > 0
       ? `${readiness.counts.savingCards} live saving card${readiness.counts.savingCards === 1 ? "" : "s"}`
@@ -169,6 +218,14 @@ export default async function AdminPage() {
           Review operational readiness, control coverage, and master-data health before onboarding more users or scaling saving-card creation.
         </p>
       </div>
+
+      <WorkspaceBillingSettingsCard
+        workspaceName={workspaceName}
+        accessState={accessState}
+        canManageBilling={canManageBilling}
+        stripeBillingConfigured={stripeBillingConfigured}
+        missingStripeBillingEnvKeys={missingStripeBillingEnvKeys}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>

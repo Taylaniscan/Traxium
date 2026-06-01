@@ -1,3 +1,4 @@
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,7 +7,7 @@ import {
   createSessionUser,
 } from "../helpers/security-fixtures";
 
-const requirePermissionMock = vi.hoisted(() => vi.fn());
+const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
@@ -37,7 +38,7 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  requirePermission: requirePermissionMock,
+  requireOrganization: requireOrganizationMock,
   createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
@@ -67,10 +68,17 @@ describe("onboarding master data route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createAuthGuardErrorResponseMock.mockReturnValue(null);
-    requirePermissionMock.mockResolvedValue(
+    requireOrganizationMock.mockResolvedValue(
       createSessionUser({
         id: DEFAULT_USER_ID,
         organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.OWNER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
       })
     );
     enforceRateLimitMock.mockResolvedValue(undefined);
@@ -125,8 +133,15 @@ describe("onboarding master data route", () => {
         failed: 0,
       },
     });
-    expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace", {
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
       redirectTo: null,
+    });
+    expect(enforceRateLimitMock).toHaveBeenCalledWith({
+      policy: "bulkImport",
+      request: expect.any(Request),
+      userId: DEFAULT_USER_ID,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      action: "onboarding.master_data.manual.buyers",
     });
     expect(prismaMock.buyer.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.buyer.create).toHaveBeenCalledWith({
@@ -165,6 +180,90 @@ describe("onboarding master data route", () => {
         organizationId: DEFAULT_ORGANIZATION_ID,
         name: "Amsterdam Plant",
         region: "Benelux",
+      },
+    });
+    expect(enforceRateLimitMock).toHaveBeenCalledWith({
+      policy: "bulkImport",
+      request: expect.any(Request),
+      userId: DEFAULT_USER_ID,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      action: "onboarding.master_data.manual.plants",
+    });
+  });
+
+  it("returns forbidden when a workspace member saves starter data", async () => {
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
+
+    const response = await POST(
+      createJsonRequest({
+        entity: "buyers",
+        rows: [
+          {
+            name: "Taylor Buyer",
+          },
+        ],
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden." });
+    expect(enforceRateLimitMock).not.toHaveBeenCalled();
+    expect(prismaMock.buyer.create).not.toHaveBeenCalled();
+  });
+
+  it("allows legacy workspace managers to save starter data", async () => {
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        role: Role.GLOBAL_CATEGORY_LEADER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
+
+    const response = await POST(
+      createJsonRequest({
+        entity: "buyers",
+        rows: [
+          {
+            name: "Taylor Buyer",
+          },
+        ],
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      entity: "buyers",
+      summary: {
+        created: 1,
+        skipped: 0,
+        failed: 0,
+      },
+    });
+    expect(prismaMock.buyer.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        name: "Taylor Buyer",
+        email: null,
       },
     });
   });

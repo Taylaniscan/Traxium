@@ -95,6 +95,7 @@ export type OrganizationAccessSubscriptionRecord = {
 
 export type OrganizationAccessWorkspaceRecord = {
   id: string;
+  createdAt: Date;
   workspaceTrialEndsAt: Date | null;
 };
 

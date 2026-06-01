@@ -1,12 +1,13 @@
-import { Role } from "@prisma/client";
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createSessionUser,
   createAuthGuardJsonResponse,
   MockAuthGuardError,
 } from "../helpers/security-fixtures";
 
 const requireUserMock = vi.hoisted(() => vi.fn());
-const requirePermissionMock = vi.hoisted(() => vi.fn());
+const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
@@ -51,6 +52,10 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
     create: vi.fn(),
   },
+  category: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
   savingCard: {
     findFirst: vi.fn(),
   },
@@ -79,7 +84,7 @@ const EvidenceStorageNotFoundErrorMock = vi.hoisted(
 
 vi.mock("@/lib/auth", () => ({
   requireUser: requireUserMock,
-  requirePermission: requirePermissionMock,
+  requireOrganization: requireOrganizationMock,
   createAuthGuardErrorResponse: createAuthGuardErrorResponseMock,
 }));
 
@@ -188,13 +193,19 @@ describe("import and evidence API routes", () => {
       organizationId: "org-1",
     });
     createAuthGuardErrorResponseMock.mockImplementation(createAuthGuardJsonResponse);
-    requirePermissionMock.mockResolvedValue({
-      id: "user-1",
-      name: "Test User",
-      email: "user@example.com",
-      role: Role.GLOBAL_CATEGORY_LEADER,
-      organizationId: "org-1",
-    });
+    requireOrganizationMock.mockResolvedValue(
+      createSessionUser({
+        id: "user-1",
+        organizationId: "org-1",
+        activeOrganizationId: "org-1",
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: "org-1",
+          membershipRole: OrganizationRole.OWNER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
     enforceRateLimitMock.mockResolvedValue(undefined);
     createRateLimitErrorResponseMock.mockImplementation((error: { message: string; status?: number }) =>
       Response.json(
@@ -214,6 +225,8 @@ describe("import and evidence API routes", () => {
     prismaMock.supplier.create.mockReset();
     prismaMock.material.findMany.mockReset();
     prismaMock.material.create.mockReset();
+    prismaMock.category.findMany.mockReset();
+    prismaMock.category.create.mockReset();
     prismaMock.savingCard.findFirst.mockReset();
     prismaMock.savingCardEvidence.findFirst.mockReset();
     prismaMock.savingCardEvidence.create.mockReset();
@@ -227,11 +240,13 @@ describe("import and evidence API routes", () => {
     prismaMock.supplier.create.mockResolvedValue({ id: "supplier-1", name: "Supplier" });
     prismaMock.material.findMany.mockResolvedValue([]);
     prismaMock.material.create.mockResolvedValue({ id: "material-1", name: "Material" });
+    prismaMock.category.findMany.mockResolvedValue([]);
+    prismaMock.category.create.mockResolvedValue({ id: "category-1", name: "Category" });
   });
 
   describe("app/api/import/route.ts", () => {
     it("returns 401 JSON for unauthenticated import requests", async () => {
-      requirePermissionMock.mockRejectedValueOnce(
+      requireOrganizationMock.mockRejectedValueOnce(
         new MockAuthGuardError(
           "Authenticated session is required.",
           401,
@@ -246,11 +261,121 @@ describe("import and evidence API routes", () => {
       expect(importSavingCardsMock).not.toHaveBeenCalled();
     });
 
+    it("returns 403 JSON when a workspace member imports master data", async () => {
+      requireOrganizationMock.mockResolvedValueOnce(
+        createSessionUser({
+          id: "user-1",
+          organizationId: "org-1",
+          activeOrganizationId: "org-1",
+          activeOrganization: {
+            membershipId: "membership-1",
+            organizationId: "org-1",
+            membershipRole: OrganizationRole.MEMBER,
+            membershipStatus: MembershipStatus.ACTIVE,
+          },
+        })
+      );
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile(), "buyers"))
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({ error: "Forbidden." });
+      expect(enforceRateLimitMock).not.toHaveBeenCalled();
+      expect(prismaMock.buyer.create).not.toHaveBeenCalled();
+    });
+
+    it("allows legacy workspace managers to import even when their tenant membership is member", async () => {
+      requireOrganizationMock.mockResolvedValueOnce(
+        createSessionUser({
+          id: "user-1",
+          role: Role.GLOBAL_CATEGORY_LEADER,
+          organizationId: "org-1",
+          activeOrganizationId: "org-1",
+          activeOrganization: {
+            membershipId: "membership-1",
+            organizationId: "org-1",
+            membershipRole: OrganizationRole.MEMBER,
+            membershipStatus: MembershipStatus.ACTIVE,
+          },
+        })
+      );
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sayfa1"],
+        Sheets: {
+          Sayfa1: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "Taylan Iscan",
+          Email: "mayaworldsocial+2@gmail.com",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("xlsx-bytes", "BuyersMayaLLC.xlsx"),
+            "buyers"
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        importType: "buyers",
+        summary: {
+          created: 1,
+          skipped: 0,
+          failed: 0,
+        },
+      });
+      expect(prismaMock.buyer.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: "org-1",
+          name: "Taylan Iscan",
+          email: "mayaworldsocial+2@gmail.com",
+        },
+      });
+    });
+
     it("returns 422 when no import file is provided", async () => {
       const response = await postImportRoute(createFormDataRequest(createImportForm()));
 
       expect(response.status).toBe(422);
       await expect(response.json()).resolves.toEqual({ error: "An import file is required." });
+    });
+
+    it("uses separate rate-limit buckets for the guided master-data upload sequence", async () => {
+      xlsxReadMock.mockReturnValue({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValue([{ Name: "Imported Row" }]);
+
+      for (const importType of ["buyers", "suppliers", "materials", "categories"]) {
+        const response = await postImportRoute(
+          createFormDataRequest(
+            createImportForm(
+              createWorkbookFile("xlsx-bytes", `${importType}.xlsx`),
+              importType
+            )
+          )
+        );
+
+        expect(response.status).toBe(200);
+      }
+
+      expect(enforceRateLimitMock.mock.calls.map((call) => call[0].action)).toEqual([
+        "master-data.import.buyers",
+        "master-data.import.suppliers",
+        "master-data.import.materials",
+        "master-data.import.categories",
+      ]);
     });
 
     it("returns 400 for invalid workbook uploads", async () => {
@@ -480,6 +605,86 @@ describe("import and evidence API routes", () => {
       expect(importSavingCardsMock).not.toHaveBeenCalled();
       expect(enforceUsageQuotaMock).not.toHaveBeenCalled();
       expect(recordUsageEventMock).not.toHaveBeenCalled();
+    });
+
+    it("imports buyer master data from XLSX files with Name, Email, Code, and Department headers", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sayfa1"],
+        Sheets: {
+          Sayfa1: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "Taylan Iscan",
+          Email: "mayaworldsocial+2@gmail.com",
+          Code: "B001",
+          Department: "Sourcing",
+        },
+        {
+          Name: "Mustafa Pekcan",
+          Email: "mayaworldsocial+3@gmail.com",
+          Code: "B002",
+          Department: "Sourcing",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("xlsx-bytes", "BuyersMayaLLC.xlsx"),
+            "buyers"
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        importType: "buyers",
+        summary: {
+          created: 2,
+          skipped: 0,
+          failed: 0,
+        },
+        results: [
+          {
+            row: 2,
+            status: "created",
+            name: "Taylan Iscan",
+            message: "Created buyer record.",
+          },
+          {
+            row: 3,
+            status: "created",
+            name: "Mustafa Pekcan",
+            message: "Created buyer record.",
+          },
+        ],
+      });
+      expect(prismaMock.buyer.create).toHaveBeenCalledTimes(2);
+      expect(prismaMock.buyer.create).toHaveBeenNthCalledWith(1, {
+        data: {
+          organizationId: "org-1",
+          name: "Taylan Iscan",
+          email: "mayaworldsocial+2@gmail.com",
+        },
+      });
+      expect(prismaMock.buyer.create).toHaveBeenNthCalledWith(2, {
+        data: {
+          organizationId: "org-1",
+          name: "Mustafa Pekcan",
+          email: "mayaworldsocial+3@gmail.com",
+        },
+      });
+      expect(xlsxReadMock).toHaveBeenCalledWith(expect.any(ArrayBuffer), {
+        type: "array",
+      });
+      expect(sheetToJsonMock).toHaveBeenCalledWith(
+        {},
+        {
+          defval: "",
+        }
+      );
     });
 
     it("imports supplier master data with row-level validation for optional contact email", async () => {

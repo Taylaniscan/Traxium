@@ -1,4 +1,6 @@
 import React from "react";
+import { MembershipStatus, OrganizationRole } from "@prisma/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -6,6 +8,7 @@ import {
   MockAuthGuardError,
   createAdminUser,
   createAuthGuardJsonResponse,
+  createSessionUser,
 } from "../helpers/security-fixtures";
 
 const redirectMock = vi.hoisted(() =>
@@ -15,7 +18,9 @@ const redirectMock = vi.hoisted(() =>
 );
 
 const requirePermissionMock = vi.hoisted(() => vi.fn());
+const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const getOrganizationAccessStateMock = vi.hoisted(() => vi.fn());
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
@@ -56,6 +61,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   requirePermission: requirePermissionMock,
+  requireOrganization: requireOrganizationMock,
   isAuthGuardError: (error: unknown) => error instanceof MockAuthGuardError,
   createAuthGuardErrorResponse: createAuthGuardJsonResponse,
 }));
@@ -64,6 +70,10 @@ vi.mock("@/lib/data", () => ({
   getWorkspaceReadiness: getWorkspaceReadinessMock,
   getReferenceData: getReferenceDataMock,
   importSavingCards: importSavingCardsMock,
+}));
+
+vi.mock("@/lib/billing/access", () => ({
+  getOrganizationAccessState: getOrganizationAccessStateMock,
 }));
 
 vi.mock("xlsx", () => ({
@@ -209,6 +219,32 @@ function createReferenceData() {
   };
 }
 
+function createActiveAccessState() {
+  return {
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    subscriptionId: "subscription-1",
+    stripeSubscriptionId: "sub_1",
+    rawSubscriptionStatus: "ACTIVE",
+    accessState: "active",
+    isBlocked: false,
+    reasonCode: "active",
+    currentPeriodEnd: new Date("2026-04-20T00:00:00.000Z"),
+    trialEndsAt: null,
+    trialSource: null,
+    plan: {
+      planCode: "growth",
+      planName: "Growth",
+      currencyCode: "usd",
+      unitAmount: 29900,
+      billingInterval: "MONTH",
+      intervalCount: 1,
+      priceType: "LICENSED",
+      planMetadata: null,
+      priceMetadata: null,
+    },
+  };
+}
+
 function createWorkbookFile(content = "sheet-bytes", name = "cards.xlsx", type =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
   return new File([content], name, { type });
@@ -240,7 +276,21 @@ describe("admin RBAC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requirePermissionMock.mockResolvedValue(createAdminUser());
+    requireOrganizationMock.mockResolvedValue(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.OWNER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
     getWorkspaceReadinessMock.mockResolvedValue(createWorkspaceReadiness());
+    getOrganizationAccessStateMock.mockResolvedValue(createActiveAccessState());
     getReferenceDataMock.mockResolvedValue(createReferenceData());
     importSavingCardsMock.mockResolvedValue(undefined);
     enforceRateLimitMock.mockResolvedValue(undefined);
@@ -294,15 +344,25 @@ describe("admin RBAC", () => {
   });
 
   it("blocks normal users from admin-only APIs with a 403 response", async () => {
-    requirePermissionMock.mockRejectedValueOnce(
-      new MockAuthGuardError("Forbidden", 403, "FORBIDDEN")
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
     );
 
     const response = await postImportRoute(
       createFormDataRequest(createImportForm(createWorkbookFile()))
     );
 
-    expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace", {
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
       redirectTo: null,
     });
     expect(response.status).toBe(403);
@@ -312,10 +372,15 @@ describe("admin RBAC", () => {
 
   it("allows an admin role to open the admin page", async () => {
     const page = await AdminPage();
+    const markup = renderToStaticMarkup(page as React.ReactElement);
 
     expect(page).toBeTruthy();
     expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace");
     expect(getWorkspaceReadinessMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(getOrganizationAccessStateMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(markup).toContain("Billing &amp; subscription");
+    expect(markup).toContain("Manage billing");
+    expect(markup).toContain("action=\"/billing/recover\"");
   });
 
   it("keeps rendering the admin page when workspace readiness fails and reports the exception", async () => {
@@ -344,6 +409,9 @@ describe("admin RBAC", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ count: 1 });
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
+      redirectTo: null,
+    });
     expect(importSavingCardsMock).toHaveBeenCalledWith(
       expect.arrayContaining([
       expect.objectContaining({

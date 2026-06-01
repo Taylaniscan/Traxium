@@ -57,6 +57,7 @@ export const organizationAccessSubscriptionSelect = {
 
 export const organizationAccessWorkspaceSelect = {
   id: true,
+  createdAt: true,
   workspaceTrialEndsAt: true,
 } as const;
 
@@ -83,11 +84,14 @@ type OrganizationAccessLookupClient = {
 type ResolveOrganizationAccessStateInput = {
   organizationId: string;
   subscription: OrganizationAccessSubscriptionRecord | null;
+  workspaceCreatedAt?: Date | null;
   workspaceTrialEndsAt?: Date | null;
   now?: Date;
 };
 
 type BillingEnvSource = Record<string, string | undefined>;
+
+const DEFAULT_WORKSPACE_TRIAL_DAYS = 14;
 
 function normalizeRequiredString(value: string, fieldName: string) {
   const normalized = value.trim();
@@ -107,6 +111,25 @@ function compareDatesDescending(
   const rightTime = right?.getTime() ?? Number.NEGATIVE_INFINITY;
 
   return rightTime - leftTime;
+}
+
+function addDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function resolveWorkspaceTrialEndsAt(
+  workspaceTrialEndsAt: Date | null,
+  workspaceCreatedAt: Date | null
+) {
+  if (workspaceTrialEndsAt) {
+    return workspaceTrialEndsAt;
+  }
+
+  if (!workspaceCreatedAt) {
+    return null;
+  }
+
+  return addDays(workspaceCreatedAt, DEFAULT_WORKSPACE_TRIAL_DAYS);
 }
 
 function getStatusTieBreaker(status: SubscriptionStatus) {
@@ -299,7 +322,10 @@ export function resolveOrganizationAccessState(
 
   if (!input.subscription) {
     const workspaceTrialPolicy = resolveWorkspaceTrialPolicy(
-      input.workspaceTrialEndsAt ?? null,
+      resolveWorkspaceTrialEndsAt(
+        input.workspaceTrialEndsAt ?? null,
+        input.workspaceCreatedAt ?? null
+      ),
       now
     );
 
@@ -426,6 +452,7 @@ export async function getOrganizationSubscriptionState(
   return resolveOrganizationAccessState({
     organizationId: normalizedOrganizationId,
     subscription: selectCurrentSubscription(subscriptions),
+    workspaceCreatedAt: organization?.createdAt ?? null,
     workspaceTrialEndsAt: organization?.workspaceTrialEndsAt ?? null,
     now: dependencies.now,
   });

@@ -3,6 +3,11 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  stripeBillingOptionalEnvKeys,
+  stripeBillingOptionalServerEnvKeys,
+  stripeBillingRequiredEnvKeys,
+} from "@/lib/billing/config";
 import { assertPredeployConfiguration } from "@/scripts/predeploy-check";
 
 function readProjectFile(relativePath: string) {
@@ -60,6 +65,21 @@ describe("release safety consistency", () => {
       expect(envExample).toContain(`${requiredKey}=`);
     }
 
+    for (const stripeKey of [
+      ...stripeBillingOptionalEnvKeys,
+      ...stripeBillingOptionalServerEnvKeys,
+      ...stripeBillingRequiredEnvKeys,
+    ]) {
+      expect(envExample).toMatch(new RegExp(`^${stripeKey}=$`, "m"));
+    }
+
+    expect(envExample).toContain(
+      "Each plan requires one Stripe Product ID and one licensed"
+    );
+    expect(envExample).not.toMatch(/^STRIPE_SECRET_KEY=sk_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_WEBHOOK_SECRET=whsec_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_[A-Z_]+_PRODUCT_ID=prod_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_[A-Z_]+_PRICE_ID=price_/mu);
     expect(envExample).not.toMatch(/\[(?:PROJECT-REF|PASSWORD|REGION)\]/u);
     expect(envExample).not.toMatch(/\[YOUR_[A-Z_]+\]/u);
   });

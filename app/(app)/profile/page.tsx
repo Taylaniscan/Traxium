@@ -3,14 +3,15 @@ import { ChangePasswordForm } from "@/components/profile/change-password-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import { roleLabels } from "@/lib/constants";
-import { canManageOrganizationMembers } from "@/lib/organizations";
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const canViewWorkspaceSettings = canManageOrganizationMembers(
-    user.activeOrganization.membershipRole
-  );
+  const canViewWorkspaceSettings = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
 
   return (
     <div className="space-y-6">
@@ -56,9 +57,9 @@ export default async function ProfilePage() {
           />
           {canViewWorkspaceSettings ? (
             <QuickLinkCard
-              href="/admin"
+              href="/admin/settings"
               title="Workspace Settings"
-              description="Go to members, settings, and workspace administration screens."
+              description="Manage workspace identity, billing, and administration settings."
             />
           ) : null}
         </div>

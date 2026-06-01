@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { assertEnvironmentConfiguration } from "../lib/env";
 import {
   assertStripeBillingConfiguration,
-  hasAnyStripeBillingValue,
+  assertStripeBillingRuntimeConfiguration,
 } from "../lib/billing/config";
 import { resolveAppEnvironment } from "../lib/env";
 
@@ -12,7 +12,10 @@ type EnvSource = Record<string, string | undefined>;
 export type CliEnvironmentCheckResult = ReturnType<
   typeof assertEnvironmentConfiguration
 > & {
-  billing: ReturnType<typeof assertStripeBillingConfiguration> | null;
+  billing:
+    | ReturnType<typeof assertStripeBillingConfiguration>
+    | ReturnType<typeof assertStripeBillingRuntimeConfiguration>
+    | null;
 };
 
 export function assertCliEnvironmentConfiguration(
@@ -23,12 +26,14 @@ export function assertCliEnvironmentConfiguration(
   const shouldValidateBilling =
     appEnvironment === "preview" ||
     appEnvironment === "production" ||
-    hasAnyStripeBillingValue(source);
+    Boolean(source.STRIPE_SECRET_KEY?.trim());
 
   return {
     ...result,
     billing: shouldValidateBilling
-      ? assertStripeBillingConfiguration(source)
+      ? appEnvironment === "development"
+        ? assertStripeBillingRuntimeConfiguration(source)
+        : assertStripeBillingConfiguration(source)
       : null,
   };
 }

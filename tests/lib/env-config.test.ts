@@ -78,6 +78,11 @@ describe("env configuration helpers", () => {
         source: createBaseEnv(),
       })
     ).toThrow("SUPABASE_SERVICE_ROLE_KEY is not whitelisted for client exposure.");
+    expect(() =>
+      readClientEnv("STRIPE_SECRET_KEY", {
+        source: createBillingEnv(),
+      })
+    ).toThrow("STRIPE_SECRET_KEY is not whitelisted for client exposure.");
   });
 
   it("keeps non-test envs strict but allows test mode to skip non-test requirements", () => {
@@ -189,6 +194,41 @@ describe("env configuration helpers", () => {
       storageBucket: "evidence-private",
       billing: null,
     });
+    expect(
+      assertCliEnvironmentConfiguration(
+        createBaseEnv({
+          STRIPE_PORTAL_RETURN_URL: "http://localhost:3000/settings/billing",
+          STRIPE_STARTER_PRODUCT_ID: "prod_localdevstarter2026",
+          STRIPE_STARTER_BASE_PRICE_ID: "price_localdevstartermonthly2026",
+          STRIPE_GROWTH_PRODUCT_ID: "prod_localdevgrowth2026",
+          STRIPE_GROWTH_BASE_PRICE_ID: "price_localdevgrowthmonthly2026",
+        })
+      )
+    ).toEqual(
+      expect.objectContaining({
+        appEnvironment: "development",
+        billing: null,
+      })
+    );
+  });
+
+  it("allows local Stripe runtime checks without a webhook secret", () => {
+    expect(
+      assertCliEnvironmentConfiguration(
+        createBillingEnv({
+          STRIPE_WEBHOOK_SECRET: undefined,
+        })
+      )
+    ).toEqual(
+      expect.objectContaining({
+        appEnvironment: "development",
+        billing: expect.objectContaining({
+          hasSecretKey: true,
+          hasWebhookSecret: false,
+          planCodes: ["starter", "growth"],
+        }),
+      })
+    );
   });
 
   it("requires Stripe billing env values for preview cli validation", () => {
@@ -199,7 +239,7 @@ describe("env configuration helpers", () => {
         })
       )
     ).toThrow(
-      "Missing STRIPE_SECRET_KEY. Stripe secret API key. Required in development, preview, and production environments. Current environment: preview."
+      "Missing Stripe billing environment variables: STRIPE_SECRET_KEY, STRIPE_PORTAL_RETURN_URL, STRIPE_CHECKOUT_SUCCESS_URL, STRIPE_CHECKOUT_CANCEL_URL, STRIPE_STARTER_PRODUCT_ID, STRIPE_STARTER_BASE_PRICE_ID, STRIPE_GROWTH_PRODUCT_ID, STRIPE_GROWTH_BASE_PRICE_ID, STRIPE_WEBHOOK_SECRET. Required in development, preview, and production environments when Stripe billing validation runs. Current environment: preview."
     );
 
     expect(

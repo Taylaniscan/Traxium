@@ -56,5 +56,6 @@ describe("profile page", () => {
     expect(markup).toContain("Security");
     expect(markup).toContain("change-password-form");
     expect(markup).toContain("Workspace Settings");
+    expect(markup).toContain("href=\"/admin/settings\"");
   });
 });

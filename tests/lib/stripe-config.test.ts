@@ -12,9 +12,17 @@ vi.mock("server-only", () => ({}));
 
 import {
   assertStripeBillingConfiguration,
+  getMissingStripeBillingEnvKeys,
   getStripeBillingConfig,
+  getStripeBillingRuntimeConfig,
   isStripeBillingConfigured,
+  stripeBillingOptionalEnvKeys,
+  stripeBillingOptionalServerEnvKeys,
+  stripeBillingRequiredEnvKeys,
+  stripeBillingRuntimeRequiredEnvKeys,
+  stripeBillingWebhookRequiredEnvKeys,
   type StripeBillingConfig,
+  type StripeBillingRuntimeConfig,
 } from "@/lib/billing/config";
 import {
   createStripeClient,
@@ -51,6 +59,36 @@ describe("Stripe billing config", () => {
     resetStripeClientForTests();
   });
 
+  it("keeps the required Stripe billing env source of truth explicit", () => {
+    expect(stripeBillingRuntimeRequiredEnvKeys).toEqual([
+      "STRIPE_SECRET_KEY",
+      "STRIPE_PORTAL_RETURN_URL",
+      "STRIPE_CHECKOUT_SUCCESS_URL",
+      "STRIPE_CHECKOUT_CANCEL_URL",
+      "STRIPE_STARTER_PRODUCT_ID",
+      "STRIPE_STARTER_BASE_PRICE_ID",
+      "STRIPE_GROWTH_PRODUCT_ID",
+      "STRIPE_GROWTH_BASE_PRICE_ID",
+    ]);
+    expect(stripeBillingWebhookRequiredEnvKeys).toEqual([
+      "STRIPE_WEBHOOK_SECRET",
+    ]);
+    expect(stripeBillingOptionalServerEnvKeys).toEqual([
+      "STRIPE_STARTER_METERED_PRICE_ID",
+      "STRIPE_GROWTH_METERED_PRICE_ID",
+    ]);
+    expect(stripeBillingRequiredEnvKeys).toEqual([
+      ...stripeBillingRuntimeRequiredEnvKeys,
+      ...stripeBillingWebhookRequiredEnvKeys,
+    ]);
+    expect(stripeBillingOptionalEnvKeys).toEqual([
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    ]);
+    expect(
+      stripeBillingRequiredEnvKeys.every((key) => !key.startsWith("NEXT_PUBLIC_"))
+    ).toBe(true);
+  });
+
   it("throws a controlled error when required Stripe env values are missing", () => {
     expect(() =>
       getStripeBillingConfig(
@@ -62,6 +100,53 @@ describe("Stripe billing config", () => {
     ).toThrow(
       "Missing STRIPE_SECRET_KEY. Stripe secret API key. Required in development, preview, and production environments. Current environment: production."
     );
+  });
+
+  it("reports all missing billing env keys without exposing configured secret values", () => {
+    const source = {
+      APP_ENV: "preview",
+    };
+
+    expect(getMissingStripeBillingEnvKeys(source)).toEqual(
+      stripeBillingRuntimeRequiredEnvKeys
+    );
+    expect(getMissingStripeBillingEnvKeys(source, "full")).toEqual(
+      stripeBillingRequiredEnvKeys
+    );
+
+    let message = "";
+
+    try {
+      getStripeBillingConfig(source);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain(
+      `Missing Stripe billing environment variables: ${stripeBillingRequiredEnvKeys.join(", ")}.`
+    );
+    expect(message).not.toContain("sk_test_");
+    expect(message).not.toContain("sk_live_");
+    expect(message).not.toContain("whsec_");
+  });
+
+  it("does not echo invalid secret values in validation errors", () => {
+    const source = createBillingEnv({
+      STRIPE_SECRET_KEY: "not-a-stripe-secret",
+    });
+
+    let message = "";
+
+    try {
+      getStripeBillingConfig(source);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain(
+      "STRIPE_SECRET_KEY must start with sk_test_ or sk_live_."
+    );
+    expect(message).not.toContain("not-a-stripe-secret");
   });
 
   it("normalizes and validates the Stripe billing configuration shape", () => {
@@ -112,9 +197,43 @@ describe("Stripe billing config", () => {
     });
 
     expectTypeOf(config).toMatchTypeOf<StripeBillingConfig>();
+    expectTypeOf(getStripeBillingRuntimeConfig(createBillingEnv())).toMatchTypeOf<
+      StripeBillingRuntimeConfig
+    >();
     expectTypeOf(config.plans.starter.code).toEqualTypeOf<
       StripeBillingConfig["plans"]["starter"]["code"]
     >();
+  });
+
+  it("requires product and licensed base price IDs for Starter and Growth", () => {
+    expect(() =>
+      getStripeBillingConfig(
+        createBillingEnv({
+          STRIPE_GROWTH_BASE_PRICE_ID: undefined,
+        })
+      )
+    ).toThrow(
+      "Missing STRIPE_GROWTH_BASE_PRICE_ID. Stripe price identifier. Required in development, preview, and production environments. Current environment: development."
+    );
+    expect(() =>
+      getStripeBillingConfig(
+        createBillingEnv({
+          STRIPE_STARTER_PRODUCT_ID: "price_wrong_prefix",
+        })
+      )
+    ).toThrow("STRIPE_STARTER_PRODUCT_ID must start with prod_.");
+  });
+
+  it("allows metered prices to be omitted for simple subscription catalog setup", () => {
+    const config = getStripeBillingRuntimeConfig(
+      createBillingEnv({
+        STRIPE_STARTER_METERED_PRICE_ID: undefined,
+        STRIPE_GROWTH_METERED_PRICE_ID: undefined,
+      })
+    );
+
+    expect(config.plans.starter.meteredPriceId).toBeNull();
+    expect(config.plans.growth.meteredPriceId).toBeNull();
   });
 
   it("reports whether Stripe billing is fully configured without throwing", () => {

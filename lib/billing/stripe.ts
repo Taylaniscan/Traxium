@@ -2,15 +2,20 @@ import "server-only";
 
 import Stripe from "stripe";
 
-import { getStripeBillingConfig, type StripeBillingConfig } from "@/lib/billing/config";
+import {
+  getStripeBillingRuntimeConfig,
+  type StripeBillingRuntimeConfig,
+} from "@/lib/billing/config";
 
 const globalForStripe = globalThis as unknown as {
   stripeClient: Stripe | undefined;
 };
 
-type StripeClientConfig = Pick<StripeBillingConfig, "secretKey">;
+type StripeClientConfig = Pick<StripeBillingRuntimeConfig, "secretKey">;
 
-export function createStripeClient(config: StripeClientConfig = getStripeBillingConfig()) {
+export function createStripeClient(
+  config: StripeClientConfig = getStripeBillingRuntimeConfig()
+) {
   return new Stripe(config.secretKey, {
     appInfo: {
       name: "Traxium",
@@ -20,7 +25,9 @@ export function createStripeClient(config: StripeClientConfig = getStripeBilling
   });
 }
 
-export function getStripeClient(config: StripeClientConfig = getStripeBillingConfig()) {
+export function getStripeClient(
+  config: StripeClientConfig = getStripeBillingRuntimeConfig()
+) {
   if (!globalForStripe.stripeClient) {
     globalForStripe.stripeClient = createStripeClient(config);
   }

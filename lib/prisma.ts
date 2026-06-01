@@ -1,14 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 
 import { getDatabaseUrl, isProductionEnvironment } from "@/lib/env";
+import { withDefaultPrismaConnectionLimit } from "@/lib/prisma-url";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function assertPrismaConnectionEnvironment() {
-  const databaseUrl = getDatabaseUrl();
-
+function assertPrismaConnectionEnvironment(databaseUrl: string) {
   if (databaseUrl.startsWith("ppostgresql://")) {
     throw new Error(
       'DATABASE_URL starts with "ppostgresql://". Use "postgresql://" instead.'
@@ -45,7 +44,18 @@ function assertPrismaConnectionEnvironment() {
   }
 }
 
-assertPrismaConnectionEnvironment();
+function configurePrismaRuntimeDatabaseUrl() {
+  const databaseUrl = getDatabaseUrl();
+  const runtimeDatabaseUrl = withDefaultPrismaConnectionLimit(databaseUrl);
+
+  if (runtimeDatabaseUrl !== databaseUrl) {
+    process.env.DATABASE_URL = runtimeDatabaseUrl;
+  }
+
+  return runtimeDatabaseUrl;
+}
+
+assertPrismaConnectionEnvironment(configurePrismaRuntimeDatabaseUrl());
 
 export const prisma =
   globalForPrisma.prisma ??

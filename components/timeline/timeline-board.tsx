@@ -184,7 +184,7 @@ export function TimelineBoard({
                   Create first saving card
                 </Link>
                 <Link
-                  href="/admin"
+                  href="/admin/settings"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
                     "border-white/20 bg-white/10 text-white hover:bg-white/20"

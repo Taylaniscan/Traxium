@@ -1,12 +1,17 @@
+/* eslint-disable react/no-children-prop */
 import React from "react";
 import { Role } from "@prisma/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 const usePathnameMock = vi.hoisted(() => vi.fn(() => "/dashboard"));
+const routerPushMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   usePathname: usePathnameMock,
+  useRouter: () => ({
+    push: routerPushMock,
+  }),
 }));
 
 vi.mock("next/link", () => ({
@@ -24,9 +29,64 @@ vi.mock("next/link", () => ({
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-import { SidebarWorkspaceAccount } from "@/components/layout/app-shell-client";
+import {
+  AppShellClient,
+  SidebarWorkspaceAccount,
+} from "@/components/layout/app-shell-client";
 
 describe("app shell workspace account", () => {
+  it("does not render billing as a main sidebar nav item", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        AppShellClient,
+        {
+          user: {
+            id: "user-1",
+            name: "Admin User",
+            email: "admin@example.com",
+            role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+          },
+          workspace: {
+            name: "Atlas Procurement",
+          },
+          notifications: [],
+          unreadNotificationCount: 0,
+          pendingActionsCount: 0,
+          children: React.createElement("div", null, "page"),
+        }
+      )
+    );
+
+    expect(markup).not.toContain("href=\"/settings/billing\"");
+    expect(markup).not.toContain(">Billing<");
+  });
+
+  it("keeps workspace settings visible in the main sidebar", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        AppShellClient,
+        {
+          user: {
+            id: "user-1",
+            name: "Casey Buyer",
+            email: "casey@example.com",
+            role: Role.GLOBAL_CATEGORY_LEADER,
+          },
+          workspace: {
+            name: "Atlas Procurement",
+          },
+          notifications: [],
+          unreadNotificationCount: 0,
+          pendingActionsCount: 0,
+          children: React.createElement("div", null, "page"),
+        }
+      )
+    );
+
+    expect(markup).toContain("href=\"/admin/settings\"");
+    expect(markup).toContain("Settings");
+  });
+
   it("renders an always-visible account card", () => {
     const markup = renderToStaticMarkup(
       React.createElement(SidebarWorkspaceAccount, {

@@ -214,7 +214,7 @@ export function OpenActionsList({
                   Create first saving card
                 </Link>
                 <Link
-                  href="/admin"
+                  href="/admin/settings"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
                     "border-white/20 bg-white/10 text-white hover:bg-white/20"
@@ -384,7 +384,7 @@ export function OpenActionsList({
               <Link href="/saving-cards" className={buttonVariants({ size: "sm" })}>
                 View saving cards
               </Link>
-              <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <Link href="/admin/settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Review setup
               </Link>
             </div>

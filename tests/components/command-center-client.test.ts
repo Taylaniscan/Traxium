@@ -17,8 +17,12 @@ vi.mock("next/link", () => ({
 
 vi.mock("recharts", () => {
   function createChartPrimitive(tag: string) {
-    return ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(tag, null, children);
+    function ChartPrimitive({ children }: { children?: React.ReactNode }) {
+      return React.createElement(tag, null, children);
+    }
+
+    ChartPrimitive.displayName = `Mock${tag}`;
+    return ChartPrimitive;
   }
 
   return {

@@ -54,7 +54,9 @@ describe("http security headers", () => {
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("form-action 'self'");
+    expect(csp).toContain(
+      "form-action 'self' https://checkout.stripe.com https://billing.stripe.com"
+    );
     expect(csp).toContain("connect-src 'self' https://atlas.supabase.co https://analytics.traxium.app https://example.ingest.sentry.io");
     expect(findHeader("Strict-Transport-Security", globalHeaders)).toBe(
       "max-age=31536000; includeSubDomains; preload"

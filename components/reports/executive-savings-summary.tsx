@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -105,15 +107,15 @@ export function ExecutiveSavingsSummary({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-4 text-sm text-[var(--muted-foreground)]">
-            <a href="/saving-cards/new" className={INLINE_LINK_CLASS}>
+            <Link href="/saving-cards/new" className={INLINE_LINK_CLASS}>
               Create saving card
-            </a>
-            <a href="/dashboard" className={INLINE_LINK_CLASS}>
+            </Link>
+            <Link href="/dashboard" className={INLINE_LINK_CLASS}>
               Open dashboard
-            </a>
-            <a href="/command-center" className={INLINE_LINK_CLASS}>
+            </Link>
+            <Link href="/command-center" className={INLINE_LINK_CLASS}>
               Open command center
-            </a>
+            </Link>
           </CardContent>
         </Card>
       </div>

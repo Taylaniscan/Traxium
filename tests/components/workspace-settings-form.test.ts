@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const useEffectMock = vi.hoisted(() => vi.fn());
 const useRefMock = vi.hoisted(() => vi.fn());
@@ -183,6 +184,17 @@ describe("workspace settings form", () => {
         }),
       ])
     );
+  });
+
+  it("leaves billing placement to the workspace settings page", () => {
+    mockFormState({});
+
+    const tree = WorkspaceSettingsForm({ organization });
+    const markup = renderToStaticMarkup(tree);
+
+    expect(markup).toContain("Workspace Identity");
+    expect(markup).not.toContain("Billing &amp; subscription");
+    expect(markup).not.toContain("action=\"/billing/recover\"");
   });
 
   it("keeps the existing settings form submit behavior", async () => {

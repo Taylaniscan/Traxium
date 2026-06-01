@@ -1,5 +1,10 @@
 import type { OrganizationAccessStateResult } from "@/lib/billing/types";
 
+export type BillingRecoveryIntent =
+  | "open_billing_portal"
+  | "resume_subscription"
+  | "update_payment_method";
+
 export type BillingCommercialHighlight = {
   label: string;
   value: string;
@@ -23,6 +28,26 @@ export type BillingCommercialSummary = {
     detail: string;
   };
   highlights: BillingCommercialHighlight[];
+};
+
+export type BillingWorkspacePresentation = {
+  statusLabel: string;
+  statusTone:
+    | "amber"
+    | "blue"
+    | "emerald"
+    | "orange"
+    | "rose"
+    | "slate";
+  planLabel: string;
+  planDetail: string;
+  billingStateLabel: string;
+  stateDescription: string;
+  currentPeriodEndLabel: string;
+  trialEndLabel: string;
+  recommendedIntent: BillingRecoveryIntent;
+  recommendedActionLabel: string;
+  recommendedActionDetail: string;
 };
 
 function humanizeToken(value: string | null | undefined) {
@@ -191,12 +216,12 @@ function getRecommendedActionSummary(
     case "workspace_trial":
       return canManageBilling
         ? {
-            value: "Start paid subscription",
-            detail: "Convert the workspace before the trial window closes so access continues uninterrupted.",
+            value: "Connect Stripe trial",
+            detail: "Select a plan in Stripe Checkout while keeping the remaining workspace trial before paid billing starts.",
           }
         : {
-            value: "Ask an admin to start billing",
-            detail: "Workspace owners or admins should launch paid checkout before the trial ends.",
+            value: "Trial active",
+            detail: "Workspace owners or admins can connect Stripe billing while the trial remains active.",
           };
     case "trialing":
       return canManageBilling
@@ -276,6 +301,24 @@ function getRecommendedActionSummary(
   }
 }
 
+export function getRecommendedBillingRecoveryIntent(
+  accessState: OrganizationAccessStateResult
+): BillingRecoveryIntent {
+  switch (accessState.reasonCode) {
+    case "trial_expired":
+    case "incomplete":
+    case "incomplete_expired":
+    case "no_subscription":
+      return "resume_subscription";
+    case "past_due_grace_period":
+    case "past_due_blocked":
+    case "unpaid":
+      return "update_payment_method";
+    default:
+      return "open_billing_portal";
+  }
+}
+
 function readMetadataRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -338,6 +381,13 @@ function getCommercialHighlights(accessState: OrganizationAccessStateResult) {
     });
   }
 
+  if (accessState.currentPeriodEnd) {
+    highlights.push({
+      label: "Current period ends",
+      value: formatDateLabel(accessState.currentPeriodEnd),
+    });
+  }
+
   const planMetadata = readMetadataRecord(accessState.plan?.planMetadata ?? null);
   const priceMetadata = readMetadataRecord(accessState.plan?.priceMetadata ?? null);
   const metadataSources = [planMetadata, priceMetadata];
@@ -387,5 +437,206 @@ export function getBillingCommercialSummary(
     accessState: getAccessStateSummary(accessState),
     nextAction: getRecommendedActionSummary(accessState, canManageBilling),
     highlights: getCommercialHighlights(accessState),
+  };
+}
+
+export function getBillingWorkspacePresentation(
+  accessState: OrganizationAccessStateResult,
+  canManageBilling: boolean,
+  now: Date = new Date()
+): BillingWorkspacePresentation {
+  const accessSummary = getAccessStateSummary(accessState);
+  const actionSummary = getRecommendedActionSummary(accessState, canManageBilling);
+  const recommendedIntent = getRecommendedBillingRecoveryIntent(accessState);
+
+  switch (accessState.reasonCode) {
+    case "workspace_trial":
+      return {
+        statusLabel: "Trial active",
+        statusTone: "blue",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Workspace trial",
+        stateDescription:
+          "The workspace has full access during its 14-day trial window. Stripe Checkout can connect the tenant to a plan while preserving the remaining trial.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "trialing":
+      return {
+        statusLabel: "Trialing",
+        statusTone: "blue",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Subscription trial",
+        stateDescription:
+          "Stripe billing is active and the subscription is currently in its trial period.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "active":
+      return {
+        statusLabel: "Active",
+        statusTone: "emerald",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Active billing access",
+        stateDescription: "Your workspace has active billing access.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "past_due_grace_period":
+      return {
+        statusLabel: "Past due",
+        statusTone: "orange",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Grace period",
+        stateDescription:
+          "Billing is past due, but the workspace remains open during the grace period. Update payment method or settle the invoice in Stripe.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "past_due_blocked":
+      return {
+        statusLabel: "Past due",
+        statusTone: "rose",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Blocked past due",
+        stateDescription:
+          "The past-due grace period has ended. Update payment method or settle the invoice in Stripe to restore access.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "unpaid":
+      return {
+        statusLabel: "Unpaid",
+        statusTone: "rose",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Payment failed",
+        stateDescription:
+          "Payment failed. Open billing recovery to update payment details or retry collection.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "canceled":
+      return {
+        statusLabel: "Canceled",
+        statusTone: "rose",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Subscription canceled",
+        stateDescription:
+          "Reactivate the subscription in Stripe or start a new checkout to restore workspace billing.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "paused":
+      return {
+        statusLabel: "Paused",
+        statusTone: "orange",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Subscription paused",
+        stateDescription:
+          "The subscription is paused. Resume billing in Stripe to restore normal workspace access.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "trial_expired":
+      return {
+        statusLabel: "Trial expired",
+        statusTone: "amber",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "Subscription required",
+        stateDescription:
+          "The workspace trial has ended. Start a paid subscription to restore access.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "incomplete":
+    case "incomplete_expired":
+    case "no_subscription":
+      return {
+        statusLabel: "Subscription required",
+        statusTone: "amber",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: "No usable subscription",
+        stateDescription:
+          "Start workspace subscription checkout to activate paid billing for this workspace.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+    case "unknown":
+      return {
+        statusLabel: "Needs review",
+        statusTone: "slate",
+        planLabel: getPlanLabel(accessState),
+        planDetail: getPlanDetail(accessState),
+        billingStateLabel: accessSummary.value,
+        stateDescription:
+          "Billing state could not be verified safely. Workspace owners and admins should review the Stripe subscription.",
+        currentPeriodEndLabel: formatDateLabel(accessState.currentPeriodEnd),
+        trialEndLabel: formatDateLabel(accessState.trialEndsAt),
+        recommendedIntent,
+        recommendedActionLabel: actionSummary.value,
+        recommendedActionDetail: actionSummary.detail,
+      };
+  }
+}
+
+export function getUnavailableBillingWorkspacePresentation(
+  canManageBilling: boolean
+): BillingWorkspacePresentation {
+  return {
+    statusLabel: "Billing status unavailable",
+    statusTone: "slate",
+    planLabel: "Plan unavailable",
+    planDetail: "Billing status could not be loaded for this workspace.",
+    billingStateLabel: "Unknown",
+    stateDescription: "Billing status could not be fully verified.",
+    currentPeriodEndLabel: "Not scheduled",
+    trialEndLabel: "Not scheduled",
+    recommendedIntent: "open_billing_portal",
+    recommendedActionLabel: canManageBilling
+      ? "Review billing"
+      : "Contact a workspace admin",
+    recommendedActionDetail: canManageBilling
+      ? "Open billing recovery so Stripe can determine the next available billing action."
+      : "Workspace owners and admins can review billing details and recover access.",
   };
 }

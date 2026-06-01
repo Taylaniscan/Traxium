@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 
-import { createAuthGuardErrorResponse, requirePermission } from "@/lib/auth";
+import { createAuthGuardErrorResponse, requireOrganization } from "@/lib/auth";
 import {
   MASTER_DATA_ONBOARDING_ENTITY_KEYS,
   getMasterDataOnboardingStepConfig,
   type MasterDataOnboardingEntityKey,
 } from "@/lib/onboarding/master-data-config";
+import { canManageOrganizationMembers } from "@/lib/organizations";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import {
   RateLimitExceededError,
@@ -239,11 +241,15 @@ function getSingularLabel(entity: MasterDataOnboardingEntityKey) {
   return getMasterDataOnboardingStepConfig(entity).singularLabel;
 }
 
+function getStarterDataRateLimitAction(entity: MasterDataOnboardingEntityKey) {
+  return `onboarding.master_data.manual.${entity}`;
+}
+
 export async function POST(request: Request) {
-  let user: Awaited<ReturnType<typeof requirePermission>>;
+  let user: Awaited<ReturnType<typeof requireOrganization>>;
 
   try {
-    user = await requirePermission("manageWorkspace", { redirectTo: null });
+    user = await requireOrganization({ redirectTo: null });
   } catch (error) {
     const response = createAuthGuardErrorResponse(error);
 
@@ -254,16 +260,24 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  if (
+    !canManageOrganizationMembers(user.activeOrganization.membershipRole) &&
+    !hasPermission(user.role, "manageWorkspace")
+  ) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
   try {
+    const payload = starterDataSchema.parse(await request.json());
+
     await enforceRateLimit({
       policy: "bulkImport",
       request,
       userId: user.id,
       organizationId: user.organizationId,
-      action: "onboarding.master_data.manual",
+      action: getStarterDataRateLimitAction(payload.entity),
     });
 
-    const payload = starterDataSchema.parse(await request.json());
     const normalizedRows = payload.rows
       .map((row, index) => ({
         index,

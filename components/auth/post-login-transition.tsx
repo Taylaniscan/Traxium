@@ -136,7 +136,6 @@ export function PostLoginTransition({
 
   useEffect(() => {
     let active = true;
-    let timeoutId: number | undefined;
     settledRef.current = false;
     redirectStartedRef.current = false;
 
@@ -179,7 +178,7 @@ export function PostLoginTransition({
       }
     }
 
-    timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       trackClientEvent(
         {
           event: "auth.post_login.bootstrap_timed_out",

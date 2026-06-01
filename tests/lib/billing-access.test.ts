@@ -112,6 +112,7 @@ function createWorkspaceRecord(
 ): OrganizationAccessWorkspaceRecord {
   return {
     id: TEST_ORGANIZATION_ID,
+    createdAt: new Date("2026-03-20T00:00:00.000Z"),
     workspaceTrialEndsAt: null,
     ...overrides,
   };
@@ -249,6 +250,38 @@ describe("billing access state", () => {
       trialEndsAt: new Date("2026-03-20T00:00:00.000Z"),
       trialSource: "workspace",
       plan: null,
+    });
+  });
+
+  it("derives the 14-day workspace trial from organization creation when no trial end is persisted", () => {
+    const activeTrial = resolveOrganizationAccessState({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscription: null,
+      workspaceCreatedAt: new Date("2026-03-20T12:00:00.000Z"),
+      workspaceTrialEndsAt: null,
+      now: NOW,
+    });
+    const expiredTrial = resolveOrganizationAccessState({
+      organizationId: TEST_ORGANIZATION_ID,
+      subscription: null,
+      workspaceCreatedAt: new Date("2026-03-01T12:00:00.000Z"),
+      workspaceTrialEndsAt: null,
+      now: NOW,
+    });
+
+    expect(activeTrial).toMatchObject({
+      accessState: "trialing",
+      isBlocked: false,
+      reasonCode: "workspace_trial",
+      trialEndsAt: new Date("2026-04-03T12:00:00.000Z"),
+      trialSource: "workspace",
+    });
+    expect(expiredTrial).toMatchObject({
+      accessState: "trial_expired",
+      isBlocked: true,
+      reasonCode: "trial_expired",
+      trialEndsAt: new Date("2026-03-15T12:00:00.000Z"),
+      trialSource: "workspace",
     });
   });
 
@@ -467,7 +500,11 @@ describe("billing access state", () => {
   });
 
   it("still enforces subscription blocking outside local fail-open mode", async () => {
-    const findUnique = vi.fn(async () => createWorkspaceRecord());
+    const findUnique = vi.fn(async () =>
+      createWorkspaceRecord({
+        createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      })
+    );
     const findMany = vi.fn(async () => []);
 
     const result = await getOrganizationSubscriptionState(TEST_ORGANIZATION_ID, {
@@ -489,12 +526,12 @@ describe("billing access state", () => {
       subscriptionId: null,
       stripeSubscriptionId: null,
       rawSubscriptionStatus: null,
-      accessState: "no_subscription",
+      accessState: "trial_expired",
       isBlocked: true,
-      reasonCode: "no_subscription",
+      reasonCode: "trial_expired",
       currentPeriodEnd: null,
-      trialEndsAt: null,
-      trialSource: null,
+      trialEndsAt: new Date("2026-03-15T00:00:00.000Z"),
+      trialSource: "workspace",
       plan: null,
     });
   });

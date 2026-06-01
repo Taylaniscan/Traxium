@@ -131,10 +131,12 @@ describe("master data upload step runtime", () => {
     const file = new File(["name,email"], "buyers.csv", {
       type: "text/csv",
     });
-    const currentTarget = { value: "buyers.csv" } as HTMLInputElement;
+    const currentTarget = {
+      files: [file],
+      value: "buyers.csv",
+    } as unknown as HTMLInputElement;
 
     await fileInput.props.onChange?.({
-      target: { files: [file] },
       currentTarget,
     } as unknown as React.ChangeEvent<HTMLInputElement>);
 

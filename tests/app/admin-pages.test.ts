@@ -18,6 +18,9 @@ const canManageOrganizationMembersMock = vi.hoisted(() => vi.fn());
 const getOrganizationMembersDirectoryMock = vi.hoisted(() => vi.fn());
 const getOrganizationSettingsMock = vi.hoisted(() => vi.fn());
 const getOrganizationAdminAuditEventsMock = vi.hoisted(() => vi.fn());
+const getOrganizationAccessStateMock = vi.hoisted(() => vi.fn());
+const isStripeBillingConfiguredMock = vi.hoisted(() => vi.fn());
+const getMissingStripeBillingEnvKeysMock = vi.hoisted(() => vi.fn());
 const membersManagementPanelMock = vi.hoisted(() =>
   vi.fn(({ members, pendingInvites }: { members: unknown[]; pendingInvites: unknown[] }) =>
     React.createElement(
@@ -31,8 +34,18 @@ const membersManagementPanelMock = vi.hoisted(() =>
   )
 );
 const workspaceSettingsFormMock = vi.hoisted(() =>
-  vi.fn(({ organization }: { organization: { name: string } }) =>
-    React.createElement("div", { "data-organization-name": organization.name }, "settings-form")
+  vi.fn(
+    ({ organization }: {
+      organization: { name: string };
+    }) =>
+      React.createElement(
+        "div",
+        {
+          "data-organization-name": organization.name,
+        },
+        "settings-form",
+        React.createElement("span", null, "Workspace Identity")
+      )
   )
 );
 const adminActivityListMock = vi.hoisted(() =>
@@ -47,6 +60,15 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   requireOrganization: requireOrganizationMock,
+}));
+
+vi.mock("@/lib/billing/access", () => ({
+  getOrganizationAccessState: getOrganizationAccessStateMock,
+}));
+
+vi.mock("@/lib/billing/config", () => ({
+  getMissingStripeBillingEnvKeys: getMissingStripeBillingEnvKeysMock,
+  isStripeBillingConfigured: isStripeBillingConfiguredMock,
 }));
 
 vi.mock("@/lib/organizations", () => ({
@@ -149,6 +171,35 @@ describe("admin pages", () => {
         },
       },
     ]);
+    getOrganizationAccessStateMock.mockResolvedValue({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subscriptionId: "subrec_1",
+      stripeSubscriptionId: "sub_1",
+      rawSubscriptionStatus: "ACTIVE",
+      accessState: "active",
+      reasonCode: "active",
+      isBlocked: false,
+      currentPeriodEnd: new Date("2026-04-20T00:00:00.000Z"),
+      trialEndsAt: null,
+      trialSource: null,
+      plan: {
+        productPlanId: "plan_1",
+        planCode: "growth",
+        planName: "Growth",
+        stripeProductId: "prod_1",
+        planMetadata: null,
+        planPriceId: "price_1",
+        stripePriceId: "price_growth",
+        priceType: "LICENSED",
+        billingInterval: "MONTH",
+        intervalCount: 1,
+        currencyCode: "usd",
+        unitAmount: 29900,
+        priceMetadata: null,
+      },
+    });
+    isStripeBillingConfiguredMock.mockReturnValue(true);
+    getMissingStripeBillingEnvKeysMock.mockReturnValue([]);
   });
 
   it("renders the admin members page with active-organization data", async () => {
@@ -193,6 +244,8 @@ describe("admin pages", () => {
 
     expect(getOrganizationSettingsMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
     expect(getOrganizationAdminAuditEventsMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(getOrganizationAccessStateMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(isStripeBillingConfiguredMock).toHaveBeenCalled();
     expect(workspaceSettingsFormMock).toHaveBeenCalledWith(
       expect.objectContaining({
         organization: expect.objectContaining({
@@ -213,10 +266,51 @@ describe("admin pages", () => {
     );
     expect(markup).toContain("Workspace Settings");
     expect(markup).toContain("settings-form");
+    expect(markup).toContain("Workspace Identity");
+    expect(markup).toContain("Billing &amp; subscription");
+    expect(markup).toContain("View billing details");
+    expect(markup).toContain("href=\"/settings/billing\"");
+    expect(markup).toContain("Manage billing");
+    expect(markup).toContain("action=\"/billing/recover\"");
+    expect(markup).toContain("method=\"post\"");
+    expect(markup).toContain("name=\"intent\"");
+    expect(markup).toContain("value=\"open_billing_portal\"");
+    expect(markup).not.toContain("/api/billing/portal");
+    expect(markup).toContain("Growth");
     expect(markup).toContain("audit-list");
   });
 
+  it("keeps Manage billing visible and explains when Stripe config is missing", async () => {
+    isStripeBillingConfiguredMock.mockReturnValueOnce(false);
+    getMissingStripeBillingEnvKeysMock.mockReturnValueOnce([
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+    ]);
+
+    const page = await AdminSettingsPage();
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(markup).toContain("Billing &amp; subscription");
+    expect(markup).toContain("Stripe billing is not configured");
+    expect(markup).toContain("STRIPE_SECRET_KEY");
+    expect(markup).toContain("STRIPE_WEBHOOK_SECRET");
+    expect(markup).toContain("Manage billing");
+    expect(markup).toContain("action=\"/billing/recover\"");
+    expect(markup).toContain("value=\"open_billing_portal\"");
+  });
+
   it("redirects non-admin users away from the settings page", async () => {
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        role: Role.TACTICAL_BUYER,
+        activeOrganization: {
+          membershipId: "membership-member",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
     canManageOrganizationMembersMock.mockReturnValueOnce(false);
 
     await expect(AdminSettingsPage()).rejects.toThrow("NEXT_REDIRECT:/dashboard");

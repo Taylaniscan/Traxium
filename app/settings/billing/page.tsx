@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, CheckCircle2, Clock3, CreditCard } from "lucide-react";
+import { CheckCircle2, CreditCard, ShieldCheck } from "lucide-react";
 
+import { BillingRecoveryForm } from "@/components/billing/billing-recovery-form";
+import { WorkspaceBillingSettingsCard } from "@/components/billing/workspace-billing-settings-card";
 import { WorkspaceBillingSummary } from "@/components/billing/workspace-billing-summary";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,16 +13,40 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { bootstrapCurrentUser } from "@/lib/auth";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { bootstrapCurrentUser, requireUser } from "@/lib/auth";
 import { getOrganizationAccessState } from "@/lib/billing/access";
+import {
+  getMissingStripeBillingEnvKeys,
+  isStripeBillingConfigured,
+} from "@/lib/billing/config";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import type { OrganizationAccessStateResult } from "@/lib/billing/types";
-import { canManageOrganizationMembers } from "@/lib/organizations";
+import { getOrganizationSettings } from "@/lib/organizations";
 
 type BillingReturnPageProps = {
   searchParams: Promise<{
     checkout?: string | string[];
+    recovery?: string | string[];
   }>;
 };
+
+const SUBSCRIPTION_PLAN_CHOICES = [
+  {
+    code: "starter" as const,
+    name: "Starter",
+    description:
+      "For teams beginning controlled savings execution after the workspace trial.",
+    cta: "Select Starter",
+  },
+  {
+    code: "growth" as const,
+    name: "Growth",
+    description:
+      "For teams that need broader rollout capacity and stronger portfolio governance.",
+    cta: "Select Growth",
+  },
+] as const;
 
 function readSingleSearchParam(value: string | string[] | undefined) {
   if (typeof value !== "string") {
@@ -31,65 +57,43 @@ function readSingleSearchParam(value: string | string[] | undefined) {
   return normalized || null;
 }
 
-function buildBillingRequiredPath(
-  recovery: "checkout_cancelled" | "processing" | null
-) {
-  if (!recovery) {
-    return "/billing-required";
-  }
-
-  return `/billing-required?recovery=${recovery}`;
+function createUnknownAccessState(
+  organizationId: string
+): OrganizationAccessStateResult {
+  return {
+    organizationId,
+    subscriptionId: null,
+    stripeSubscriptionId: null,
+    rawSubscriptionStatus: null,
+    accessState: "no_subscription",
+    isBlocked: true,
+    reasonCode: "unknown",
+    currentPeriodEnd: null,
+    trialEndsAt: null,
+    trialSource: null,
+    plan: null,
+  };
 }
 
-function getStatusPresentation(accessState: OrganizationAccessStateResult) {
-  switch (accessState.reasonCode) {
-    case "workspace_trial":
-      return {
-        badgeTone: "blue" as const,
-        badgeLabel: "Trial active",
-        title: "Workspace trial is active",
-        summary:
-          "This workspace currently has full product access under the workspace trial window before paid billing is required.",
-      };
-    case "trialing":
-      return {
-        badgeTone: "blue" as const,
-        badgeLabel: "Subscription trial",
-        title: "Subscription trial is active",
-        summary:
-          "Billing has started and the Stripe subscription is currently in its trial period.",
-      };
-    case "past_due_grace_period":
-      return {
-        badgeTone: "orange" as const,
-        badgeLabel: "Grace period",
-        title: "Billing grace period is active",
-        summary:
-          "The workspace remains accessible while Stripe billing is in a past-due grace period.",
-      };
-    default:
-      return {
-        badgeTone: "emerald" as const,
-        badgeLabel: "Active",
-        title: "Workspace billing is active",
-        summary:
-          "This workspace has active billing access and can continue operating normally.",
-      };
-  }
+async function loadAccessState(organizationId: string) {
+  return getOrganizationAccessState(organizationId).catch(() =>
+    createUnknownAccessState(organizationId)
+  );
 }
 
-function getCheckoutBanner(
+function getRecoveryBanner(
   checkoutState: string | null,
-  accessState: OrganizationAccessStateResult
+  recoveryCode: string | null,
+  accessState: OrganizationAccessStateResult,
+  canManageBilling: boolean
 ) {
   if (checkoutState === "success") {
     return {
       tone: "success" as const,
       title: "Stripe checkout returned successfully",
-      message:
-        accessState.reasonCode === "workspace_trial"
-          ? "Your workspace trial still keeps access open while the new subscription sync completes."
-          : "The workspace billing state is active. If plan details are still catching up, refresh this page in a moment.",
+      message: accessState.isBlocked
+        ? "Stripe returned successfully. If billing is still blocked, give the subscription sync a moment and refresh access."
+        : "The workspace billing state is active. If plan details are still catching up, refresh this page in a moment.",
     };
   }
 
@@ -98,13 +102,83 @@ function getCheckoutBanner(
       tone: "amber" as const,
       title: "Stripe checkout was cancelled",
       message:
-        accessState.reasonCode === "workspace_trial"
-          ? "The workspace trial remains active. You can restart paid billing at any time before the trial ends."
-          : "No billing changes were applied. Your current access state remains unchanged.",
+        "No billing changes were applied. You can start billing recovery again when you are ready.",
     };
   }
 
-  return null;
+  switch (recoveryCode) {
+    case "trial_active":
+      return {
+        tone: "blue" as const,
+        title: "Workspace trial is active",
+        message:
+          "This tenant is in its 14-day workspace trial. Subscription plan selection opens after the trial ends.",
+      };
+    case "processing":
+      return {
+        tone: "blue" as const,
+        title: "Billing changes are being confirmed",
+        message:
+          "Stripe returned successfully. If access has not reopened yet, give the subscription sync a moment and refresh access.",
+      };
+    case "checkout_cancelled":
+      return {
+        tone: "amber" as const,
+        title: "Billing checkout was cancelled",
+        message:
+          "The checkout flow was not completed. You can start billing recovery again when you are ready.",
+      };
+    case "admin_required":
+      return {
+        tone: "amber" as const,
+        title: "Workspace admin action is required",
+        message: canManageBilling
+          ? "Your billing recovery session expired. Start the recovery action again from this page."
+          : "Only workspace owners and admins can manage billing. Contact one of them to continue.",
+      };
+    case "launch_failed":
+      return {
+        tone: "rose" as const,
+        title: "Billing recovery could not be opened",
+        message:
+          "Traxium could not launch the Stripe recovery flow. Try again, or contact support if your team has a billing contact.",
+      };
+    case "no_billing_customer":
+      return {
+        tone: "amber" as const,
+        title: "Stripe customer is not ready yet",
+        message:
+          "This workspace does not have a Stripe customer record yet. Start checkout to create one and activate billing.",
+      };
+    case "portal_unavailable":
+      return {
+        tone: "rose" as const,
+        title: "Stripe portal is unavailable",
+        message:
+          "Traxium could not open the Stripe billing portal. Start billing recovery again or try later.",
+      };
+    case "stripe_not_configured":
+      return {
+        tone: "rose" as const,
+        title: "Stripe billing is not configured",
+        message:
+          "Traxium could not open billing because Stripe environment variables are missing for this deployment.",
+      };
+    default:
+      return null;
+  }
+}
+
+function shouldShowSubscriptionPlanSelection(
+  accessState: OrganizationAccessStateResult
+) {
+  return (
+    accessState.reasonCode === "workspace_trial" ||
+    accessState.reasonCode === "trial_expired" ||
+    accessState.reasonCode === "no_subscription" ||
+    accessState.reasonCode === "incomplete" ||
+    accessState.reasonCode === "incomplete_expired"
+  );
 }
 
 export default async function BillingReturnPage({
@@ -112,9 +186,18 @@ export default async function BillingReturnPage({
 }: BillingReturnPageProps) {
   const resolvedSearchParams = await searchParams;
   const checkoutState = readSingleSearchParam(resolvedSearchParams.checkout);
+  const recoveryCode = readSingleSearchParam(resolvedSearchParams.recovery);
   const session = await bootstrapCurrentUser();
 
-  if (!session.ok) {
+  let user: Awaited<ReturnType<typeof requireUser>>;
+  let accessState: OrganizationAccessStateResult;
+
+  if (session.ok) {
+    user = session.user;
+    accessState = await loadAccessState(
+      session.user.activeOrganization.organizationId
+    );
+  } else {
     if (session.code === "UNAUTHENTICATED") {
       redirect("/login");
     }
@@ -123,153 +206,158 @@ export default async function BillingReturnPage({
       redirect("/onboarding");
     }
 
-    if (session.code === "BILLING_REQUIRED") {
-      if (checkoutState === "success") {
-        redirect(buildBillingRequiredPath("processing"));
-      }
-
-      if (checkoutState === "cancelled") {
-        redirect(buildBillingRequiredPath("checkout_cancelled"));
-      }
-
-      redirect(buildBillingRequiredPath(null));
+    if (session.code !== "BILLING_REQUIRED") {
+      redirect("/login");
     }
+
+    user = await requireUser({
+      allowBillingBlocked: true,
+      billingRedirectTo: null,
+      redirectTo: null,
+    });
+    accessState =
+      session.accessState ??
+      (await loadAccessState(user.activeOrganization.organizationId));
   }
 
-  if (!session.ok) {
-    redirect("/login");
-  }
-
-  const accessState = await getOrganizationAccessState(
-    session.user.activeOrganization.organizationId
+  const canManageBilling = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
+  const organization = await getOrganizationSettings(
+    user.activeOrganization.organizationId
+  ).catch(() => null);
+  const workspaceName = organization?.name ?? "Workspace";
+  const stripeBillingConfigured = isStripeBillingConfigured();
+  const missingStripeBillingEnvKeys = stripeBillingConfigured
+    ? []
+    : getMissingStripeBillingEnvKeys();
+  const recoveryBanner = getRecoveryBanner(
+    checkoutState,
+    recoveryCode,
+    accessState,
+    canManageBilling
   );
-
-  if (accessState.isBlocked) {
-    if (checkoutState === "success") {
-      redirect(buildBillingRequiredPath("processing"));
-    }
-
-    if (checkoutState === "cancelled") {
-      redirect(buildBillingRequiredPath("checkout_cancelled"));
-    }
-
-    redirect(buildBillingRequiredPath(null));
-  }
-
-  const canManageBilling = canManageOrganizationMembers(
-    session.user.activeOrganization.membershipRole
-  );
-  const statusPresentation = getStatusPresentation(accessState);
-  const checkoutBanner = getCheckoutBanner(checkoutState, accessState);
+  const showSubscriptionPlanSelection =
+    canManageBilling && shouldShowSubscriptionPlanSelection(accessState);
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-6 py-12 text-[var(--foreground)]">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[2rem] border border-[var(--border)] bg-white p-8 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
-            <Badge tone={statusPresentation.badgeTone}>
-              {statusPresentation.badgeLabel}
-            </Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-              {statusPresentation.title}
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--muted-foreground)]">
-              {statusPresentation.summary}
-            </p>
-          </div>
+    <main className="min-h-screen bg-[var(--background)] px-6 py-10 text-[var(--foreground)]">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <SectionHeading
+          title="Workspace billing"
+          subtitle="Review subscription status, billing access, and recovery actions for this workspace."
+          action={
+            <div className="flex flex-wrap gap-2">
+              {canManageBilling ? (
+                <Link
+                  href="/admin/settings"
+                  className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                >
+                  Workspace Settings
+                </Link>
+              ) : null}
+              {!accessState.isBlocked ? (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                >
+                  Return to Dashboard
+                </Link>
+              ) : null}
+            </div>
+          }
+        />
 
-          <WorkspaceBillingSummary
-            accessState={accessState}
-            canManageBilling={canManageBilling}
-            title="Commercial summary"
-            description="Current plan, trial posture, access state, and the next billing action for this workspace."
-          />
-        </section>
-
-        {checkoutBanner ? (
-          <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 shadow-sm">
+        {recoveryBanner ? (
+          <div
+            className="rounded-lg border border-[var(--border)] bg-white px-5 py-4 shadow-sm"
+            data-recovery-banner={recoveryCode ?? checkoutState ?? undefined}
+          >
             <div className="flex items-start gap-3">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--success)]" />
               <div className="space-y-1">
-                <Badge tone={checkoutBanner.tone}>{checkoutBanner.title}</Badge>
+                <Badge tone={recoveryBanner.tone}>{recoveryBanner.title}</Badge>
                 <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-                  {checkoutBanner.message}
+                  {recoveryBanner.message}
                 </p>
               </div>
             </div>
           </div>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <Card>
+        <WorkspaceBillingSettingsCard
+          accessState={accessState}
+          canManageBilling={canManageBilling}
+          stripeBillingConfigured={stripeBillingConfigured}
+          missingStripeBillingEnvKeys={missingStripeBillingEnvKeys}
+          workspaceName={workspaceName}
+        />
+
+        {showSubscriptionPlanSelection ? (
+          <Card className="bg-white/95">
             <CardHeader>
-              <CardTitle>Next steps</CardTitle>
+              <CardTitle>Select subscription plan</CardTitle>
               <CardDescription>
-                Keep the workspace commercially ready before the trial window closes.
+                Choose the plan for this tenant. If the workspace trial is
+                active, Stripe Checkout keeps the remaining 14-day workspace
+                trial before paid billing starts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              {SUBSCRIPTION_PLAN_CHOICES.map((plan) => (
+                <div
+                  key={plan.code}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4"
+                >
+                  <p className="text-base font-semibold text-[var(--foreground)]">
+                    {plan.name}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
+                    {plan.description}
+                  </p>
+                  <BillingRecoveryForm
+                    className="mt-4"
+                    intent="resume_subscription"
+                    label={plan.cta}
+                    planCode={plan.code}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+          <WorkspaceBillingSummary
+            accessState={accessState}
+            canManageBilling={canManageBilling}
+            title="Billing details"
+            description="Current plan, trial posture, access state, and recommended billing action."
+          />
+
+          <Card className="bg-white/95">
+            <CardHeader>
+              <CardTitle>Secure billing recovery</CardTitle>
+              <CardDescription>
+                How Traxium handles subscription and payment management.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {accessState.reasonCode === "workspace_trial" && canManageBilling ? (
-                <form
-                  action="/billing/recover"
-                  method="post"
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/45 p-4"
-                >
-                  <input type="hidden" name="intent" value="resume_subscription" />
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-xl bg-white p-2 text-[var(--foreground)] shadow-sm">
-                      <CreditCard className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">Start paid subscription</p>
-                      <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">
-                        Launch Stripe checkout and convert the workspace from trial access into a paid subscription.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    className="mt-4 inline-flex w-full items-center justify-between rounded-xl bg-[var(--foreground)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90"
-                  >
-                    <span>Start paid subscription</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </form>
-              ) : null}
-
-              {accessState.reasonCode === "workspace_trial" && !canManageBilling ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
-                  Only workspace owners and admins can start paid billing. Please contact one of them before the trial ends.
-                </div>
-              ) : null}
-
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-              >
-                Back to dashboard
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>What this means</CardTitle>
-              <CardDescription>
-                Trial and billing access are still enforced centrally by the workspace billing gate.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex gap-3 rounded-2xl bg-[var(--muted)]/55 p-4">
-                <Clock3 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--foreground)]" />
-                <p className="leading-6 text-[var(--muted-foreground)]">
-                  Trial access is evaluated at the workspace level before there is a paid subscription record.
+              <div className="flex gap-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/35 p-4">
+                <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--success)]" />
+                <p className="text-sm leading-6 text-[var(--muted-foreground)]">
+                  Traxium uses Stripe for secure subscription and payment
+                  management. Payment details are managed in Stripe, not stored
+                  in Traxium.
                 </p>
               </div>
-              <div className="flex gap-3 rounded-2xl bg-[var(--muted)]/55 p-4">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--foreground)]" />
-                <p className="leading-6 text-[var(--muted-foreground)]">
-                  Once a paid subscription becomes active, the normal subscription state remains the source of truth for access.
+              <div className="flex gap-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/35 p-4">
+                <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--foreground)]" />
+                <p className="text-sm leading-6 text-[var(--muted-foreground)]">
+                  Billing actions post to the recovery router, which chooses
+                  Stripe Checkout or the Stripe customer portal for this
+                  workspace.
                 </p>
               </div>
             </CardContent>

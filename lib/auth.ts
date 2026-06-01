@@ -28,6 +28,7 @@ import type {
 } from "@/lib/types";
 
 const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
+const AUTH_PRISMA_RETRY_DELAYS_MS = [120, 360] as const;
 
 const sessionUserSelect = {
   id: true,
@@ -36,6 +37,18 @@ const sessionUserSelect = {
   role: true,
   organizationId: true,
   activeOrganizationId: true,
+  memberships: {
+    where: {
+      status: ACTIVE_MEMBERSHIP_STATUS,
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      role: true,
+      status: true,
+    },
+    orderBy: [{ createdAt: "asc" as const }, { organizationId: "asc" as const }],
+  },
 } satisfies Prisma.UserSelect;
 
 type BaseSessionUserRecord = Prisma.UserGetPayload<{
@@ -233,6 +246,48 @@ function resolveSessionDisplayName(authUser: AuthSessionUser, email: string) {
   return startCase(localPart) || email;
 }
 
+function isTransientPrismaPoolError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("emaxconnsession") ||
+    message.includes("max clients reached") ||
+    message.includes("too many connections")
+  );
+}
+
+async function retryTransientAuthPrismaQuery<T>(
+  operation: () => Promise<T>
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= AUTH_PRISMA_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!isTransientPrismaPoolError(error)) {
+        throw error;
+      }
+
+      const delayMs = AUTH_PRISMA_RETRY_DELAYS_MS[attempt];
+
+      if (delayMs == null) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
 function getAuthUserId(authUser: AuthSessionUser): string | null {
   return readMetadataValue(authUser.app_metadata, ["userId", "user_id"]);
 }
@@ -310,24 +365,28 @@ async function resolveAuthenticatedAppUserFromAuthUser(
 }
 
 async function findSessionUserById(userId: string): Promise<SessionUserRecord | null> {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: sessionUserSelect,
-  });
+  return retryTransientAuthPrismaQuery(() =>
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: sessionUserSelect,
+    })
+  );
 }
 
 async function findSessionUsersByEmail(email: string): Promise<SessionUserRecord[]> {
-  return prisma.user.findMany({
-    where: {
-      email: {
-        equals: email,
-        mode: "insensitive",
+  return retryTransientAuthPrismaQuery(() =>
+    prisma.user.findMany({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
       },
-    },
-    select: sessionUserSelect,
-    orderBy: [{ id: "asc" }],
-    take: 2,
-  });
+      select: sessionUserSelect,
+      orderBy: [{ id: "asc" }],
+      take: 2,
+    })
+  );
 }
 
 async function updateAuthSessionContext(

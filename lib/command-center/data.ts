@@ -92,255 +92,223 @@ export async function getCommandCenterData(
 ): Promise<CommandCenterData> {
   const where = buildCommandCenterWhere(context, filters);
   const now = new Date();
-  const {
-    phaseSavings,
-    forecastCards,
-    supplierSavings,
-    qualificationGroups,
-    pendingApprovals,
-    activeProjects,
-    riskCards,
-    pendingApprovalQueue,
-    overdueItems,
-    financeLockedItems,
-    recentDecisions,
-    recentActivity,
-    suppliers,
-  } = await prisma.$transaction(async (tx) => {
-    const phaseSavings = await tx.savingCard.groupBy({
-      by: ["phase"],
-      where,
-      _sum: { calculatedSavings: true },
-    });
-    const forecastCards = await tx.savingCard.findMany({
-      where,
-      select: {
-        impactStartDate: true,
-        calculatedSavings: true,
-        frequency: true,
-        phase: true,
-      },
-    });
-    const supplierSavings = await tx.savingCard.groupBy({
-      by: ["supplierId"],
-      where: {
-        ...where,
-        phase: { not: Phase.CANCELLED },
-      },
-      _sum: { calculatedSavings: true },
-      orderBy: {
-        _sum: {
-          calculatedSavings: "desc",
-        },
-      },
-      take: 10,
-    });
-    const qualificationGroups = await tx.savingCard.groupBy({
-      by: ["qualificationStatus"],
-      where,
-      _sum: { calculatedSavings: true },
-    });
-    const pendingApprovals = await tx.phaseChangeRequest.count({
-      where: {
-        approvalStatus: ApprovalStatus.PENDING,
-        savingCard: where,
-      },
-    });
-    const activeProjects = await tx.savingCard.count({
-      where: {
-        ...where,
-        phase: { not: Phase.CANCELLED },
-      },
-    });
-    const riskCards = await tx.savingCard.findMany({
-      where,
-      select: {
-        calculatedSavings: true,
-        alternativeSuppliers: {
-          where: { isSelected: true },
-          select: { riskLevel: true },
-        },
-        alternativeMaterials: {
-          where: { isSelected: true },
-          select: { riskLevel: true },
-        },
-      },
-    });
-    const pendingApprovalQueue = await tx.phaseChangeRequest.findMany({
-      where: {
-        approvalStatus: ApprovalStatus.PENDING,
-        savingCard: where,
-      },
-      orderBy: { createdAt: "asc" },
-      take: 8,
-      select: {
-        id: true,
-        currentPhase: true,
-        requestedPhase: true,
-        createdAt: true,
-        requestedBy: {
-          select: {
-            name: true,
-            role: true,
-          },
-        },
-        approvals: {
-          where: { status: ApprovalStatus.PENDING },
-          select: {
-            role: true,
-          },
-        },
-        savingCard: {
-          select: {
-            id: true,
-            title: true,
-            calculatedSavings: true,
-            financeLocked: true,
-          },
-        },
-      },
-    });
-    const overdueItems = await tx.savingCard.findMany({
-      where: {
-        ...where,
-        phase: {
-          notIn: [Phase.ACHIEVED, Phase.CANCELLED],
-        },
-        endDate: {
-          lt: now,
-        },
-      },
-      orderBy: { endDate: "asc" },
-      take: 8,
-      select: {
-        id: true,
-        title: true,
-        phase: true,
-        endDate: true,
-        calculatedSavings: true,
-        financeLocked: true,
-        buyer: {
-          select: {
-            name: true,
-          },
-        },
-        category: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
-    const financeLockedItems = await tx.savingCard.findMany({
-      where: {
-        ...where,
-        financeLocked: true,
-        phase: {
-          not: Phase.CANCELLED,
-        },
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 8,
-      select: {
-        id: true,
-        title: true,
-        phase: true,
-        updatedAt: true,
-        calculatedSavings: true,
-        financeLocked: true,
-        buyer: {
-          select: {
-            name: true,
-          },
-        },
-        category: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
-    const recentDecisions = await tx.approval.findMany({
-      where: {
-        status: {
-          not: ApprovalStatus.PENDING,
-        },
-        savingCard: where,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: {
-        id: true,
-        phase: true,
-        approved: true,
-        status: true,
-        comment: true,
-        createdAt: true,
-        approver: {
-          select: {
-            name: true,
-            role: true,
-          },
-        },
-        savingCard: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
-      },
-    });
-    const recentActivity = await tx.savingCard.findMany({
-      where,
-      orderBy: { updatedAt: "desc" },
-      take: 8,
-      select: {
-        id: true,
-        title: true,
-        phase: true,
-        updatedAt: true,
-        calculatedSavings: true,
-        financeLocked: true,
-        buyer: {
-          select: {
-            name: true,
-          },
-        },
-        category: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
-    const supplierIds = supplierSavings
-      .map((item) => item.supplierId)
-      .filter((value): value is string => Boolean(value));
-    const suppliers = supplierIds.length
-      ? await tx.supplier.findMany({
-          where: buildTenantScopeWhere(context, {
-            id: { in: supplierIds },
-          }),
-          select: { id: true, name: true },
-        })
-      : [];
-
-    return {
-      phaseSavings,
-      forecastCards,
-      supplierSavings,
-      qualificationGroups,
-      pendingApprovals,
-      activeProjects,
-      riskCards,
-      pendingApprovalQueue,
-      overdueItems,
-      financeLockedItems,
-      recentDecisions,
-      recentActivity,
-      suppliers,
-    };
+  const phaseSavings = await prisma.savingCard.groupBy({
+    by: ["phase"],
+    where,
+    _sum: { calculatedSavings: true },
   });
+  const forecastCards = await prisma.savingCard.findMany({
+    where,
+    select: {
+      impactStartDate: true,
+      calculatedSavings: true,
+      frequency: true,
+      phase: true,
+    },
+  });
+  const supplierSavings = await prisma.savingCard.groupBy({
+    by: ["supplierId"],
+    where: {
+      ...where,
+      phase: { not: Phase.CANCELLED },
+    },
+    _sum: { calculatedSavings: true },
+    orderBy: {
+      _sum: {
+        calculatedSavings: "desc",
+      },
+    },
+    take: 10,
+  });
+  const qualificationGroups = await prisma.savingCard.groupBy({
+    by: ["qualificationStatus"],
+    where,
+    _sum: { calculatedSavings: true },
+  });
+  const pendingApprovals = await prisma.phaseChangeRequest.count({
+    where: {
+      approvalStatus: ApprovalStatus.PENDING,
+      savingCard: where,
+    },
+  });
+  const activeProjects = await prisma.savingCard.count({
+    where: {
+      ...where,
+      phase: { not: Phase.CANCELLED },
+    },
+  });
+  const riskCards = await prisma.savingCard.findMany({
+    where,
+    select: {
+      calculatedSavings: true,
+      alternativeSuppliers: {
+        where: { isSelected: true },
+        select: { riskLevel: true },
+      },
+      alternativeMaterials: {
+        where: { isSelected: true },
+        select: { riskLevel: true },
+      },
+    },
+  });
+  const pendingApprovalQueue = await prisma.phaseChangeRequest.findMany({
+    where: {
+      approvalStatus: ApprovalStatus.PENDING,
+      savingCard: where,
+    },
+    orderBy: { createdAt: "asc" },
+    take: 8,
+    select: {
+      id: true,
+      currentPhase: true,
+      requestedPhase: true,
+      createdAt: true,
+      requestedBy: {
+        select: {
+          name: true,
+          role: true,
+        },
+      },
+      approvals: {
+        where: { status: ApprovalStatus.PENDING },
+        select: {
+          role: true,
+        },
+      },
+      savingCard: {
+        select: {
+          id: true,
+          title: true,
+          calculatedSavings: true,
+          financeLocked: true,
+        },
+      },
+    },
+  });
+  const overdueItems = await prisma.savingCard.findMany({
+    where: {
+      ...where,
+      phase: {
+        notIn: [Phase.ACHIEVED, Phase.CANCELLED],
+      },
+      endDate: {
+        lt: now,
+      },
+    },
+    orderBy: { endDate: "asc" },
+    take: 8,
+    select: {
+      id: true,
+      title: true,
+      phase: true,
+      endDate: true,
+      calculatedSavings: true,
+      financeLocked: true,
+      buyer: {
+        select: {
+          name: true,
+        },
+      },
+      category: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+  const financeLockedItems = await prisma.savingCard.findMany({
+    where: {
+      ...where,
+      financeLocked: true,
+      phase: {
+        not: Phase.CANCELLED,
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      title: true,
+      phase: true,
+      updatedAt: true,
+      calculatedSavings: true,
+      financeLocked: true,
+      buyer: {
+        select: {
+          name: true,
+        },
+      },
+      category: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+  const recentDecisions = await prisma.approval.findMany({
+    where: {
+      status: {
+        not: ApprovalStatus.PENDING,
+      },
+      savingCard: where,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      phase: true,
+      approved: true,
+      status: true,
+      comment: true,
+      createdAt: true,
+      approver: {
+        select: {
+          name: true,
+          role: true,
+        },
+      },
+      savingCard: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+    },
+  });
+  const recentActivity = await prisma.savingCard.findMany({
+    where,
+    orderBy: { updatedAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      title: true,
+      phase: true,
+      updatedAt: true,
+      calculatedSavings: true,
+      financeLocked: true,
+      buyer: {
+        select: {
+          name: true,
+        },
+      },
+      category: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+  const supplierIds = supplierSavings
+    .map((item) => item.supplierId)
+    .filter((value): value is string => Boolean(value));
+  const suppliers = supplierIds.length
+    ? await prisma.supplier.findMany({
+        where: buildTenantScopeWhere(context, {
+          id: { in: supplierIds },
+        }),
+        select: { id: true, name: true },
+      })
+    : [];
 
   const phaseMap = new Map(
     phaseSavings.map((item) => [item.phase, item._sum.calculatedSavings ?? 0])

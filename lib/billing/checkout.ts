@@ -4,8 +4,8 @@ import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 
 import {
-  getStripeBillingConfig,
-  type StripeBillingConfig,
+  getStripeBillingRuntimeConfig,
+  type StripeBillingRuntimeConfig,
   type StripePlanCatalogKey,
 } from "@/lib/billing/config";
 import { getStripeClient } from "@/lib/billing/stripe";
@@ -17,6 +17,8 @@ type BillingCustomerClient = Pick<typeof prisma, "billingCustomer">;
 
 type StripeBillingClient = Pick<Stripe, "billingPortal" | "checkout" | "customers">;
 
+const MAX_STRIPE_CHECKOUT_TRIAL_DAYS = 14;
+
 export type CreateCheckoutSessionInput = {
   organizationId: string;
   userId: string;
@@ -24,6 +26,7 @@ export type CreateCheckoutSessionInput = {
   customerName?: string | null;
   planCode: StripePlanCatalogKey;
   priceId: string;
+  trialEnd?: Date | null;
 };
 
 export type CreateBillingPortalSessionInput = {
@@ -34,7 +37,7 @@ export type CheckoutPlanSelection = {
   planCode: StripePlanCatalogKey;
   productId: string;
   priceId: string;
-  meteredPriceId: string;
+  meteredPriceId: string | null;
 };
 
 export type CheckoutSessionResult = {
@@ -101,6 +104,72 @@ function normalizeStripeMetadata(metadata: Stripe.Metadata) {
   return Object.fromEntries(entries);
 }
 
+function readStripeErrorString(error: unknown, field: "code" | "message") {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const directValue = (error as Record<string, unknown>)[field];
+
+  if (typeof directValue === "string") {
+    return directValue;
+  }
+
+  const raw = (error as { raw?: unknown }).raw;
+
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+
+  const rawValue = (raw as Record<string, unknown>)[field];
+  return typeof rawValue === "string" ? rawValue : null;
+}
+
+function readStripeErrorStatus(error: unknown) {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const directValue = (error as { statusCode?: unknown }).statusCode;
+
+  if (typeof directValue === "number") {
+    return directValue;
+  }
+
+  const raw = (error as { raw?: unknown }).raw;
+
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+
+  const rawValue = (raw as { statusCode?: unknown }).statusCode;
+  return typeof rawValue === "number" ? rawValue : null;
+}
+
+function isStripeCustomerMissingError(error: unknown) {
+  const statusCode = readStripeErrorStatus(error);
+  const code = readStripeErrorString(error, "code");
+  const message = readStripeErrorString(error, "message") ?? "";
+
+  return (
+    statusCode === 404 &&
+    (code === "resource_missing" ||
+      message.toLowerCase().includes("no such customer"))
+  );
+}
+
+function looksLikePlaceholderStripeCustomerId(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.startsWith("cus_demo") ||
+    normalized.startsWith("cus_fake") ||
+    normalized.startsWith("cus_local") ||
+    normalized.startsWith("cus_preview") ||
+    normalized.startsWith("cus_sample")
+  );
+}
+
 function createBillingConfigurationError() {
   if (resolveAppEnvironment() === "development") {
     return new BillingCheckoutError(
@@ -115,23 +184,101 @@ function createBillingConfigurationError() {
   );
 }
 
+function toStripeTrialEndTimestamp(value?: Date | null) {
+  const now = Date.now();
+
+  if (!value || value.getTime() <= now) {
+    return undefined;
+  }
+
+  const maxTrialEnd = now + MAX_STRIPE_CHECKOUT_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+  return Math.floor(Math.min(value.getTime(), maxTrialEnd) / 1000);
+}
+
 function resolveStripeBillingConfig(
-  config?: StripeBillingConfig
+  config?: StripeBillingRuntimeConfig
 ) {
   if (config) {
     return config;
   }
 
   try {
-    return getStripeBillingConfig();
+    return getStripeBillingRuntimeConfig();
   } catch {
     throw createBillingConfigurationError();
   }
 }
 
+async function createStripeCustomerForOrganization(
+  input: Pick<
+    CreateCheckoutSessionInput,
+    "organizationId" | "userId" | "customerEmail" | "customerName"
+  >,
+  stripeClient: StripeBillingClient
+) {
+  const organizationId = normalizeRequiredString(
+    input.organizationId,
+    "Organization id"
+  );
+  const userId = normalizeRequiredString(input.userId, "User id");
+  const customerEmail = normalizeOptionalString(input.customerEmail);
+  const customerName = normalizeOptionalString(input.customerName);
+
+  return stripeClient.customers.create(
+    {
+      email: customerEmail ?? undefined,
+      name: customerName ?? undefined,
+      metadata: {
+        organizationId,
+        createdByUserId: userId,
+      },
+    },
+    {
+      idempotencyKey: `billing-customer:${organizationId}`,
+    }
+  );
+}
+
+async function replaceOrganizationBillingCustomer(
+  input: Pick<
+    CreateCheckoutSessionInput,
+    "organizationId" | "userId" | "customerEmail" | "customerName"
+  >,
+  dependencies: {
+    prismaClient: BillingCustomerClient;
+    stripeClient: StripeBillingClient;
+  }
+): Promise<BillingCustomerRecord> {
+  const organizationId = normalizeRequiredString(
+    input.organizationId,
+    "Organization id"
+  );
+  const customerEmail = normalizeOptionalString(input.customerEmail);
+  const customerName = normalizeOptionalString(input.customerName);
+  const stripeCustomer = await createStripeCustomerForOrganization(
+    input,
+    dependencies.stripeClient
+  );
+
+  return dependencies.prismaClient.billingCustomer.update({
+    where: {
+      organizationId,
+    },
+    data: {
+      stripeCustomerId: stripeCustomer.id,
+      email: stripeCustomer.email ?? customerEmail,
+      name: stripeCustomer.name ?? customerName,
+      ...(normalizeStripeMetadata(stripeCustomer.metadata)
+        ? { metadata: normalizeStripeMetadata(stripeCustomer.metadata) }
+        : {}),
+    },
+    select: billingCustomerSelect,
+  });
+}
+
 export function resolveCheckoutPlanSelection(
   input: Pick<CreateCheckoutSessionInput, "planCode" | "priceId">,
-  config: StripeBillingConfig = resolveStripeBillingConfig()
+  config: StripeBillingRuntimeConfig = resolveStripeBillingConfig()
 ): CheckoutPlanSelection {
   const priceId = normalizeRequiredString(input.priceId, "Price id");
   const plan = config.plans[input.planCode];
@@ -181,7 +328,6 @@ export async function getOrCreateOrganizationBillingCustomer(
     input.organizationId,
     "Organization id"
   );
-  const userId = normalizeRequiredString(input.userId, "User id");
   const customerEmail = normalizeOptionalString(input.customerEmail);
   const customerName = normalizeOptionalString(input.customerName);
   const prismaClient = dependencies.prismaClient ?? prisma;
@@ -189,21 +335,19 @@ export async function getOrCreateOrganizationBillingCustomer(
   const existing = await getOrganizationBillingCustomer(organizationId, prismaClient);
 
   if (existing) {
+    if (looksLikePlaceholderStripeCustomerId(existing.stripeCustomerId)) {
+      return replaceOrganizationBillingCustomer(input, {
+        prismaClient,
+        stripeClient,
+      });
+    }
+
     return existing;
   }
 
-  const stripeCustomer = await stripeClient.customers.create(
-    {
-      email: customerEmail ?? undefined,
-      name: customerName ?? undefined,
-      metadata: {
-        organizationId,
-        createdByUserId: userId,
-      },
-    },
-    {
-      idempotencyKey: `billing-customer:${organizationId}`,
-    }
+  const stripeCustomer = await createStripeCustomerForOrganization(
+    input,
+    stripeClient
   );
 
   try {
@@ -242,7 +386,7 @@ export async function createCheckoutSessionForOrganization(
   dependencies: {
     prismaClient?: BillingCustomerClient;
     stripeClient?: StripeBillingClient;
-    config?: StripeBillingConfig;
+    config?: StripeBillingRuntimeConfig;
   } = {}
 ): Promise<CheckoutSessionResult> {
   const organizationId = normalizeRequiredString(
@@ -254,7 +398,7 @@ export async function createCheckoutSessionForOrganization(
   const stripeClient = dependencies.stripeClient ?? getStripeClient();
   const prismaClient = dependencies.prismaClient ?? prisma;
   const selection = resolveCheckoutPlanSelection(input, config);
-  const billingCustomer = await getOrCreateOrganizationBillingCustomer(
+  let billingCustomer = await getOrCreateOrganizationBillingCustomer(
     {
       organizationId,
       userId,
@@ -266,35 +410,72 @@ export async function createCheckoutSessionForOrganization(
       stripeClient,
     }
   );
-  const session = await stripeClient.checkout.sessions.create({
-    mode: "subscription",
-    customer: billingCustomer.stripeCustomerId,
-    client_reference_id: organizationId,
-    success_url: config.checkoutSuccessUrl,
-    cancel_url: config.checkoutCancelUrl,
-    allow_promotion_codes: true,
-    line_items: [
-      {
-        price: selection.priceId,
-        quantity: 1,
-      },
-      {
-        price: selection.meteredPriceId,
-      },
-    ],
+  const subscriptionData: Stripe.Checkout.SessionCreateParams.SubscriptionData = {
     metadata: {
       organizationId,
       requestedByUserId: userId,
       planCode: selection.planCode,
     },
-    subscription_data: {
+  };
+  const trialEnd = toStripeTrialEndTimestamp(input.trialEnd);
+
+  if (trialEnd) {
+    subscriptionData.trial_end = trialEnd;
+  }
+
+  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+    {
+      price: selection.priceId,
+      quantity: 1,
+    },
+  ];
+
+  if (selection.meteredPriceId) {
+    lineItems.push({
+      price: selection.meteredPriceId,
+    });
+  }
+
+  const createSession = () =>
+    stripeClient.checkout.sessions.create({
+      mode: "subscription",
+      customer: billingCustomer.stripeCustomerId,
+      client_reference_id: organizationId,
+      success_url: config.checkoutSuccessUrl,
+      cancel_url: config.checkoutCancelUrl,
+      allow_promotion_codes: true,
+      line_items: lineItems,
       metadata: {
         organizationId,
         requestedByUserId: userId,
         planCode: selection.planCode,
       },
-    },
-  });
+      subscription_data: subscriptionData,
+    });
+
+  let session: Awaited<ReturnType<typeof createSession>>;
+
+  try {
+    session = await createSession();
+  } catch (error) {
+    if (!isStripeCustomerMissingError(error)) {
+      throw error;
+    }
+
+    billingCustomer = await replaceOrganizationBillingCustomer(
+      {
+        organizationId,
+        userId,
+        customerEmail: input.customerEmail,
+        customerName: input.customerName,
+      },
+      {
+        prismaClient,
+        stripeClient,
+      }
+    );
+    session = await createSession();
+  }
 
   if (!session.url) {
     throw new BillingCheckoutError(
@@ -318,7 +499,7 @@ export async function createBillingPortalSessionForOrganization(
   dependencies: {
     prismaClient?: BillingCustomerClient;
     stripeClient?: StripeBillingClient;
-    config?: StripeBillingConfig;
+    config?: StripeBillingRuntimeConfig;
   } = {}
 ): Promise<BillingPortalSessionResult> {
   const organizationId = normalizeRequiredString(
@@ -340,10 +521,25 @@ export async function createBillingPortalSessionForOrganization(
 
   const config = resolveStripeBillingConfig(dependencies.config);
   const stripeClient = dependencies.stripeClient ?? getStripeClient();
-  const session = await stripeClient.billingPortal.sessions.create({
-    customer: billingCustomer.stripeCustomerId,
-    return_url: config.portalReturnUrl,
-  });
+  let session: Awaited<
+    ReturnType<typeof stripeClient.billingPortal.sessions.create>
+  >;
+
+  try {
+    session = await stripeClient.billingPortal.sessions.create({
+      customer: billingCustomer.stripeCustomerId,
+      return_url: config.portalReturnUrl,
+    });
+  } catch (error) {
+    if (!isStripeCustomerMissingError(error)) {
+      throw error;
+    }
+
+    throw new BillingCheckoutError(
+      "Billing portal is unavailable because this workspace does not have a valid Stripe customer yet. Start a subscription first.",
+      404
+    );
+  }
 
   return {
     url: session.url,
