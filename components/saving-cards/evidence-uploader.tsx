@@ -57,7 +57,7 @@ export function EvidenceUploader({
               </p>
               <CardTitle>Evidence Upload</CardTitle>
               <CardDescription>
-                Upload contracts, quotes, confirmations, and spreadsheets up to 25 MB each. Every file becomes part of the operational audit trail for this record.
+                Upload quote, contract, invoice, and calculation evidence up to 25 MB each so finance can validate baseline, new price, volume, and realized impact.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -92,6 +92,22 @@ export function EvidenceUploader({
                 <FolderOpen className="mr-2 h-4 w-4" />
                 Upload from Google Drive
               </Button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4">
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              Finance validation evidence
+            </p>
+            <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">
+              Add the supplier quote or bid for the new price, the contract or purchase order that supports the baseline, invoices or actual-consumption proof when value is realized, and the calculation workbook used for savings review.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {["Quote or supplier bid", "Contract or PO baseline", "Invoice or actual proof", "Calculation workbook"].map((item) => (
+                <Badge key={item} tone="slate">
+                  {item}
+                </Badge>
+              ))}
             </div>
           </div>
 
@@ -228,7 +244,7 @@ export function EvidenceUploader({
                   No evidence linked yet
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Upload contracts, quotes, or supporting spreadsheets so reviewers can audit the case without leaving the record.
+                  Upload quotes, contracts, invoices, and calculation workbooks so reviewers can validate the commercial case without leaving the record.
                 </p>
               </div>
             )}

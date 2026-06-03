@@ -25,6 +25,8 @@
     "db:seed:utopiatrax": "node --env-file-if-exists=.env --import tsx scripts/seed-utopiatrax-demo.ts",
     "release:verify": "npm run predeploy && npm run db:validate",
     "release:migrate": "npm run predeploy && npm run db:migrate:deploy",
+    "supabase:validate": "node --env-file-if-exists=.env --import tsx scripts/validate-supabase-provider.ts",
+    "stripe:validate": "node --env-file-if-exists=.env --import tsx scripts/validate-stripe-provider.ts",
     "jobs:run-once": "node --import tsx scripts/run-job-worker.ts --once",
     "jobs:worker:healthcheck": "node --import tsx scripts/run-job-worker.ts --health-check",
     "jobs:worker": "node --import tsx scripts/run-job-worker.ts",

@@ -78,7 +78,7 @@ describe("admin UI surfaces", () => {
     );
 
     expect(markup).toContain("No admin activity yet");
-    expect(markup).toContain("Workspace settings updates, membership changes, and invitation lifecycle events will appear here");
+    expect(markup).toContain("Workspace settings updates, membership changes, invitation lifecycle events, and workflow decisions will appear here");
   });
 
   it("renders a loading state for the settings page", () => {
@@ -86,7 +86,7 @@ describe("admin UI surfaces", () => {
 
     expect(markup).toContain("Workspace Settings");
     expect(markup).toContain("Workspace Identity");
-    expect(markup).toContain("Recent Admin Activity");
+    expect(markup).toContain("Recent Workspace Activity");
   });
 
   it("renders populated member and invite rows without styling regressions", () => {

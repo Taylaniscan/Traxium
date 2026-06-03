@@ -222,6 +222,27 @@ describe("tenant-scoped mutations", () => {
     });
   });
 
+  it("blocks same-tenant alternative supplier updates when the route card id does not match", async () => {
+    tx.savingCardAlternativeSupplier.findFirst.mockResolvedValueOnce({
+      id: "alt-supplier-1",
+      savingCardId: "card-1",
+      supplierId: "supplier-1",
+    });
+
+    await expect(
+      updateAlternativeSupplier(
+        "alt-supplier-1",
+        createAlternativeSupplierInput(),
+        DEFAULT_USER_ID,
+        DEFAULT_ORGANIZATION_ID,
+        "card-2"
+      )
+    ).rejects.toThrow("Alternative supplier not found.");
+
+    expect(tx.supplier.findUnique).not.toHaveBeenCalled();
+    expect(tx.savingCardAlternativeSupplier.update).not.toHaveBeenCalled();
+  });
+
   it("invalidates dashboard and readiness caches when a selected alternative supplier changes savings", async () => {
     tx.savingCardAlternativeSupplier.findFirst
       .mockResolvedValueOnce({
@@ -271,6 +292,47 @@ describe("tenant-scoped mutations", () => {
       namespace: "workspace-readiness",
       organizationId: DEFAULT_ORGANIZATION_ID,
     });
+  });
+
+  it("blocks selected alternative supplier updates when the saving card is finance locked", async () => {
+    tx.savingCardAlternativeSupplier.findFirst
+      .mockResolvedValueOnce({
+        id: "alt-supplier-1",
+        savingCardId: "card-1",
+        supplierId: "supplier-1",
+      })
+      .mockResolvedValueOnce({
+        id: "alt-supplier-1",
+        savingCardId: "card-1",
+        supplierId: "supplier-2",
+        supplierNameManual: null,
+        quotedPrice: 7.5,
+        currency: Currency.EUR,
+      });
+    tx.savingCard.findFirst.mockResolvedValueOnce({
+      id: "card-1",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      supplierId: "supplier-1",
+      alternativeSupplierId: null,
+      baselinePrice: 10,
+      annualVolume: 100,
+      financeLocked: true,
+    });
+
+    await expect(
+      updateAlternativeSupplier(
+        "alt-supplier-1",
+        createAlternativeSupplierInput({
+          isSelected: true,
+        }),
+        DEFAULT_USER_ID,
+        DEFAULT_ORGANIZATION_ID
+      )
+    ).rejects.toThrow(
+      "Finance-locked savings cannot apply alternative supplier scenarios."
+    );
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
   });
 
   it("allows same-tenant alternative supplier deletes", async () => {
@@ -387,6 +449,74 @@ describe("tenant-scoped mutations", () => {
       materialId: "material-2",
       supplierId: "supplier-2",
     });
+  });
+
+  it("blocks same-tenant alternative material updates when the route card id does not match", async () => {
+    tx.savingCardAlternativeMaterial.findFirst.mockResolvedValueOnce({
+      id: "alt-material-1",
+      savingCardId: "card-1",
+      materialId: "material-1",
+      supplierId: "supplier-1",
+    });
+
+    await expect(
+      updateAlternativeMaterial(
+        "alt-material-1",
+        createAlternativeMaterialInput(),
+        DEFAULT_USER_ID,
+        DEFAULT_ORGANIZATION_ID,
+        "card-2"
+      )
+    ).rejects.toThrow("Alternative material not found.");
+
+    expect(tx.material.findUnique).not.toHaveBeenCalled();
+    expect(tx.savingCardAlternativeMaterial.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks selected alternative material updates when the saving card is finance locked", async () => {
+    tx.savingCardAlternativeMaterial.findFirst
+      .mockResolvedValueOnce({
+        id: "alt-material-1",
+        savingCardId: "card-1",
+        materialId: "material-1",
+        supplierId: "supplier-1",
+      })
+      .mockResolvedValueOnce({
+        id: "alt-material-1",
+        savingCardId: "card-1",
+        materialId: "material-2",
+        supplierId: "supplier-2",
+        materialNameManual: null,
+        supplierNameManual: null,
+        quotedPrice: 6.25,
+        currency: Currency.EUR,
+      });
+    tx.savingCard.findFirst.mockResolvedValueOnce({
+      id: "card-1",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      materialId: "material-1",
+      supplierId: "supplier-1",
+      alternativeMaterialId: null,
+      alternativeSupplierId: null,
+      baselinePrice: 10,
+      annualVolume: 100,
+      financeLocked: true,
+    });
+
+    await expect(
+      updateAlternativeMaterial(
+        "alt-material-1",
+        createAlternativeMaterialInput({
+          isSelected: true,
+        }),
+        DEFAULT_USER_ID,
+        DEFAULT_ORGANIZATION_ID
+      )
+    ).rejects.toThrow(
+      "Finance-locked savings cannot apply alternative material scenarios."
+    );
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
   });
 
   it("allows same-tenant alternative material deletes", async () => {

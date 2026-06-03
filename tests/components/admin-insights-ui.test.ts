@@ -72,9 +72,47 @@ describe("admin insights UI", () => {
     );
 
     expect(markup).toContain("Not reached yet");
+    expect(markup).toContain("Activation Progress");
+    expect(markup).toContain("First value pending");
+    expect(markup).toContain(
+      "Create a real saving card to activate live portfolio signals; load sample data only for demo or training."
+    );
     expect(markup).toContain("No invite activity yet");
     expect(markup).toContain("No accepted invite yet");
     expect(markup).toContain("No portfolio updates yet");
+  });
+
+  it("shows live saving-card activation progress after first value is reached", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(AdminActivationSignals, {
+        insights: createInsights({
+          metrics: {
+            totalMembers: 3,
+            pendingInvites: 0,
+            invitesSentLast7Days: 0,
+            invitesSentLast30Days: 0,
+            acceptedInvites: 0,
+            liveSavingCards: 2,
+            recentErrorEventsLast7Days: 0,
+            recentCriticalAdminActionsLast7Days: 0,
+          },
+          signals: {
+            workspaceCreatedAt: new Date("2026-03-20T09:00:00.000Z"),
+            firstValueReached: true,
+            firstValueAt: new Date("2026-03-22T08:00:00.000Z"),
+            firstValueSource: "saving_card",
+            lastInviteSentAt: null,
+            lastAcceptedInviteAt: null,
+            lastSavingCardActivityAt: new Date("2026-03-26T10:15:00.000Z"),
+          },
+        }),
+      })
+    );
+
+    expect(markup).toContain("2 live saving cards");
+    expect(markup).toContain(
+      "At least one saving card exists, so activation can shift toward evidence, workflow, and portfolio review."
+    );
   });
 
   it("renders a useful empty state when there are no recent critical admin actions", () => {
@@ -97,6 +135,6 @@ describe("admin insights UI", () => {
     expect(markup).toContain("Admin Insights");
     expect(markup).toContain("Activation Signals");
     expect(markup).toContain("System Health");
-    expect(markup).toContain("Recent Admin Activity");
+    expect(markup).toContain("Recent Workspace Activity");
   });
 });

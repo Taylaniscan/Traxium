@@ -130,6 +130,26 @@ describe("storage tenant access", () => {
     });
   });
 
+  it("does not issue a signed URL when the evidence bucket is not managed", async () => {
+    prismaMock.savingCardEvidence.findFirst.mockResolvedValueOnce(
+      createEvidenceStorageRecord({
+        storageBucket: "public-assets",
+      })
+    );
+
+    const response = await getEvidenceDownloadRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "evidence-1" }),
+    });
+
+    expect(createSignedUrlMock).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Evidence not found or access denied.",
+    });
+  });
+
   it("blocks storage path manipulation before signed URL creation", async () => {
     prismaMock.savingCardEvidence.findFirst.mockResolvedValueOnce(
       createEvidenceStorageRecord({

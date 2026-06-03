@@ -24,6 +24,8 @@ vi.mock("@/lib/cache", async () => {
 });
 
 import {
+  createAlternativeMaterial,
+  createAlternativeSupplier,
   createSavingCard,
   getSavingCard,
   getSavingCards,
@@ -177,6 +179,66 @@ describe("lib/data saving card flows", () => {
     });
   });
 
+  it("rejects non-positive commercial assumptions before creating a saving card", async () => {
+    await expect(
+      createSavingCard(
+        createSavingCardInput({
+          annualVolume: 0,
+        }),
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toThrow("Annual volume must be greater than zero.");
+
+    expect(tx.savingCard.create).not.toHaveBeenCalled();
+    expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative alternative scenario quoted prices", async () => {
+    await expect(
+      createAlternativeSupplier(
+        "card-1",
+        {
+          supplier: { name: "Supplier B" },
+          country: "DE",
+          quotedPrice: -1,
+          currency: Currency.EUR,
+          leadTimeDays: 14,
+          moq: 100,
+          paymentTerms: "60 days",
+          qualityRating: "AA",
+          riskLevel: "Medium",
+          notes: "",
+          isSelected: false,
+        },
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toThrow("Quoted price must be zero or greater.");
+
+    await expect(
+      createAlternativeMaterial(
+        "card-1",
+        {
+          material: { name: "Recycled PET" },
+          supplier: { name: "Supplier B" },
+          specification: "Food grade",
+          quotedPrice: -1,
+          currency: Currency.EUR,
+          performanceImpact: "Neutral",
+          qualificationStatus: "Approved",
+          riskLevel: "Low",
+          notes: "",
+          isSelected: false,
+        },
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toThrow("Quoted price must be zero or greater.");
+
+    expect(tx.savingCard.create).not.toHaveBeenCalled();
+  });
+
   it("rejects creating a saving card outside the initial workflow phase", async () => {
     await expect(
       createSavingCard(
@@ -208,6 +270,9 @@ describe("lib/data saving card flows", () => {
       newPrice: 12,
       annualVolume: 250,
       currency: Currency.USD,
+      fxRate: 1.25,
+      calculatedSavings: 750,
+      calculatedSavingsUSD: 600,
       impactStartDate: lockedImpactStart,
       impactEndDate: lockedImpactEnd,
     });
@@ -220,6 +285,7 @@ describe("lib/data saving card flows", () => {
         newPrice: 16,
         annualVolume: 400,
         currency: Currency.EUR,
+        fxRate: 0.9,
         impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
         impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
       }),
@@ -242,6 +308,9 @@ describe("lib/data saving card flows", () => {
           newPrice: 12,
           annualVolume: 250,
           currency: Currency.USD,
+          fxRate: 1.25,
+          calculatedSavings: 750,
+          calculatedSavingsUSD: 600,
           impactStartDate: lockedImpactStart,
           impactEndDate: lockedImpactEnd,
         }),

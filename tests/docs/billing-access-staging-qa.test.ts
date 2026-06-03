@@ -51,6 +51,8 @@ describe("billing access staging QA guide", () => {
     expect(guide).toContain("Automated");
     expect(guide).toContain("Simulated");
     expect(guide).toContain("Manual / staging required");
+    expect(guide).toContain("npm run stripe:validate");
+    expect(guide).toContain("npm run stripe:validate -- --exercise-provider-flows");
     expect(guide).toContain("This runbook validates the billing/access recommendation set itself.");
     expect(releaseChecklist).toContain("billing-access-staging-qa.md");
     expect(guide).not.toContain("TODO");

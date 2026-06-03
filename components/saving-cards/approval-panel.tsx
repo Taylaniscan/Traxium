@@ -205,7 +205,7 @@ export function ApprovalPanel({
                   {card.financeLocked ? "Finance fields are locked" : "Finance fields are open"}
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Locking prevents changes to core finance inputs once validation is complete.
+                  Locking protects baseline price, new price, annual volume, currency, FX rate, calculated savings, and impact dates once validation is complete.
                 </p>
               </div>
               <Badge tone={card.financeLocked ? "lock" : "slate"}>

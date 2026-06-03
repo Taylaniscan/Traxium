@@ -1,4 +1,5 @@
 import { ApprovalStatus, Phase, Prisma } from "@prisma/client";
+import { auditEventTypes } from "@/lib/audit";
 import { buildOrganizationUserWhere } from "@/lib/organizations";
 import { requiredRolesForPhase } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -194,9 +195,13 @@ export async function createPhaseChangeRequest(
 
     await tx.auditLog.create({
       data: {
+        organizationId,
         userId: requestedById,
+        actorUserId: requestedById,
         savingCardId,
-        action: "phase_change.requested",
+        targetEntityId: request.id,
+        eventType: auditEventTypes.PHASE_CHANGE_REQUESTED,
+        action: auditEventTypes.PHASE_CHANGE_REQUESTED,
         detail: `Requested phase change from ${card.phase} to ${requestedPhase}`,
       },
     });
@@ -276,9 +281,13 @@ export async function approvePhaseChangeRequest(
 
       await tx.auditLog.create({
         data: {
+          organizationId,
           userId: approverId,
+          actorUserId: approverId,
           savingCardId: request.savingCardId,
-          action: "phase_change.rejected",
+          targetEntityId: requestId,
+          eventType: auditEventTypes.PHASE_CHANGE_REJECTED,
+          action: auditEventTypes.PHASE_CHANGE_REJECTED,
           detail: `Phase change to ${request.requestedPhase} rejected`,
         },
       });
@@ -304,9 +313,13 @@ export async function approvePhaseChangeRequest(
 
     await tx.auditLog.create({
       data: {
+        organizationId,
         userId: approverId,
+        actorUserId: approverId,
         savingCardId: request.savingCardId,
-        action: "phase_change.approved",
+        targetEntityId: requestId,
+        eventType: auditEventTypes.PHASE_CHANGE_APPROVED,
+        action: auditEventTypes.PHASE_CHANGE_APPROVED,
         detail:
           remaining === 0
             ? `Final approval recorded for phase change to ${request.requestedPhase}`
@@ -385,9 +398,13 @@ async function finalizePhaseChangeRequest(
 
   await tx.auditLog.create({
     data: {
+      organizationId: request.savingCard.organizationId,
       userId: actorId,
+      actorUserId: actorId,
       savingCardId: request.savingCardId,
-      action: "phase_change.completed",
+      targetEntityId: requestId,
+      eventType: auditEventTypes.PHASE_CHANGE_COMPLETED,
+      action: auditEventTypes.PHASE_CHANGE_COMPLETED,
       detail: `Phase changed from ${request.currentPhase} to ${request.requestedPhase}`,
     },
   });

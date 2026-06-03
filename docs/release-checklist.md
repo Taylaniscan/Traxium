@@ -49,9 +49,10 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
   - `STRIPE_CHECKOUT_CANCEL_URL`
   - `STRIPE_STARTER_PRODUCT_ID`
   - `STRIPE_STARTER_BASE_PRICE_ID`
-  - `STRIPE_STARTER_METERED_PRICE_ID`
   - `STRIPE_GROWTH_PRODUCT_ID`
   - `STRIPE_GROWTH_BASE_PRICE_ID`
+- Confirm optional Stripe plan catalog values are present only when the live plan uses metered recurring pricing:
+  - `STRIPE_STARTER_METERED_PRICE_ID`
   - `STRIPE_GROWTH_METERED_PRICE_ID`
 - Confirm Stripe mode safety before release:
   - `STRIPE_SECRET_KEY` must be a live `sk_live_` key

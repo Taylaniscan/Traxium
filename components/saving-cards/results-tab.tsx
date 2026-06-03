@@ -307,9 +307,9 @@ export function ResultsTab({
           <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
             Value Tracking
           </p>
-          <CardTitle>Results & Realisation</CardTitle>
+          <CardTitle>Results & Realization</CardTitle>
           <CardDescription>
-            Track monthly forecast and actual consumption so the commercial case, realised savings, and variance stay visible in one operational surface.
+            Track monthly forecast and actual consumption so the commercial case, realized savings, and variance stay visible in one operational surface.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -438,7 +438,7 @@ export function ResultsTab({
                 The result ledger is empty
               </p>
               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                Add monthly forecast periods below to start building realised-versus-forecast visibility for this initiative.
+                Add monthly forecast periods below to start building realized-versus-forecast visibility for this initiative.
               </p>
             </div>
           </CardContent>

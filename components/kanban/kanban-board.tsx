@@ -805,7 +805,7 @@ export function KanbanBoard({
       setCancellationReason("");
       showNotice(
         "warning",
-        `${outcome.card.title} needs a cancellation reason before it can move to Cancelled.`
+        `${outcome.card.title} needs a cancellation reason before it can move to Canceled.`
       );
       return;
     }
@@ -1039,14 +1039,14 @@ export function KanbanBoard({
             <CardDescription>
               {findKanbanCardLocation(columns, cancellationDraft.cardId)?.card
                 ?.title ?? "This saving card"}{" "}
-              needs a reason before it can move to Cancelled.
+              needs a reason before it can move to Canceled.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <textarea
               value={cancellationReason}
               onChange={(event) => setCancellationReason(event.target.value)}
-              placeholder="Explain why this saving card is being cancelled."
+              placeholder="Explain why this saving card is being canceled."
               className="min-h-28 w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
             />
             <div className="flex flex-wrap justify-end gap-3">
@@ -1107,7 +1107,7 @@ export function KanbanBoard({
               >
                 {savingCardId === cancellationDraft.cardId
                   ? "Saving..."
-                  : "Move to Cancelled"}
+                  : "Move to Canceled"}
               </Button>
             </div>
           </CardContent>

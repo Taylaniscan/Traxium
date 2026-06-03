@@ -31,14 +31,14 @@ function createCommandCenterData(
         savingCardId: "card-1",
         savingCardTitle: "Packaging renegotiation",
         currentPhase: "Validated",
-        requestedPhase: "Realised",
+        requestedPhase: "Realized",
         requestedByName: "Alex Buyer",
         requestedByRole: "Buyer",
         createdAt: "2026-04-01T00:00:00.000Z",
         ageDays: 9,
         isOverdue: true,
         pendingApproverCount: 2,
-        pendingApproverRoles: ["Procurement Manager"],
+        pendingApproverRoles: ["Procurement Lead"],
         savings: 55000,
         financeLocked: false,
       },
@@ -47,7 +47,7 @@ function createCommandCenterData(
       {
         savingCardId: "card-2",
         title: "Copper hedge refresh",
-        phase: "Realised",
+        phase: "Realized",
         buyerName: "Taylor Buyer",
         categoryName: "Metals",
         dateLabel: "Due date",
@@ -78,7 +78,7 @@ function createCommandCenterData(
         savingCardTitle: "Freight lane consolidation",
         phase: "Achieved",
         approverName: "Morgan Finance",
-        approverRole: "Finance Approver",
+        approverRole: "Finance Reviewer",
         status: "APPROVED",
         approved: true,
         createdAt: "2026-04-11T00:00:00.000Z",
@@ -111,7 +111,7 @@ describe("executive savings summary", () => {
 
     expect(markup).toContain("Executive Savings Summary");
     expect(markup).toContain("Pipeline Savings");
-    expect(markup).toContain("Realised Savings");
+    expect(markup).toContain("Realized Savings");
     expect(markup).toContain("Achieved Savings");
     expect(markup).toContain("Forecast");
     expect(markup).toContain("Pending Approvals");

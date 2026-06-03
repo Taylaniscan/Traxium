@@ -33,14 +33,14 @@ Required in `preview` and `production`, and required in `development` only when 
 - `STRIPE_CHECKOUT_CANCEL_URL`
 - `STRIPE_STARTER_PRODUCT_ID`
 - `STRIPE_STARTER_BASE_PRICE_ID`
-- `STRIPE_STARTER_METERED_PRICE_ID`
 - `STRIPE_GROWTH_PRODUCT_ID`
 - `STRIPE_GROWTH_BASE_PRICE_ID`
-- `STRIPE_GROWTH_METERED_PRICE_ID`
 
 Optional in all environments:
 
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_STARTER_METERED_PRICE_ID`
+- `STRIPE_GROWTH_METERED_PRICE_ID`
 - `SENTRY_DSN`
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `NEXT_PUBLIC_ANALYTICS_HOST`
@@ -70,10 +70,9 @@ Optional in all environments:
    - `STRIPE_CHECKOUT_CANCEL_URL`
    - `STRIPE_STARTER_PRODUCT_ID`
    - `STRIPE_STARTER_BASE_PRICE_ID`
-   - `STRIPE_STARTER_METERED_PRICE_ID`
    - `STRIPE_GROWTH_PRODUCT_ID`
    - `STRIPE_GROWTH_BASE_PRICE_ID`
-   - `STRIPE_GROWTH_METERED_PRICE_ID`
+   - Optional: `STRIPE_STARTER_METERED_PRICE_ID` and `STRIPE_GROWTH_METERED_PRICE_ID` only when a plan also has a metered recurring Stripe Price
 6. Keep `DIRECT_URL` equal to `DATABASE_URL` unless your network can reliably reach the Supabase direct host.
 7. Run `npm run env:check` before `npm run dev` or `npm run build`.
 8. If you set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, keep it in the same Stripe mode as `STRIPE_SECRET_KEY`.
@@ -86,7 +85,8 @@ Required:
 
 - All shared required variables above
 - `NEXT_PUBLIC_APP_URL` must point to the preview deployment URL
-- Preview-safe Stripe product, price, secret, and return URL values must be present for billing routes
+- Preview-safe Stripe product, base price, secret, webhook secret, and return URL values must be present for billing routes
+- Metered Stripe price IDs are optional unless a plan also has a metered recurring Stripe Price
 - Stripe test keys are allowed in preview, and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` may be omitted
 - If a publishable key is set, it must stay in the same mode as `STRIPE_SECRET_KEY`
 
@@ -104,7 +104,8 @@ Required:
 
 - All shared required variables above
 - Production-safe `NEXT_PUBLIC_APP_URL`
-- Live Stripe secret, webhook secret, product ids, price ids, and billing return URLs
+- Live Stripe secret, webhook secret, product ids, base price ids, and billing return URLs
+- Metered Stripe price IDs are optional unless a plan also has a metered recurring Stripe Price
 - If `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is set, it must be a live `pk_live_` key
 - Mixed Stripe config is rejected: `sk_test_` secrets, `pk_test_` publishable keys, or preview/local/test catalog IDs paired with live production billing
 

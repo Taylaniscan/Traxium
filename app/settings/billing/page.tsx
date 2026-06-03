@@ -100,7 +100,7 @@ function getRecoveryBanner(
   if (checkoutState === "cancelled") {
     return {
       tone: "amber" as const,
-      title: "Stripe checkout was cancelled",
+      title: "Stripe checkout was canceled",
       message:
         "No billing changes were applied. You can start billing recovery again when you are ready.",
     };
@@ -124,7 +124,7 @@ function getRecoveryBanner(
     case "checkout_cancelled":
       return {
         tone: "amber" as const,
-        title: "Billing checkout was cancelled",
+        title: "Billing checkout was canceled",
         message:
           "The checkout flow was not completed. You can start billing recovery again when you are ready.",
       };

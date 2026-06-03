@@ -11,6 +11,10 @@ export const auditEventTypes = {
   INVITE_RESENT: "invite.resent",
   WORKSPACE_UPDATED: "workspace.updated",
   ONBOARDING_WORKSPACE_CREATED: "onboarding.workspace_created",
+  PHASE_CHANGE_REQUESTED: "phase_change.requested",
+  PHASE_CHANGE_APPROVED: "phase_change.approved",
+  PHASE_CHANGE_REJECTED: "phase_change.rejected",
+  PHASE_CHANGE_COMPLETED: "phase_change.completed",
 } as const;
 
 export type AuditEventType =

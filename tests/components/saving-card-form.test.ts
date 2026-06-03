@@ -96,19 +96,19 @@ function createWorkspaceReadiness(): NonNullable<SavingCardFormProps["workspaceR
     workflowCoverage: [
       {
         key: "HEAD_OF_GLOBAL_PROCUREMENT",
-        label: "Procurement Manager",
+        label: "Procurement Lead",
         count: 0,
         ready: false,
       },
       {
         key: "GLOBAL_CATEGORY_LEADER",
-        label: "Procurement Specialist",
+        label: "Category Owner",
         count: 0,
         ready: false,
       },
       {
         key: "FINANCIAL_CONTROLLER",
-        label: "Finance Approver",
+        label: "Finance Reviewer",
         count: 0,
         ready: false,
       },
@@ -136,11 +136,67 @@ function createWorkspaceReadiness(): NonNullable<SavingCardFormProps["workspaceR
       "Business Units",
     ],
     missingWorkflowCoverage: [
-      "Procurement Manager",
-      "Procurement Specialist",
-      "Finance Approver",
+      "Procurement Lead",
+      "Category Owner",
+      "Finance Reviewer",
     ],
   };
+}
+
+function createLockedSavingCard(): NonNullable<SavingCardFormProps["card"]> {
+  return {
+    id: "card-1",
+    organizationId: "org-1",
+    title: "Resin renegotiation",
+    description: "Validated savings case.",
+    savingType: "Hard savings - price reduction",
+    phase: "VALIDATED",
+    frequency: "RECURRING",
+    supplierId: "supplier-1",
+    materialId: "material-1",
+    alternativeSupplierId: null,
+    alternativeSupplierManualName: null,
+    alternativeMaterialId: null,
+    alternativeMaterialManualName: null,
+    categoryId: "category-1",
+    plantId: "plant-1",
+    businessUnitId: "business-unit-1",
+    buyerId: "buyer-1",
+    baselinePrice: 15,
+    newPrice: 12,
+    annualVolume: 250,
+    currency: "USD",
+    fxRate: 1.25,
+    calculatedSavings: 750,
+    calculatedSavingsUSD: 600,
+    savingDriver: "Negotiation",
+    implementationComplexity: "Medium",
+    qualificationStatus: "Validated",
+    startDate: new Date("2026-01-01T00:00:00.000Z"),
+    endDate: new Date("2026-12-31T00:00:00.000Z"),
+    impactStartDate: new Date("2026-03-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-01T00:00:00.000Z"),
+    financeLocked: true,
+    cancellationReason: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+    supplier: { id: "supplier-1", name: "Supplier A" },
+    material: { id: "material-1", name: "PET Resin" },
+    alternativeSupplier: null,
+    alternativeMaterial: null,
+    category: { id: "category-1", name: "Packaging" },
+    plant: { id: "plant-1", name: "Amsterdam" },
+    businessUnit: { id: "business-unit-1", name: "Beverages" },
+    buyer: { id: "buyer-1", name: "Strategic Buyer" },
+    evidence: [],
+    stakeholders: [],
+    comments: [],
+    alternativeSuppliers: [],
+    alternativeMaterials: [],
+    approvals: [],
+    phaseHistory: [],
+    phaseChangeRequests: [],
+  } as unknown as NonNullable<SavingCardFormProps["card"]>;
 }
 
 describe("saving card form", () => {
@@ -166,15 +222,38 @@ describe("saving card form", () => {
       "Start with the card. Shared setup can happen inline."
     );
     expect(markup).toContain(
-      "No buyers, suppliers, materials, and categories exist in this workspace yet."
+      "Required. Add a short business case so reviewers understand the initiative."
+    );
+    expect(markup).toContain("Workflow Status");
+    expect(markup).toContain(
+      "New cards start in Idea and move after workflow approval."
+    );
+    expect(markup).toContain(
+      "Classify the case as hard savings, cost avoidance, supplier switch, material substitution, or another procurement value type."
+    );
+    expect(markup).toContain("Hard savings - price reduction");
+    expect(markup).toContain("Cost avoidance - inflation mitigation");
+    expect(markup).toContain(
+      "Save first, then attach quote, contract/PO, invoice, and calculation evidence for finance validation."
+    );
+    expect(markup).toContain(
+      "No buyers, suppliers, materials, categories, plants, and business units exist in this workspace yet."
     );
     expect(markup).toContain("No existing category yet");
     expect(markup).toContain("No existing buyer yet");
+    expect(markup).toContain("No existing business unit yet");
+    expect(markup).toContain("No existing plant yet");
     expect(markup).toContain(
       "Type the first category below. Traxium will create it in the active workspace when this card is saved."
     );
     expect(markup).toContain(
       "Type the first buyer below. Traxium will create it in the active workspace when this card is saved."
+    );
+    expect(markup).toContain(
+      "Type the first business unit below. Traxium will create it in the active workspace when this card is saved."
+    );
+    expect(markup).toContain(
+      "Type the first plant below. Traxium will create it in the active workspace when this card is saved."
     );
   });
 
@@ -214,5 +293,22 @@ describe("saving card form", () => {
     expect(markup).toContain(
       "Need a new category? Type it below and continue without leaving the form."
     );
+  });
+
+  it("renders finance-locked financial fields as disabled on edit", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(SavingCardForm, {
+        mode: "edit",
+        referenceData: createReferenceData(),
+        card: createLockedSavingCard(),
+      })
+    );
+
+    expect(markup).toContain("Finance lock active");
+    expect(markup).toContain(
+      "Baseline price, new price, annual volume, currency, FX rate, and value recognition dates are the core finance control points for this record."
+    );
+    expect(markup).toContain("Finance-controlled");
+    expect(markup).toContain('disabled=""');
   });
 });

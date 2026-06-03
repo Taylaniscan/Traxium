@@ -66,7 +66,7 @@ export function FirstValueLaunchpad({
         {!canManageMembers ? (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--muted-foreground)]">
             Team invitations are managed by workspace owners and admins. Ask a
-            workspace admin to invite finance approvers and procurement leads.
+            workspace admin to invite finance reviewers and procurement leads.
           </div>
         ) : null}
       </CardContent>

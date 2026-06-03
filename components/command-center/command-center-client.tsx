@@ -689,7 +689,7 @@ export function CommandCenterClient({
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
-                      label="Realised Savings"
+                      label="Realized Savings"
                       value={formatCurrency(safeData.kpis.realisedSavings, "EUR")}
                       icon={TrendingUp}
                       status={isLoading ? "Updating" : "Live"}
@@ -763,7 +763,7 @@ export function CommandCenterClient({
               {activeSection === "overdue-items" ? (
                 <AttentionListCard
                   title="Overdue items"
-                  description="Initiatives past planned end date and still not achieved or cancelled."
+                  description="Initiatives past planned end date and still not achieved or canceled."
                   items={overdueItems}
                   emptyMessage="No overdue initiatives in the current view."
                   tone="error"

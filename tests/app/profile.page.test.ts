@@ -52,7 +52,7 @@ describe("profile page", () => {
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
     expect(markup).toContain("Profile Information");
-    expect(markup).toContain("Procurement Specialist");
+    expect(markup).toContain("Category Owner");
     expect(markup).toContain("Security");
     expect(markup).toContain("change-password-form");
     expect(markup).toContain("Workspace Settings");

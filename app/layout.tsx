@@ -3,9 +3,9 @@ import { AnalyticsBootstrap } from "@/components/analytics/analytics-bootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Traxium | Procurement Savings Governance",
+  title: "Traxium | Finance-Trusted Savings Governance",
   description:
-    "Traxium helps procurement and finance teams govern savings initiatives from idea to realized value.",
+    "Traxium helps 50-500 employee US manufacturing SMEs govern saving cards, evidence, approvals, and savings exports in one paid-pilot workspace.",
 };
 
 export default function RootLayout({

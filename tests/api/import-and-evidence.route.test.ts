@@ -433,7 +433,7 @@ describe("import and evidence API routes", () => {
       expect(xlsxReadMock).not.toHaveBeenCalled();
     });
 
-    it("returns 422 when a normalized import row is invalid", async () => {
+    it("returns row-level saving-card validation errors without partially importing", async () => {
       xlsxReadMock.mockReturnValueOnce({
         SheetNames: ["Sheet1"],
         Sheets: {
@@ -441,6 +441,26 @@ describe("import and evidence API routes", () => {
         },
       });
       sheetToJsonMock.mockReturnValueOnce([
+        {
+          Title: "Valid resin renegotiation",
+          Description: "Renegotiate the resin packaging contract for margin improvement.",
+          Supplier: "Supplier A",
+          Material: "PET Resin",
+          Category: "Packaging",
+          Plant: "Amsterdam",
+          BusinessUnit: "Beverages",
+          Buyer: "Strategic Buyer",
+          BaselinePrice: 10,
+          NewPrice: 8,
+          AnnualVolume: 100,
+          Currency: "EUR",
+          FxRate: 1.1,
+          Frequency: "RECURRING",
+          StartDate: "2025-01-01",
+          EndDate: "2025-12-31",
+          ImpactStartDate: "2025-02-01",
+          ImpactEndDate: "2025-12-31",
+        },
         {
           Supplier: "Supplier A",
           Material: "PET Resin",
@@ -454,6 +474,26 @@ describe("import and evidence API routes", () => {
           StartDate: "2025-01-01",
           EndDate: "2025-12-31",
         },
+        {
+          Title: "Bad prices",
+          Description: "This row has a new price above baseline and must be rejected.",
+          Supplier: "Supplier A",
+          Material: "PET Resin",
+          Category: "Packaging",
+          Plant: "Amsterdam",
+          BusinessUnit: "Beverages",
+          Buyer: "Strategic Buyer",
+          BaselinePrice: 10,
+          NewPrice: 12,
+          AnnualVolume: 100,
+          Currency: "EUR",
+          FxRate: 1,
+          Frequency: "RECURRING",
+          StartDate: "2025-01-01",
+          EndDate: "2025-12-31",
+          ImpactStartDate: "2025-02-01",
+          ImpactEndDate: "2025-12-31",
+        },
       ]);
 
       const response = await postImportRoute(
@@ -461,12 +501,34 @@ describe("import and evidence API routes", () => {
       );
 
       expect(response.status).toBe(422);
-      await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({
-          error: expect.stringContaining("Row 2:"),
-        })
-      );
+      await expect(response.json()).resolves.toEqual({
+        importType: "saving_cards",
+        error:
+          "Saving-card import has 2 row errors. No saving cards were imported. Fix the listed rows and retry.",
+        summary: {
+          total: 3,
+          valid: 1,
+          failed: 2,
+        },
+        results: [
+          {
+            row: 3,
+            status: "failed",
+            title: "",
+            message: expect.stringContaining("Title:"),
+          },
+          {
+            row: 4,
+            status: "failed",
+            title: "Bad prices",
+            message:
+              "New Price: New price must not exceed the baseline price.",
+          },
+        ],
+      });
       expect(importSavingCardsMock).not.toHaveBeenCalled();
+      expect(enforceUsageQuotaMock).not.toHaveBeenCalled();
+      expect(recordUsageEventMock).not.toHaveBeenCalled();
     });
 
     it("returns the imported count on success", async () => {
@@ -510,6 +572,60 @@ describe("import and evidence API routes", () => {
             buyer: { id: "buyer-1", name: "Strategic Buyer" },
           }),
         ]),
+        "user-1",
+        "org-1"
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ count: 1 });
+    });
+
+    it("accepts controller-friendly saving-card headers and US phase labels", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Savings"],
+        Sheets: {
+          Savings: {},
+        },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          "Saving Card Title": "Freight lane consolidation",
+          Description: "Consolidate freight lanes after supplier contract reset.",
+          "Saving Type": "Commercial negotiation",
+          Phase: "Realized",
+          Supplier: "Supplier A",
+          Material: "PET Resin",
+          Category: "Packaging",
+          Plant: "Amsterdam",
+          "Business Unit": "Beverages",
+          Buyer: "Strategic Buyer",
+          "Baseline Price": 10,
+          "New Price": 8,
+          "Annual Volume": 100,
+          Currency: "EUR",
+          "FX Rate": 1,
+          Frequency: "RECURRING",
+          "Start Date": "2025-01-01",
+          "End Date": "2025-12-31",
+          "Impact Start Date": "2025-02-01",
+          "Impact End Date": "2025-12-31",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile()))
+      );
+
+      expect(importSavingCardsMock).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            title: "Freight lane consolidation",
+            savingType: "Commercial negotiation",
+            phase: "REALISED",
+            businessUnit: { id: "business-unit-1", name: "Beverages" },
+            baselinePrice: 10,
+            newPrice: 8,
+          }),
+        ],
         "user-1",
         "org-1"
       );
@@ -839,6 +955,76 @@ describe("import and evidence API routes", () => {
       });
       expect(prismaMock.material.create).toHaveBeenCalledTimes(1);
     });
+
+    it("imports category master data and keeps annual target defaults tenant-scoped", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Sheet1"],
+        Sheets: {
+          Sheet1: {},
+        },
+      });
+      prismaMock.category.findMany.mockResolvedValueOnce([{ name: "Existing Category" }]);
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Name: "Packaging",
+          Code: "CAT-100",
+          Owner: "Direct Procurement",
+        },
+        {
+          Name: "Existing Category",
+        },
+        {
+          Name: "Packaging",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("name,code,owner", "categories.csv", "text/csv"),
+            "categories"
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        importType: "categories",
+        summary: {
+          created: 1,
+          skipped: 2,
+          failed: 0,
+        },
+        results: [
+          {
+            row: 2,
+            status: "created",
+            name: "Packaging",
+            message: "Created category record.",
+          },
+          {
+            row: 3,
+            status: "skipped",
+            name: "Existing Category",
+            message: "Already exists in this workspace.",
+          },
+          {
+            row: 4,
+            status: "skipped",
+            name: "Packaging",
+            message: "Duplicate name already appears earlier in this workbook.",
+          },
+        ],
+      });
+      expect(prismaMock.category.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.category.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: "org-1",
+          name: "Packaging",
+          annualTarget: 0,
+        },
+      });
+    });
   });
 
   describe("app/api/upload/evidence/route.ts", () => {
@@ -954,6 +1140,13 @@ describe("import and evidence API routes", () => {
         )
       );
 
+      expect(enforceRateLimitMock).toHaveBeenCalledWith({
+        policy: "evidenceUpload",
+        request: expect.any(Object),
+        userId: "user-1",
+        organizationId: "org-1",
+        action: "evidence.upload",
+      });
       expect(storeEvidenceFileMock).toHaveBeenCalledWith(
         expect.any(File),
         {
@@ -975,6 +1168,59 @@ describe("import and evidence API routes", () => {
           },
         ],
       });
+    });
+
+    it("allows participant uploads only through stakeholder or approver access", async () => {
+      requireUserMock.mockResolvedValueOnce({
+        id: "user-1",
+        name: "Test User",
+        email: "user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: "org-1",
+      });
+      prismaMock.savingCard.findFirst.mockResolvedValueOnce({
+        id: "card-1",
+        organizationId: "org-1",
+      });
+      storeEvidenceFileMock.mockResolvedValueOnce({
+        fileName: "evidence.pdf",
+        storageBucket: "evidence-private",
+        storagePath: "organizations/org-1/saving-cards/card-1/evidence/evidence.pdf",
+        fileSize: 5,
+        fileType: "application/pdf",
+      });
+      prismaMock.savingCardEvidence.create.mockResolvedValueOnce({
+        id: "evidence-1",
+        fileName: "evidence.pdf",
+        fileSize: 5,
+        fileType: "application/pdf",
+        uploadedAt: "2025-01-01T00:00:00.000Z",
+      });
+
+      const response = await postEvidenceUploadRoute(
+        createFormDataRequest(
+          createUploadForm({
+            savingCardId: "card-1",
+            files: [createWorkbookFile("pdf", "evidence.pdf", "application/pdf")],
+          })
+        )
+      );
+
+      expect(prismaMock.savingCard.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: "card-1",
+          organizationId: "org-1",
+          OR: [
+            { stakeholders: { some: { userId: "user-1" } } },
+            { approvals: { some: { approverId: "user-1" } } },
+          ],
+        },
+        select: {
+          id: true,
+          organizationId: true,
+        },
+      });
+      expect(response.status).toBe(201);
     });
   });
 
@@ -1055,6 +1301,52 @@ describe("import and evidence API routes", () => {
       });
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe("https://storage.example.com/signed-url");
+    });
+
+    it("requires participant access before creating a signed download URL", async () => {
+      requireUserMock.mockResolvedValueOnce({
+        id: "user-1",
+        name: "Test User",
+        email: "user@example.com",
+        role: Role.TACTICAL_BUYER,
+        organizationId: "org-1",
+      });
+      prismaMock.savingCardEvidence.findFirst.mockResolvedValueOnce({
+        id: "evidence-1",
+        fileName: "evidence.pdf",
+        savingCardId: "card-1",
+        storageBucket: "evidence-private",
+        storagePath: "organizations/org-1/saving-cards/card-1/evidence/evidence.pdf",
+        uploadedById: "user-1",
+      });
+      isManagedEvidenceStorageLocationMock.mockReturnValueOnce(true);
+      createEvidenceSignedUrlMock.mockResolvedValueOnce("https://storage.example.com/signed-url");
+
+      const response = await getEvidenceDownloadRoute(new Request("http://localhost"), {
+        params: Promise.resolve({ id: "evidence-1" }),
+      });
+
+      expect(prismaMock.savingCardEvidence.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: "evidence-1",
+          savingCard: {
+            organizationId: "org-1",
+            OR: [
+              { stakeholders: { some: { userId: "user-1" } } },
+              { approvals: { some: { approverId: "user-1" } } },
+            ],
+          },
+        },
+        select: {
+          id: true,
+          fileName: true,
+          savingCardId: true,
+          storageBucket: true,
+          storagePath: true,
+          uploadedById: true,
+        },
+      });
+      expect(response.status).toBe(307);
     });
   });
 });

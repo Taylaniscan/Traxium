@@ -18,6 +18,7 @@ export {
   getSavingCard,
   getSavingCards,
   mapSavingCardsForExport,
+  savingCardExportColumns,
 } from "@/lib/saving-cards/queries";
 export {
   addApproval,

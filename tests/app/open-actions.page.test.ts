@@ -178,7 +178,7 @@ describe("open actions page", () => {
             requestId: "request-1",
             canDecide: true,
             pendingApproverSummary:
-              "2 pending approvers · Procurement Manager, Finance Approver",
+              "2 pending approvers · Procurement Lead, Finance Reviewer",
           }),
         ],
       },

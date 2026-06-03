@@ -31,9 +31,9 @@ export function AdminActivityList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent Admin Activity</CardTitle>
+        <CardTitle>Recent Workspace Activity</CardTitle>
         <CardDescription>
-          Workspace-scoped admin actions for settings, membership, and invitation management.
+          Workspace-scoped admin actions and workflow decisions for settings, membership, invitations, and approvals.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -71,7 +71,7 @@ export function AdminActivityList({
               No admin activity yet
             </p>
             <p className="mt-2">
-              Workspace settings updates, membership changes, and invitation lifecycle events will appear here for the active organization.
+              Workspace settings updates, membership changes, invitation lifecycle events, and workflow decisions will appear here for the active organization.
             </p>
           </div>
         )}

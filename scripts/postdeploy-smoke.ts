@@ -210,9 +210,9 @@ export function buildPostdeploySmokeChecks(input?: {
           "Kanban Board",
           "Idea",
           "Validated",
-          "Realised",
+          "Realized",
           "Achieved",
-          "Cancelled",
+          "Canceled",
         ],
         expectedBodyExcludes: [
           "No board activity yet",

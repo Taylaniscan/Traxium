@@ -2,9 +2,12 @@ import { Currency, Phase } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import {
+  getUtopiaTraxExpectedPendingOpenActionCount,
   getUtopiaTraxDatasetSummary,
   getUtopiaTraxNaturalKeys,
+  UTOPIATRAX_DEMO_TRIAL_END,
   UTOPIATRAX_DIRECT_CATEGORIES,
+  UTOPIATRAX_PENDING_PHASE_REQUESTS,
   UTOPIATRAX_SAVING_CARDS,
   validateUtopiaTraxDemoDataset,
 } from "@/scripts/seed-utopiatrax-demo";
@@ -48,6 +51,23 @@ describe("UtopiaTrax demo seed dataset", () => {
     expect(summary.alternativeCount).toBeGreaterThanOrEqual(8);
     expect(currencies.has(Currency.EUR)).toBe(true);
     expect(currencies.has(Currency.USD)).toBe(true);
+  });
+
+  it("includes volume rows, pending actions, and trial billing inputs for demo surfaces", () => {
+    const summary = getUtopiaTraxDatasetSummary();
+
+    expect(summary.volumeProfileCount).toBeGreaterThanOrEqual(12);
+    expect(summary.pendingPhaseRequestCount).toBe(5);
+    expect(summary.expectedPendingOpenActions).toBe(7);
+    expect(summary.expectedPendingOpenActions).toBe(
+      getUtopiaTraxExpectedPendingOpenActionCount()
+    );
+    expect(UTOPIATRAX_PENDING_PHASE_REQUESTS.every((request) => request.comment)).toBe(
+      true
+    );
+    expect(UTOPIATRAX_DEMO_TRIAL_END.toISOString()).toBe(
+      "2028-12-31T23:59:59.000Z"
+    );
   });
 
   it("uses stable natural keys so the seed can be rerun idempotently", () => {

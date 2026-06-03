@@ -107,7 +107,7 @@ describe("app shell workspace account", () => {
     expect(markup).toContain("Atlas Procurement");
     expect(markup).toContain("Casey Buyer");
     expect(markup).toContain("casey@example.com");
-    expect(markup).toContain("Procurement Specialist");
+    expect(markup).toContain("Category Owner");
   });
 
   it("renders a visible logout button without any hidden menu dependency", () => {

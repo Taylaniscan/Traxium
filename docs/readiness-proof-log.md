@@ -1,0 +1,1766 @@
+# Traxium Readiness Proof Log
+
+This log records proof for each approved readiness step. No implementation step should be marked complete unless its proof passes.
+
+## 2026-06-01T20:59:13Z - Planning Audit
+
+- Step number: Pre-step planning audit
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; readiness docs were already untracked before this planning update.
+- Files changed:
+  - `docs/readiness-40-step-plan.md`
+  - `docs/readiness-proof-log.md`
+- Files inspected:
+  - `README.md`
+  - `package.json`
+  - `prisma/schema.prisma`
+  - `.env.example`
+  - `.github/workflows/ci.yml`
+  - `docs/demo-utopiatrax.md`
+  - `docs/runtime-baseline.md`
+  - `docs/release-checklist.md`
+  - `docs/environment-setup.md`
+  - `docs/operations-runbook.md`
+  - `docs/subscription-gating-and-billing-recovery.md`
+  - `docs/billing-access-staging-qa.md`
+  - `scripts/check-env.ts`
+  - `scripts/predeploy-check.ts`
+  - `scripts/run-job-worker.ts`
+  - `scripts/seed-utopiatrax-demo.ts`
+  - representative App Router pages under `app/(app)/*`
+  - API routes under `app/api/*` for billing, auth, invitations, onboarding, saving cards, evidence, import, export, workflow, admin, jobs, notifications, and organization switching
+  - billing modules under `lib/billing/*`
+  - auth, invitation, uploads, workflow, saving-card, dashboard, command-center, onboarding, job, usage, rate-limit, and tenant-scope modules under `lib/*`
+  - UI components for app shell, billing, onboarding, saving cards, evidence, reports, dashboard, command center, open actions, admin members/settings/jobs/insights, auth, and timeline
+  - representative tests under `tests/app`, `tests/api`, `tests/components`, `tests/lib`, `tests/integration`, `tests/ci`, `tests/docs`, and `tests/scripts`
+- Tests run: None. This was a planning-only audit and documentation update, not Step 1 execution.
+- Pass/fail: Pass for creating the repository-specific 40-step plan. No product readiness step has passed yet.
+- Manual checks: None performed for this planning audit. Future approved steps must include route/screen/provider checks where relevant.
+- Blockers:
+  - User approval is required before executing any readiness step.
+  - Step 1 should establish actual command/test baseline before product changes.
+
+## 2026-06-01T21:06:09Z - Step 1
+
+- Step number: 1
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after baseline commands showed `M tsconfig.tsbuildinfo` plus untracked `docs/readiness-40-step-plan.md` and `docs/readiness-proof-log.md`.
+- Files inspected:
+  - `package.json`
+  - `README.md`
+  - `Project_Rules.md`
+  - `Codex_Tasks.md`
+  - `docs/runtime-baseline.md`
+  - `docs/release-checklist.md`
+  - `.github/workflows/ci.yml`
+  - `tests/ci/smoke-contract.test.ts`
+  - `docs/readiness-proof-log.md`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` was modified by `npm run typecheck` / `tsc --noEmit` as a TypeScript build-info side effect.
+- Tests run:
+  - `npm run env:check` - passed.
+  - `npm run typecheck` - passed.
+  - `npm run test:ci:smoke` - passed; 1 test file, 4 tests.
+- Pass/fail: Pass.
+- Proof:
+  - `npm run env:check` emitted `env.check.passed` for `APP_ENV=development`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`, Supabase URL present, database URLs present, service-role key present, storage bucket `evidence-private`, and local Stripe billing in test mode with `starter` and `growth` plan codes.
+  - `npm run typecheck` completed `tsc --noEmit` with exit code 0.
+  - `npm run test:ci:smoke` completed `tests/ci/smoke-contract.test.ts` with 4/4 tests passing.
+  - Current dirty state is explicit and attributable: readiness docs are untracked planning artifacts, and `tsconfig.tsbuildinfo` changed by the baseline typecheck.
+- Manual checks: None. Step 1 is command/proof-log baseline only.
+- Blockers: None for Step 1. Full `npm test`, `npm run build`, provider checks, and post-release smoke remain future-step proof items.
+
+## 2026-06-01T21:11:34Z - Step 2
+
+- Step number: 2
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 2 showed modified `docs/deployment-strategy.md`, `docs/environment-setup.md`, `docs/release-checklist.md`, `tests/ci/release-safety-consistency.test.ts`, existing modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `.env.example`
+  - `.github/workflows/ci.yml`
+  - `docs/deployment-strategy.md`
+  - `docs/environment-setup.md`
+  - `docs/release-checklist.md`
+  - `docs/readiness-40-step-plan.md`
+  - `lib/billing/checkout.ts`
+  - `lib/billing/config.ts`
+  - `lib/env.ts`
+  - `scripts/check-env.ts`
+  - `scripts/predeploy-check.ts`
+  - `tests/ci/deploy-guard.test.ts`
+  - `tests/ci/release-safety-consistency.test.ts`
+  - `tests/lib/env-config.test.ts`
+  - `tests/lib/stripe-config.test.ts`
+- Files changed:
+  - `docs/deployment-strategy.md`
+  - `docs/environment-setup.md`
+  - `docs/release-checklist.md`
+  - `tests/ci/release-safety-consistency.test.ts`
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` remained modified as a TypeScript build-info side effect.
+- Tests run:
+  - `npm run env:check` - passed.
+  - `npx vitest run tests/lib/env-config.test.ts tests/lib/stripe-config.test.ts tests/ci/deploy-guard.test.ts tests/ci/release-safety-consistency.test.ts` - passed; 4 test files, 29 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `npm run env:check` emitted `env.check.passed` for `APP_ENV=development`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`, Supabase URL present, database URLs present, service-role key present, storage bucket `evidence-private`, and local Stripe billing in test mode.
+  - `lib/billing/config.ts` defines `STRIPE_STARTER_METERED_PRICE_ID` and `STRIPE_GROWTH_METERED_PRICE_ID` as optional server env keys; `tests/lib/stripe-config.test.ts` verifies they may be omitted.
+  - Release docs now list Stripe product IDs and licensed base price IDs as required, while metered Stripe price IDs are documented as optional unless the plan has a metered recurring Stripe Price.
+  - The release safety consistency test now asserts the optional metered-price documentation contract.
+- Manual checks: None. Step 2 is environment/provider contract proof only.
+- Blockers: None for Step 2. Real provider credentials, production deployment variables, and route-level billing smoke remain future-step or release-time proof items.
+
+## 2026-06-01T21:18:05Z - Step 3
+
+- Step number: 3
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 3 showed modified Step 2 docs/tests, `lib/billing/permissions.ts`, `tests/api/admin-rbac.test.ts`, `tests/api/billing-checkout.test.ts`, existing modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `app/api/billing/checkout/route.ts`
+  - `app/api/billing/portal/route.ts`
+  - `app/api/evidence/[id]/download/route.ts`
+  - `app/api/export/route.ts`
+  - `app/api/import/route.ts`
+  - `app/api/upload/evidence/route.ts`
+  - `app/api/saving-cards/[id]/volume/shared.ts`
+  - `docs/api-hardening-matrix.md`
+  - `docs/db-security-access-matrix.md`
+  - `docs/readiness-40-step-plan.md`
+  - `docs/subscription-gating-and-billing-recovery.md`
+  - `lib/auth.ts`
+  - `lib/billing/permissions.ts`
+  - `lib/organizations.ts`
+  - `lib/permissions.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `lib/saving-cards/queries.ts`
+  - `lib/saving-cards/shared.ts`
+  - `lib/tenant-scope.ts`
+  - `lib/workflow/service.ts`
+  - `prisma/schema.prisma`
+  - `tests/api/admin-rbac.test.ts`
+  - `tests/api/billing-checkout.test.ts`
+  - `tests/api/billing-recover.route.test.ts`
+  - `tests/api/export.route.test.ts`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/api/storage-tenant-access.test.ts`
+  - `tests/api/tenant-isolation-queries.test.ts`
+  - `tests/api/tenant-scope-mutations.test.ts`
+  - `tests/api/workflow.route.test.ts`
+  - `tests/helpers/security-fixtures.ts`
+  - `tests/helpers/tenant-access-fixtures.ts`
+  - `tests/lib/tenant-scope.test.ts`
+- Files changed:
+  - `lib/billing/permissions.ts`
+  - `tests/api/admin-rbac.test.ts`
+  - `tests/api/billing-checkout.test.ts`
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` remained modified as a TypeScript build-info side effect.
+- Tests run:
+  - `npx vitest run tests/api/tenant-isolation-queries.test.ts tests/api/tenant-scope-mutations.test.ts tests/lib/tenant-scope.test.ts tests/api/storage-tenant-access.test.ts tests/api/admin-rbac.test.ts tests/api/billing-checkout.test.ts tests/api/billing-recover.route.test.ts tests/api/import-and-evidence.route.test.ts tests/api/export.route.test.ts tests/api/workflow.route.test.ts` - passed; 10 test files, 95 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Tenant helper tests verified missing tenant context fails, active organization filters include `organizationId`, relation-owned filters scope through the owning `savingCard`, and foreign ownership checks return false.
+  - Query/mutation tests verified cross-tenant volume reads, forecast writes, actual deletes, alternative supplier/material updates/deletes, and finance-lock changes are blocked before mutation.
+  - Storage tests verified evidence uploads use the organization-scoped namespace and signed URL generation rejects foreign-tenant paths and path traversal.
+  - Admin/import/export/workflow tests verified Member access is blocked for admin-only routes, admin users can open protected admin views, imports use the active organization, exports call organization-scoped data loaders, and phase-change routes pass the active organization context into workflow services.
+  - Billing authorization was tightened so billing management follows the documented Owner/Admin membership boundary. `canManageWorkspaceBilling` now returns `canManageOrganizationMembers(membershipRole)` only; a new checkout regression test verifies an organization `MEMBER` with a legacy workspace-manager app role receives `403` and no Stripe customer/session is created.
+  - Existing tests still verify legacy workspace managers may import onboarding/master data as an intentional non-billing policy.
+- Manual checks: None. Step 3 was automated tenant/RBAC proof only.
+- Blockers:
+  - No blocker for Step 3.
+  - This proof verifies the current app-layer Prisma/route authorization model. Database-enforced RLS policies were not added or validated in this step and remain a deeper infrastructure hardening consideration.
+
+## 2026-06-01T21:21:56Z - Step 4
+
+- Step number: 4
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 4 showed the existing Step 2 and Step 3 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `package.json`
+  - `prisma/schema.prisma`
+  - `prisma/migrations/*`
+  - `scripts/predeploy-check.ts`
+  - `scripts/postdeploy-smoke.ts`
+  - `docs/post-release-smoke-tests.md`
+  - `docs/release-checklist.md`
+  - `tests/ci/smoke-contract.test.ts`
+  - `tests/ci/release-safety-consistency.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` remained modified as a TypeScript build-info side effect. `npm run build` temporarily removed it through `npm run clean`; a follow-up `npm run typecheck` restored it.
+- Tests run:
+  - `npm run db:validate` - passed.
+  - `npm run typecheck` - passed before build.
+  - `npx vitest run tests/ci/smoke-contract.test.ts tests/ci/release-safety-consistency.test.ts` - passed; 2 test files, 8 tests.
+  - `npm run build` - passed.
+  - `npm run typecheck` - passed after build to restore `tsconfig.tsbuildinfo`.
+- Pass/fail: Pass.
+- Proof:
+  - Prisma env check reported the local Prisma/Supabase connection env is consistent, and `prisma validate` reported `prisma/schema.prisma` is valid.
+  - CI smoke and release-safety consistency tests passed, confirming package scripts, CI order, release docs, post-release smoke docs, predeploy safety, and env contract assertions still agree.
+  - `npm run build` completed `npm run clean`, `npm run env:check`, `prisma generate`, and `next build` successfully. The build generated 44 static pages and listed all expected dynamic app/API routes, including auth, admin, billing, workflow, saving-card, evidence, dashboard, Kanban, and settings routes.
+  - Build surfaced existing non-blocking ESLint warnings for unused variables/imports across dashboard, layout, onboarding, saving-card, timeline, analytics, auth, billing presentation, command center, invited-account, jobs, rate-limit, Supabase, and workflow files. These warnings did not fail the build.
+- Manual checks: None. Step 4 was command/build/release-contract proof only.
+- Blockers:
+  - No blocker for Step 4.
+  - `npm run release:verify` was not run because the current local environment is `APP_ENV=development`; `scripts/predeploy-check.ts` intentionally accepts only preview or production deploy environments.
+  - Existing ESLint warnings remain cleanup debt but are not deploy blockers under the current build configuration.
+
+## 2026-06-01T21:34:32Z - Step 5
+
+- Step number: 5
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 5 included the existing Step 2-4 changes, modified Step 5 terminology files, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `lib/constants.ts`
+  - `lib/workflow.ts`
+  - `components/ui/phase-badge.tsx`
+  - `components/dashboard/dashboard-client.tsx`
+  - `components/kanban/kanban-board.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `components/command-center/command-center-client.tsx`
+  - `components/saving-cards/results-tab.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/saving-card-table.tsx`
+  - `components/timeline/timeline-board.tsx`
+  - `app/billing-required/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `app/api/admin/invitations/[invitationId]/route.ts`
+  - `components/admin/invitation-actions.tsx`
+  - `lib/invitations.ts`
+  - `lib/validation.ts`
+  - `scripts/postdeploy-smoke.ts`
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `prisma/seed.ts`
+  - affected component, app, API, CI, workflow, and seed tests
+- Files changed:
+  - `lib/constants.ts`
+  - `lib/validation.ts`
+  - `lib/invitations.ts`
+  - `components/dashboard/dashboard-client.tsx`
+  - `components/kanban/kanban-board.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `components/command-center/command-center-client.tsx`
+  - `components/saving-cards/results-tab.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/saving-card-table.tsx`
+  - `components/timeline/timeline-board.tsx`
+  - `components/admin/invitation-actions.tsx`
+  - `app/billing-required/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `app/api/admin/invitations/[invitationId]/route.ts`
+  - `scripts/postdeploy-smoke.ts`
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `prisma/seed.ts`
+  - `README.md`
+  - `Project_Rules.md`
+  - `Codex_Tasks.md`
+  - `docs/demo-utopiatrax.md`
+  - `tests/ci/postdeploy-smoke-contract.test.ts`
+  - `tests/components/kanban-board.test.ts`
+  - `tests/components/kanban-board.runtime.test.ts`
+  - `tests/components/executive-savings-summary.test.ts`
+  - `tests/app/settings-billing.page.test.ts`
+  - `tests/api/admin-idempotence.test.ts`
+  - `tests/api/admin-member-lifecycle.test.ts`
+  - `tests/api/admin-insights.test.ts`
+  - `tests/perf/query-optimization.test.ts`
+  - `tests/lib/data.workflow.test.ts`
+- Tests run:
+  - `npx vitest run tests/components/kanban-board.test.ts tests/components/kanban-board.runtime.test.ts tests/components/executive-savings-summary.test.ts tests/components/command-center-client.test.ts tests/components/dashboard-client.runtime.test.ts tests/app/settings-billing.page.test.ts tests/app/billing-required.page.test.ts tests/ci/postdeploy-smoke-contract.test.ts tests/api/admin-member-lifecycle.test.ts tests/api/admin-idempotence.test.ts tests/api/admin-insights.test.ts tests/perf/query-optimization.test.ts tests/lib/data.workflow.test.ts tests/scripts/seed-utopiatrax-demo.test.ts` - passed; 14 test files, 86 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `phaseLabels` now maps the existing internal enum keys to customer-facing `Realized` and `Canceled`.
+  - Presentation copy across Kanban, dashboard, executive reports, command center, saving-card views, billing return pages, admin invitation feedback, smoke checks, demo docs, and seed-facing narratives now uses US terminology.
+  - `rg -n "Realised|Cancelled|Canceled|REALISED|CANCELLED" app components lib scripts tests docs README.md Project_Rules.md Codex_Tasks.md prisma` shows `Canceled`/`Realized` in presentation strings and retains `REALISED`/`CANCELLED` only where internal enum/database behavior must remain stable.
+  - `prisma/schema.prisma`, `prisma/init.sql`, and the existing migration still use the original enum values; no Prisma enum or database migration was introduced.
+  - Remaining lowercase `realised`/`cancelled` search hits are code identifiers such as `realisedSavings`, local variables, billing query params like `checkout=cancelled`, or historical readiness-plan wording, not new customer-facing phase labels.
+- Manual checks: None. Step 5 was automated search/type/test proof only.
+- Blockers: None for Step 5.
+
+## 2026-06-02T05:55:24Z - Step 6
+
+- Step number: 6
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 6 retained existing Step 2-5 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `components/layout/app-shell-client.tsx`
+  - `app/(app)/admin/settings/page.tsx`
+  - `components/billing/workspace-billing-settings-card.tsx`
+  - `components/billing/billing-recovery-form.tsx`
+  - `app/settings/billing/page.tsx`
+  - `app/billing/recover/route.ts`
+  - `tests/app/admin-pages.test.ts`
+  - `tests/app/settings-billing.page.test.ts`
+  - `tests/components/app-shell-client.test.ts`
+  - `tests/components/workspace-billing-settings-card.test.ts`
+  - `tests/api/billing-recover.route.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/app/admin-pages.test.ts tests/app/settings-billing.page.test.ts tests/components/app-shell-client.test.ts tests/components/workspace-billing-settings-card.test.ts tests/api/billing-recover.route.test.ts` - passed; 5 test files, 42 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Main sidebar navigation in `components/layout/app-shell-client.tsx` has no Billing item; `tests/components/app-shell-client.test.ts` asserts no `href="/settings/billing"` and no main-nav `Billing` label while keeping Workspace Settings visible.
+  - `app/(app)/admin/settings/page.tsx` gates Workspace Settings through `canManageWorkspaceBilling`; tests verify admins see `Billing & subscription`, `Manage billing`, `View billing details`, and a real `POST` form to `/billing/recover`, while non-admin members are redirected to `/dashboard`.
+  - `components/billing/workspace-billing-settings-card.tsx` keeps the billing status/details card visible, renders `BillingRecoveryForm` only when `canManageBilling` is true, and shows owner/admin guidance instead of recovery actions for members.
+  - `components/billing/billing-recovery-form.tsx` posts to `/billing/recover` with `intent=open_billing_portal`; component/app tests assert it does not post directly to `/api/billing/portal`.
+  - `app/settings/billing/page.tsx` is the billing detail surface. Tests verify admins see billing details, Workspace Settings, Manage Billing, plan selection when applicable, and recovery forms; members see billing details and owner/admin guidance without `/billing/recover` recovery actions.
+  - `app/billing/recover/route.ts` opens the Stripe customer portal for active paid subscriptions and real trialing subscriptions, starts Checkout for workspace-trial/missing/incomplete/expired/placeholder-trial cases, and redirects members to billing guidance. The Step 6 recovery-route tests cover active paid, trialing, placeholder trialing, active workspace trial, blocked member, active member, missing subscription, missing Stripe config, and auth-failure paths.
+  - `rg -n "Billing|/settings/billing|/billing/recover|/api/billing/portal" ...` confirmed the route wiring and test assertions: billing detail links point to `/settings/billing`, recovery forms post to `/billing/recover`, and tests guard against direct `/api/billing/portal` usage in the UI.
+- Manual checks:
+  - Exact route surfaces were verified by source inspection plus server-rendered page/component tests for `/admin/settings`, `/settings/billing`, and `POST /billing/recover`. No live browser session was started because Step 6 required no app-code changes and the auth-dependent route matrix is covered by automated tests.
+- Blockers: None for Step 6.
+
+## 2026-06-02T05:57:23Z - Step 7
+
+- Step number: 7
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 7 retained existing Step 2-6 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `lib/billing/access.ts`
+  - `lib/billing/checkout.ts`
+  - `lib/billing/webhooks.ts`
+  - `lib/billing/config.ts`
+  - `lib/billing/permissions.ts`
+  - `app/api/billing/checkout/route.ts`
+  - `app/api/billing/portal/route.ts`
+  - `app/api/billing/webhook/route.ts`
+  - `app/billing/recover/route.ts`
+  - `app/billing-required/page.tsx`
+  - `tests/api/billing-checkout.test.ts`
+  - `tests/api/billing-recover.route.test.ts`
+  - `tests/api/stripe-webhook.test.ts`
+  - `tests/lib/billing-access.test.ts`
+  - `tests/integration/subscription-gating-regression.test.ts`
+  - `tests/lib/stripe-billing-safety.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/billing-checkout.test.ts tests/api/billing-recover.route.test.ts tests/api/stripe-webhook.test.ts tests/lib/billing-access.test.ts tests/integration/subscription-gating-regression.test.ts tests/lib/stripe-billing-safety.test.ts` - passed; 6 test files, 58 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Access-state tests verify active and real subscription-trial states are unblocked; canceled and unpaid states are blocked; past-due subscriptions are allowed only inside the current-period grace window and blocked after it; workspace trials are active until trial end and blocked after expiration.
+  - Recovery-route tests verify active paid subscriptions and real trialing subscriptions open the Stripe customer portal, while missing subscriptions, workspace trials, trial-expired states, and placeholder trialing subscriptions start Stripe Checkout. Workspace-trial and placeholder-trial Checkout handoff preserves the trial end, capped by the checkout helper's 14-day limit.
+  - Recovery-route tests verify blocked members are redirected to billing guidance, active members are redirected back to billing details with admin guidance, missing Stripe config produces controlled recovery redirects, and missing Stripe customers fall back from portal to Checkout.
+  - Checkout tests verify tenant-scoped customer creation/reuse, configured plan/price validation, trial handoff, local configuration failure, missing Stripe customer replacement, invalid payload handling, and Member rejection even when the user's legacy app role can manage workspaces.
+  - Webhook tests verify signature rejection, duplicate event handling, unsupported event ignoring, checkout session completion syncing through retrieved subscriptions, and subscription created/updated/deleted sync for active, past-due, and canceled Stripe statuses.
+  - Stripe safety tests verify production cannot deploy with test-mode Stripe secret keys, production live-mode catalog IDs pass, preview/development test keys are accepted, required billing env failures are explicit, mixed live/test catalog values fail, and publishable-key mismatches are rejected.
+  - Source inspection confirmed `app/api/billing/checkout/route.ts`, `app/api/billing/portal/route.ts`, and `app/billing/recover/route.ts` all require active organization auth with billing-blocked access allowed only for recovery, and billing management resolves to the Owner/Admin membership boundary through `canManageWorkspaceBilling` or the same membership helper.
+- Manual checks:
+  - Exact billing routes were verified by source inspection plus route-level automated tests for `/api/billing/checkout`, `/api/billing/portal`, `/api/billing/webhook`, `/billing/recover`, and `/billing-required`. No live Stripe/browser manual check was run in this local test environment.
+- Blockers:
+  - No blocker for Step 7.
+  - Live Stripe Checkout, Portal, and webhook delivery still require staging/production Stripe credentials and endpoint smoke testing outside local mocks.
+
+## 2026-06-02T05:59:41Z - Step 8
+
+- Step number: 8
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 8 retained existing Step 2-7 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `lib/auth.ts`
+  - `lib/billing/access.ts`
+  - `app/billing-required/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `app/auth/bootstrap/page.tsx`
+  - `middleware.ts`
+  - `app/(app)/layout.tsx`
+  - `app/api/command-center/route.ts`
+  - `tests/lib/auth-guards.test.ts`
+  - `tests/lib/billing-access.test.ts`
+  - `tests/integration/subscription-gating-regression.test.ts`
+  - `tests/app/billing-required.page.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/lib/auth-guards.test.ts tests/lib/billing-access.test.ts tests/integration/subscription-gating-regression.test.ts tests/app/billing-required.page.test.ts` - passed; 4 test files, 41 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `lib/billing/access.ts` resolves active paid subscriptions and real subscription-trial states as unblocked; derives a 14-day workspace trial from `workspaceTrialEndsAt` or organization creation; blocks expired workspace trials, missing subscriptions, incomplete subscriptions, unpaid subscriptions, canceled subscriptions, and past-due subscriptions after the grace window.
+  - `lib/auth.ts` checks billing against the active organization membership, redirects blocked page access to `/billing-required` by default, returns `AuthGuardError` with `402` and access-state metadata for API-style guards, and allows recovery/detail paths through `allowBillingBlocked`.
+  - `app/(app)/layout.tsx` redirects `BILLING_REQUIRED` bootstrap results to `/billing-required`, while active admin/member sessions render the app shell.
+  - `app/api/command-center/route.ts` uses `requireUser({ redirectTo: null })` and returns structured `402` JSON for blocked API requests, including `billingRequiredPath: "/billing-required"`.
+  - `app/billing-required/page.tsx` redirects restored active access back to `/dashboard`, redirects unauthenticated users to `/login`, redirects missing workspace context to `/onboarding`, and shows deterministic recovery/member guidance for canceled, unpaid, past-due, expired-trial, no-subscription, and unknown billing states.
+  - `app/settings/billing/page.tsx` and `app/billing-required/page.tsx` intentionally call auth helpers with `allowBillingBlocked` only for billing detail/recovery surfaces.
+  - `rg -n "BILLING_REQUIRED|billing-required|workspace_trial|trial_expired|no_subscription|blocked_canceled|blocked_unpaid|blocked_past_due|allowBillingBlocked" ...` confirmed protected-route redirects, API billing errors, billing-detail exceptions, and trial/blocking states are covered by source and tests.
+- Manual checks:
+  - Exact route behavior was verified by source inspection plus server-rendered page, route, guard, and integration tests. No live browser session was started because Step 8 required no app-code changes and the auth-dependent route matrix is covered by automated tests.
+- Blockers: None for Step 8.
+
+## 2026-06-02T06:01:56Z - Step 9
+
+- Step number: 9
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 9 retained existing Step 2-8 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `app/api/auth/login/route.ts`
+  - `app/api/auth/bootstrap/route.ts`
+  - `app/auth/bootstrap/page.tsx`
+  - `app/logout/route.ts`
+  - `app/page.tsx`
+  - `middleware.ts`
+  - `lib/auth.ts`
+  - `lib/auth-navigation.ts`
+  - `tests/api/auth.login.route.test.ts`
+  - `tests/api/auth.bootstrap.route.test.ts`
+  - `tests/app/login.page.test.ts`
+  - `tests/app/logout.route.test.ts`
+  - `tests/app/auth-bootstrap.page.test.ts`
+  - `tests/lib/auth-navigation.test.ts`
+  - `tests/lib/auth-guards.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/auth.login.route.test.ts tests/api/auth.bootstrap.route.test.ts tests/app/login.page.test.ts tests/app/logout.route.test.ts tests/app/auth-bootstrap.page.test.ts tests/lib/auth-navigation.test.ts tests/lib/auth-guards.test.ts` - passed; 7 test files, 43 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/api/auth/login/route.ts` signs in through Supabase, preserves safe invite continuations through `next=/invite/...`, redirects ready users directly to `/dashboard`, routes no-workspace users to `/onboarding`, routes billing-blocked users to `/billing-required`, and returns invalid or unresolved login attempts to `/login` with controlled message codes.
+  - `app/api/auth/bootstrap/route.ts` returns deterministic JSON outcomes: `401` for unauthenticated sessions, `403` for onboarding/no-active-membership states, `402` with billing metadata and `billingRequiredPath` for billing-blocked workspaces, `200` with the repaired session user when bootstrap succeeds, and `500` JSON for unexpected bootstrap failures.
+  - `lib/auth-navigation.ts` allows only internal `/invite/...` continuation paths, rejects external or protocol-relative targets, maps bootstrap outcomes to `/dashboard`, `/onboarding`, or `/billing-required`, and bounds post-login bootstrap retries to transient unauthenticated responses only.
+  - `lib/auth.ts` resolves users from active organization membership rather than stale auth metadata, checks billing against the active organization only, retries transient Prisma pool saturation during auth lookup, repairs missing/stale `activeOrganizationId`, continues safely when metadata sync or persistence repair fails, rejects ambiguous email-to-user matches, and returns `BILLING_REQUIRED` during bootstrap when the active workspace is blocked.
+  - `app/logout/route.ts` supports both GET and POST logout, calls Supabase `signOut`, and redirects to `/login`.
+  - `app/auth/bootstrap/page.tsx` passes sanitized invite continuation into `PostLoginTransition`, and `app/login/page.tsx` renders the login form without server-side redirect decisions.
+  - `rg -n "auth/login|auth/bootstrap|logout|buildLoginHref|resolveInviteNextPath|resolvePostLogin|bootstrapCurrentUser|bootstrapCurrentUserFromAuthUser|activeOrganizationId|BILLING_REQUIRED|ORGANIZATION_ACCESS_REQUIRED|UNAUTHENTICATED|signin-retry|invalid-credentials" ...` confirmed the auth routing, bootstrap codes, safe continuation helpers, active-organization repair paths, and tests are wired together.
+- Manual checks:
+  - Exact route behavior was verified by source inspection plus route, page, helper, and guard tests. No live browser session was started because Step 9 required no app-code changes and the auth-dependent flow matrix is covered by automated tests.
+- Blockers: None for Step 9.
+
+## 2026-06-02T14:56:13Z - Step 10
+
+- Step number: 10
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 10 retained existing Step 2-9 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `app/api/invitations/route.ts`
+  - `app/api/admin/invitations/[invitationId]/resend/route.ts`
+  - `app/api/invitations/[token]/route.ts`
+  - `app/api/invitations/[token]/accept/route.ts`
+  - `app/api/invitations/[token]/complete/route.ts`
+  - `app/invite/[token]/page.tsx`
+  - `components/invitations/invitation-flow.tsx`
+  - `lib/invitations.ts`
+  - `lib/invited-account.ts`
+  - `lib/auth-email.ts`
+  - `lib/jobs.ts`
+  - `tests/api/invitations.test.ts`
+  - `tests/api/invitation-acceptance.test.ts`
+  - `tests/api/invitation-account-setup.test.ts`
+  - `tests/app/invite.page.test.ts`
+  - `tests/lib/jobs.test.ts`
+  - `tests/api/admin-member-lifecycle.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/invitations.test.ts tests/api/invitation-acceptance.test.ts tests/api/invitation-account-setup.test.ts tests/app/invite.page.test.ts tests/lib/jobs.test.ts` - passed; 5 test files, 21 tests.
+  - `npx vitest run tests/api/admin-member-lifecycle.test.ts` - passed; 1 test file, 6 tests. This was supplemental proof for the resend path, which is covered outside the exact Step 10 suite.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/api/invitations/route.ts` requires active organization auth, enforces invite create rate limits and `INVITATIONS_SENT` usage quota, validates normalized email and role input, creates invitations through `createOrganizationInvitation` with async delivery, and records usage/audit/telemetry. Tests verify queued delivery, no inline Supabase email call, audit payloads, member rejection, token reads, and queue-unavailable creation success.
+  - `lib/invitations.ts` keeps invitation create/resend/revoke/accept tenant-scoped, checks organization role permissions before management actions, blocks active-member duplicates, expires stale pending invites, rejects accepted/revoked/expired states with clear messages, and treats already accepted invitations with an existing membership as idempotent success.
+  - `app/api/admin/invitations/[invitationId]/resend/route.ts` validates the invitation id, rate limits admin mutations, queues resend delivery asynchronously, returns a clear queue-unavailable message when scheduling fails, and surfaces `InvitationError` rejections as controlled JSON. The supplemental admin lifecycle tests verify pending resend queueing, audit details, and queue-unavailable resend success.
+  - `app/api/invitations/[token]/accept/route.ts` and `acceptOrganizationInvitation` require the signed-in email to match the invitation email, assign the invitation role to the membership, repair the user's active organization when missing, update Supabase auth metadata, notify the inviter, and reject wrong-account and expired attempts. Tests cover matching acceptance, wrong-account rejection, idempotent accepted retry, and expired rejection.
+  - `app/api/invitations/[token]/complete/route.ts` and `lib/invited-account.ts` validate setup input, reject authenticated email mismatches, refuse to reset an existing auth account from a bare invite link, create the Supabase/workspace user for a new invitee, complete acceptance, and return the accepted invitation, membership, user id, email, and active organization id. Tests cover new account setup, wrong-account setup, idempotent setup retry, and existing-auth-account conflict.
+  - `app/invite/[token]/page.tsx` defaults bare invite links into setup mode, builds a safe login continuation back to `/invite/{token}?mode=accept`, and shows terminal-state guidance for accepted, revoked, and expired invitations. Page tests verify setup mode and login continuation wiring.
+  - `components/invitations/invitation-flow.tsx` presents separate setup, accept, unauthenticated, wrong-account, completion, and sign-out states so invitees can recover from the common wrong-session path without mutating the wrong account.
+  - `lib/auth-email.ts` queues invitation delivery with idempotency, sends Supabase hosted invites for new auth users, sends magic-link accept emails for existing auth users, avoids generated-link fallback in background jobs, and skips non-pending/not-found invitation jobs safely. `lib/jobs.ts` tests verify idempotent tenant-scoped enqueue, due-job reservation, retry scheduling, completion, manual retry, and competing-worker reservation behavior.
+- Manual checks:
+  - Exact invite flows were verified by source inspection plus route/page/job tests. No live browser session was started because the email and auth-provider paths are mocked locally and the invite matrix is covered by automated tests.
+- Blockers: None for Step 10.
+
+## 2026-06-02T14:59:44Z - Step 11
+
+- Step number: 11
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 11 retained existing Step 2-10 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `app/forgot-password/page.tsx`
+  - `app/reset-password/page.tsx`
+  - `app/forgot-password/loading.tsx`
+  - `components/auth/forgot-password-form.tsx`
+  - `components/auth/reset-password-form.tsx`
+  - `components/profile/change-password-form.tsx`
+  - `app/api/auth/forgot-password/route.ts`
+  - `app/api/auth/reset-password/route.ts`
+  - `app/api/auth/change-password/route.ts`
+  - `lib/passwords.ts`
+  - `lib/auth-email.ts`
+  - `lib/jobs.ts`
+  - `scripts/run-job-worker.ts`
+  - `tests/api/password-recovery.test.ts`
+  - `tests/api/change-password.test.ts`
+  - `tests/components/auth-recovery-and-loading-ui.test.ts`
+  - `tests/api/async-email-telemetry.test.ts`
+  - `tests/api/rate-limit.test.ts`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/password-recovery.test.ts tests/api/change-password.test.ts tests/components/auth-recovery-and-loading-ui.test.ts` - passed; 3 test files, 12 tests.
+  - `npx vitest run tests/api/async-email-telemetry.test.ts tests/api/rate-limit.test.ts` - passed; 2 test files, 8 tests. This was supplemental proof for async recovery delivery and public forgot-password rate limiting.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/api/auth/forgot-password/route.ts` validates email input, applies the `forgotPassword` rate-limit policy before accepting requests, builds a `/reset-password` redirect through `buildAppUrl`, and queues delivery through `queuePasswordRecoveryEmailJobSafely`. Required tests verify queued delivery, idempotent job payloads, no inline Supabase email call, and queue-unavailable success; supplemental rate-limit tests verify the configured IP limit returns a consistent `429`.
+  - `lib/auth-email.ts` queues `auth_email.password_recovery_delivery` jobs with normalized email, redirect URL, and idempotency keys; `processPasswordRecoveryEmailJob` performs the hosted Supabase `resetPasswordForEmail` send out of band and records completion telemetry. `scripts/run-job-worker.ts` registers the password-recovery handler alongside invitation delivery.
+  - `app/api/auth/reset-password/route.ts` rate limits reset submissions, validates the shared password policy and confirmation, requires an active Supabase recovery session through `auth.getUser`, returns a clear `401` for missing/expired recovery sessions, and only then calls `auth.updateUser`. Required tests verify a valid recovery session updates the password.
+  - `app/api/auth/change-password/route.ts` requires an authenticated app user, rate limits submissions, validates the same shared password policy, obtains the Supabase auth user, verifies the current password with `signInWithPassword`, rejects wrong current passwords without updating, and updates the password only after reauthentication. Required tests cover success, wrong current password, weak password, mismatched confirmation, and unauthenticated callers.
+  - `lib/passwords.ts` centralizes the 12-character, uppercase, lowercase, and numeric password policy. `components/auth/reset-password-form.tsx` and `components/profile/change-password-form.tsx` both import the same helpers and `MIN_PASSWORD_LENGTH`, so UI copy and client validation match server validation.
+  - `components/auth/forgot-password-form.tsx` pre-fills email from the query string, keeps the sign-in return link email-scoped, renders queue-unavailable/development-link success states, and avoids account-existence disclosure by showing the same queued-success guidance. Component tests verify the prefilled form, sign-in return link, forgot-password loading fallback, and reset preparation state.
+  - `components/auth/reset-password-form.tsx` waits for the browser Supabase recovery session, shows a preparation state while session sync is pending, shows an invalid/expired-link recovery path when no email is available, and signs out after a successful reset before sending the user back to login with `password-reset-complete`.
+- Manual checks:
+  - Exact password recovery/change-password behavior was verified by source inspection plus route, component, rate-limit, and async-email tests. No live Supabase email/manual browser check was run in this local test environment.
+- Blockers: None for Step 11.
+
+## 2026-06-02T15:36:57Z - Step 12
+
+- Step number: 12
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 12 retained existing Step 2-11 changes, modified `tsconfig.tsbuildinfo`, and untracked readiness docs.
+- Files inspected:
+  - `app/error.tsx`
+  - `app/global-error.tsx`
+  - `app/forgot-password/loading.tsx`
+  - `app/(app)/admin/jobs/loading.tsx`
+  - `app/(app)/admin/members/loading.tsx`
+  - `app/(app)/admin/settings/loading.tsx`
+  - `app/(app)/admin/insights/loading.tsx`
+  - `app/(app)/dashboard/page.tsx`
+  - `components/dashboard/dashboard-client.tsx`
+  - `app/(app)/command-center/page.tsx`
+  - `components/command-center/command-center-client.tsx`
+  - `app/(app)/kanban/page.tsx`
+  - `components/kanban/kanban-board.tsx`
+  - `app/(app)/open-actions/page.tsx`
+  - `components/open-actions/open-actions-list.tsx`
+  - `app/(app)/reports/page.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `components/reports/import-export-panel.tsx`
+  - `components/saving-cards/evidence-uploader.tsx`
+  - `app/onboarding/page.tsx`
+  - `app/billing-required/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `components/billing/workspace-billing-settings-card.tsx`
+  - `components/auth/forgot-password-form.tsx`
+  - `components/auth/reset-password-form.tsx`
+- Files changed:
+  - `components/reports/import-export-panel.tsx`
+  - `tests/components/import-export-panel.runtime.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/import-export-panel.runtime.test.ts` - passed; 1 test file, 2 tests.
+  - `npx vitest run tests/app/dashboard.page.test.ts tests/components/dashboard-client.test.ts tests/components/dashboard-client.runtime.test.ts tests/app/command-center.page.test.ts tests/components/command-center-client.test.ts tests/app/kanban.page.test.ts tests/components/kanban-board.test.ts tests/components/kanban-board.runtime.test.ts tests/app/open-actions.page.test.ts tests/app/reports.page.test.ts tests/components/executive-savings-summary.test.ts tests/components/import-export-panel.test.ts tests/components/import-export-panel.runtime.test.ts tests/app/onboarding.page.test.ts tests/app/billing-required.page.test.ts tests/app/settings-billing.page.test.ts tests/components/workspace-billing-settings-card.test.ts tests/components/auth-recovery-and-loading-ui.test.ts tests/api/import-and-evidence.route.test.ts tests/api/export.route.test.ts` - passed; 20 test files, 107 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/error.tsx` and `app/global-error.tsx` capture client-side route/root failures, render clear retry/navigation actions, and expose an error digest when available instead of leaving a blank page.
+  - Route-level loading files exist for password recovery and high-value admin surfaces: jobs, members, settings, and insights. The loading UI preserves page labels and expected panels so users see recognizable progress states.
+  - Dashboard, command center, Kanban, reports, open actions, and onboarding pages catch trust-critical loader failures, capture telemetry with degraded-render metadata, pass safe empty data into the client surface, and render actionable fallback copy instead of throwing raw provider errors.
+  - Dashboard, command center, Kanban, executive reports, open actions, evidence upload, billing-required, settings billing, and auth recovery components all render explicit empty, unavailable, blocked, invalid-link, upload-error, or partial-data states with next actions such as refresh, create saving card, review setup, request a new reset link, or open billing recovery.
+  - `components/reports/import-export-panel.tsx` now catches network/provider failures for both saving-card workbook import and master-data import. Those failures render inline error messages in the existing status areas instead of escaping the form action.
+  - `tests/components/import-export-panel.runtime.test.ts` drives both import form actions with a rejected `fetch` and verifies the new inline outage messages are shown.
+  - The broad Step 12 suite verifies safe degraded renders for dashboard, command center, Kanban, reports, onboarding, billing, auth recovery, import/export, evidence API behavior, and workflow empty/loading states.
+- Manual checks:
+  - Trust-critical fallback behavior was verified by source inspection plus route, component, runtime, and API tests. No live browser session was started because this step focused on renderable fallback states and local provider-outage simulations.
+- Blockers: None for Step 12.
+
+## 2026-06-02T15:50:22Z - Step 13
+
+- Step number: 13
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 13 retained existing Step 2-12 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `app/onboarding/page.tsx`
+  - `components/onboarding/first-value-launchpad.tsx`
+  - `components/onboarding/workspace-setup-guide.tsx`
+  - `app/(app)/saving-cards/new/page.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/creatable-master-data-field.tsx`
+  - `app/api/saving-cards/route.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `lib/saving-cards/shared.ts`
+  - `lib/validation.ts`
+  - `tests/app/onboarding.page.test.ts`
+  - `tests/integration/first-value-onboarding.test.ts`
+  - `tests/app/saving-cards-new.page.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+- Files changed:
+  - `components/saving-cards/saving-card-form.tsx`
+  - `tests/components/saving-card-form.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/app/onboarding.page.test.ts tests/integration/first-value-onboarding.test.ts tests/app/saving-cards-new.page.test.ts tests/components/saving-card-form.test.ts` - passed; 4 test files, 13 tests.
+  - `npx vitest run tests/lib/data.saving-cards.test.ts` - passed; 1 test file, 8 tests. This was supplemental proof for one-save inline master-data resolution and savings calculation.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/onboarding/page.tsx` routes users without an active workspace into onboarding, redirects billing-blocked users to `/billing-required`, keeps onboarding available when readiness loading fails, and renders `WorkspaceSetupGuide` with membership role and readiness context once the workspace exists.
+  - `components/onboarding/workspace-setup-guide.tsx` orients users around first value, shows required first-value checks separately from recommended reporting/setup gaps, and keeps `Create first saving card` visible from the guided setup even when master data or role coverage is incomplete.
+  - `components/onboarding/first-value-launchpad.tsx` gives the direct primary path to `/saving-cards/new`, keeps sample data clearly framed as demo/training, and leaves readiness review/team-invite paths secondary.
+  - `app/(app)/saving-cards/new/page.tsx` renders the form even when readiness cannot load, shows that missing buyers, suppliers, materials, categories, plants, and business units can be created inline, and avoids sending first-card users back to settings before they can create value.
+  - `components/saving-cards/saving-card-form.tsx` uses a three-step create flow: record definition and ownership/scope, commercial baseline and financial assumptions, then timeline/stakeholders/evidence. Required master-data fields can be selected or typed inline, finance-critical inputs show live calculated savings, and evidence is available after the card exists so it does not block first value.
+  - The Description field now matches backend requirements: it is no longer labeled optional and includes helper copy, "Required. Add a short business case so reviewers understand the initiative." The component test asserts this copy.
+  - `components/saving-cards/creatable-master-data-field.tsx` lets users create the first missing record in place, with explicit "Create first record" and "Ready to create on save" states.
+  - `app/api/saving-cards/route.ts` enforces auth, rate limits, saving-card quota, and schema validation before creating the card. `lib/saving-cards/shared.ts` resolves or creates supplier, material, category, plant, business unit, and buyer records scoped to the active organization inside the same transaction as `createSavingCard`.
+  - `tests/lib/data.saving-cards.test.ts` verifies calculated savings, buyer/master-data resolution, tenant-scoped card creation, initial workflow phase enforcement, and dashboard/readiness cache invalidation after creation or bulk import.
+- Timing assumptions:
+  - Under-10-minute first-card path assumes a pilot user starts from an existing workspace, clicks `Create first saving card`, enters one title, a short description, saving type, four ownership/scope names, supplier and material names, baseline price, new price, annual volume, currency/FX default, dates, and submits. Bulk master-data upload, role setup, evidence upload, and reporting cleanup are intentionally optional or deferred.
+- Manual checks:
+  - First-value flow was verified by source inspection plus server-rendered route/component tests and the saving-card data-flow unit tests. No live browser timing run was started because the current proof target is the coded route/form flow and local automated coverage.
+- Blockers: None for Step 13.
+
+## 2026-06-02T16:00:34Z - Step 14
+
+- Step number: 14
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 14 retained existing Step 2-13 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `components/saving-cards/creatable-master-data-field.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/onboarding/master-data-starter-table.tsx`
+  - `components/onboarding/master-data-upload-step.tsx`
+  - `lib/onboarding/master-data-config.ts`
+  - `app/api/onboarding/master-data/route.ts`
+  - `components/admin/workspace-settings-form.tsx`
+  - `app/(app)/admin/settings/page.tsx`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/api/onboarding-master-data.route.test.ts`
+  - `tests/components/master-data-upload-step.test.ts`
+  - `tests/components/master-data-upload-step.runtime.test.ts`
+  - `tests/components/workspace-settings-form.test.ts`
+- Files changed:
+  - `components/saving-cards/saving-card-form.tsx`
+  - `tests/components/saving-card-form.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/saving-card-form.test.ts tests/api/onboarding-master-data.route.test.ts tests/components/master-data-upload-step.test.ts` - passed; 3 test files, 10 tests.
+  - `npx vitest run tests/components/master-data-upload-step.runtime.test.ts tests/components/workspace-settings-form.test.ts` - passed; 2 test files, 4 tests. This was supplemental proof for upload behavior and the Workspace Settings return-to-onboarding path.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `components/saving-cards/creatable-master-data-field.tsx` supports both "Use existing" and inline creation. Empty lists show "Create first record", typed names move into a "Ready to create on save" state, and existing lists still keep "Create inline" visible.
+  - `components/saving-cards/saving-card-form.tsx` uses `CreatableMasterDataField` for category, buyer, business unit, plant, current supplier, and current material, so all six Step 14 master-data collections can be created without leaving the first-card workflow.
+  - The first-card setup callout now names every empty inline-creatable collection: buyers, suppliers, materials, categories, plants, and business units. The component test asserts this expanded copy plus the plant and business-unit inline creation prompts.
+  - `lib/saving-cards/shared.ts` resolves or creates supplier, material, category, plant, business unit, and buyer records inside the same organization-scoped transaction used to create or update the saving card. New plants default to region `Global`; new categories default to annual target `0`; new buyers default to `email: null`.
+  - `components/onboarding/master-data-upload-step.tsx` keeps template download, field guidance, examples, result summary, and manual starter entry available. Upload is connected for buyers, suppliers, materials, and categories; plant and business-unit uploads clearly say upload is not connected yet while leaving manual entry as the live path.
+  - `components/onboarding/master-data-starter-table.tsx` posts starter rows to `/api/onboarding/master-data`, ignores empty rows, reports created/skipped/failed rows, and refreshes readiness after new records are saved.
+  - `app/api/onboarding/master-data/route.ts` rate-limits starter saves, restricts them to owners/admins or legacy workspace managers, tenant-scopes every create, skips duplicates, and supports buyers, suppliers, materials, categories, plants, and business units with row-level validation.
+  - `components/admin/workspace-settings-form.tsx` includes `Return to onboarding wizard`, and the supplemental settings test verifies `/onboarding` remains reachable from Workspace Settings.
+- Manual checks:
+  - Non-blocking master-data behavior was verified by source inspection plus route/component/runtime tests. No live browser session was started because the proof target is the coded inline creation, starter-entry, upload/template, and settings-return paths.
+- Blockers: None for Step 14.
+
+## 2026-06-02T17:19:20Z - Step 15
+
+- Step number: 15
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 15 retained existing Step 2-14 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `components/saving-cards/results-tab.tsx`
+  - `lib/validation.ts`
+  - `lib/calculations.ts`
+  - `lib/saving-cards/shared.ts`
+  - `prisma/schema.prisma`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `tests/api/saving-cards.route.test.ts`
+- Files changed:
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `lib/validation.ts`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `tests/api/saving-cards.route.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/saving-card-form.test.ts tests/lib/data.saving-cards.test.ts tests/api/saving-cards.route.test.ts` - passed; 3 test files, 27 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `components/saving-cards/saving-card-form.tsx` now prompts saving type with hard-savings and cost-avoidance examples while keeping the existing free-text schema. The component test asserts the new hard-savings and cost-avoidance guidance.
+  - Financial assumption inputs now align with API rules: baseline price and annual volume require values greater than zero, new price requires zero or greater, and FX rate requires greater than zero. Frequency helper copy explains one-time, recurring, and multi-year value cadence.
+  - Impact dates are no longer presented as optional in the form. Helper copy now explains finance recognition start/end dates and their relationship to forecast and actual tracking.
+  - `lib/validation.ts` rejects non-positive baseline price, annual volume, and FX rate, and rejects negative new price before route handlers or data mutations persist a saving card.
+  - `tests/api/saving-cards.route.test.ts` verifies 422 responses and user-facing messages for zero baseline price, negative new price, zero annual volume, and zero FX rate.
+  - `tests/lib/data.saving-cards.test.ts` verifies invalid commercial assumptions are rejected before `savingCard.create` and before readiness/dashboard cache invalidation.
+  - `components/saving-cards/detail-workspace.tsx` now explains that finance validation compares saving type, frequency, baseline/new price, annual volume, currency, FX, impact window, supporting evidence, and forecast-versus-actual results.
+  - No Prisma schema migration was needed. Existing fields cover the Step 15 commercial case: `savingType`, `frequency`, baseline/new price, annual volume, currency/FX, impact dates, calculated savings, evidence, and forecast/actual consumption.
+- Manual checks:
+  - Saving-card commercial realism was verified by source inspection plus route/component/data tests. No live browser session was started because this step targeted validation and coded presentation copy rather than interactive layout changes.
+- Blockers: None for Step 15.
+
+## 2026-06-02T17:24:35Z - Retest Checkpoint Through Step 15
+
+- Step number: Retest checkpoint for Steps 1-15
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-15 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `package.json`
+  - `docs/readiness-proof-log.md`
+  - `docs/readiness-40-step-plan.md`
+- Files changed:
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npm run env:check` - passed.
+  - `npm run db:validate` - passed.
+  - `npm test` - passed; 124 test files, 608 tests.
+  - `npm run typecheck` - passed before build.
+  - `npm run build` - passed.
+  - `npm run typecheck` - passed after build.
+- Pass/fail: Pass.
+- Proof:
+  - Full Vitest coverage passed after Steps 1-15, including auth, billing, tenant isolation, invitations, password recovery, onboarding, import/export/evidence, saving cards, workflow, dashboard, command center, reports, admin, docs, CI, database model, and integration suites.
+  - Environment and Prisma validation passed against the local `.env` and `prisma/schema.prisma`.
+  - Production build completed successfully, generated Prisma Client, compiled Next.js, checked lint/types, and generated 44 static pages.
+  - Build retained existing non-blocking ESLint warnings for unused variables/imports; these warnings were already known from Step 4 and did not fail the build.
+- Manual checks:
+  - This checkpoint was automated command proof only. No live browser/provider smoke was run.
+- Blockers: None for the Steps 1-15 retest checkpoint.
+
+## 2026-06-02T17:26:43Z - Step 16
+
+- Step number: 16
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 16 retained existing Step 2-15 changes, the Steps 1-15 retest checkpoint log, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `components/saving-cards/evidence-uploader.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `app/api/upload/evidence/route.ts`
+  - `app/api/evidence/[id]/download/route.ts`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/api/storage-tenant-access.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+- Files changed:
+  - `components/saving-cards/evidence-uploader.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `tests/components/saving-card-form.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/import-and-evidence.route.test.ts tests/api/storage-tenant-access.test.ts tests/components/saving-card-form.test.ts` - passed; 3 test files, 31 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `components/saving-cards/saving-card-form.tsx` now tells first-card users to save the card first, then attach quote, contract or purchase-order, invoice, and calculation evidence before finance validation. The always-visible decision snapshot repeats the guidance, and the component test asserts it.
+  - `components/saving-cards/evidence-uploader.tsx` now names the evidence finance expects: supplier quote or bid for new price, contract or purchase order for baseline, invoices or actual-consumption proof when value is realized, and the calculation workbook used for savings review.
+  - `components/saving-cards/detail-workspace.tsx` now frames the evidence tab around quotes, contracts, invoices, calculation workbooks, sourcing negotiations, and finance validation. Empty-state copy names the same evidence set.
+  - `app/api/upload/evidence/route.ts` was inspected and left unchanged. It already validates file names, extensions, content types, size, file count, tenant-scoped card access, upload quota, storage writes, evidence records, audit logging, and usage events.
+  - `app/api/evidence/[id]/download/route.ts` was inspected and left unchanged. It already tenant-scopes evidence access, verifies the managed storage namespace before creating signed URLs, records download audit logs, and returns controlled not-found responses for inaccessible or manipulated storage paths.
+  - Required API/storage tests passed, proving evidence upload/download behavior and tenant storage access were unchanged by the guidance update.
+- Manual checks:
+  - Evidence activation behavior was verified by source inspection plus API/storage/form tests. No live browser or provider storage smoke was run in this local environment.
+- Blockers: None for Step 16.
+
+## 2026-06-02T17:31:00Z - Step 17
+
+- Step number: 17
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 17 retained existing Step 2-16 changes, the Steps 1-15 retest checkpoint log, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `lib/workspace/readiness.ts`
+  - `lib/first-value.ts`
+  - `components/onboarding/workspace-setup-guide.tsx`
+  - `components/admin/admin-activation-signals.tsx`
+  - `app/(app)/admin/page.tsx`
+  - `app/(app)/admin/insights/page.tsx`
+  - `lib/admin-insights.ts`
+  - `components/onboarding/first-value-launchpad.tsx`
+  - `tests/app/onboarding.page.test.ts`
+  - `tests/components/first-value-launchpad.test.ts`
+  - `tests/api/sample-data-telemetry.test.ts`
+  - `tests/app/admin-insights.page.test.ts`
+  - `tests/components/admin-insights-ui.test.ts`
+- Files changed:
+  - `components/onboarding/workspace-setup-guide.tsx`
+  - `components/admin/admin-activation-signals.tsx`
+  - `tests/app/onboarding.page.test.ts`
+  - `tests/components/admin-insights-ui.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/app/onboarding.page.test.ts tests/components/first-value-launchpad.test.ts tests/api/sample-data-telemetry.test.ts tests/app/admin-insights.page.test.ts tests/components/admin-insights-ui.test.ts` - passed; 5 test files, 14 tests. This includes the required Step 17 suite plus supplemental real component coverage for admin activation signal copy.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `lib/workspace/readiness.ts` already reports all six core master-data labels, workflow coverage, first saving-card activity, missing core setup, and missing workflow coverage using the active tenant scope.
+  - `lib/first-value.ts` keeps sample data limited to empty workspaces and returns created saving-card counts for tenant-scoped activation telemetry. `tests/api/sample-data-telemetry.test.ts` verifies `workspace.sample_data_loaded` metadata.
+  - `components/onboarding/workspace-setup-guide.tsx` continues to separate first-value required checks from optional reporting/setup gaps. The evidence check now says evidence can be attached after a card exists, instead of implying evidence is already attached. The evidence checklist now names supplier quote or bid, contract or purchase order, invoice or actual proof, and calculation workbook.
+  - `tests/app/onboarding.page.test.ts` verifies the readiness guide shows first-value progress, required blockers, optional gaps that do not block first value, sample-data guidance, dashboard/report/Kanban paths, and the updated evidence activation copy.
+  - `components/admin/admin-activation-signals.tsx` now includes an explicit `Activation Progress` row. Before first value, admins see `First value pending` and a next action to create a real saving card while keeping sample data for demo/training. After first value, admins see the live saving-card count and guidance to shift toward evidence, workflow, and portfolio review.
+  - `tests/components/admin-insights-ui.test.ts` verifies both pending and reached activation signal states. `tests/app/admin-insights.page.test.ts` verifies `/admin/insights` remains tenant-scoped and admin-only.
+- Manual checks:
+  - Readiness and activation behavior was verified by source inspection plus route/component/API tests. No live browser session was started because this step targeted coded readiness copy, activation metrics, and admin signal rendering.
+- Blockers: None for Step 17.
+
+## 2026-06-02T17:34:10Z - Step 18
+
+- Step number: 18
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 18 retained existing Step 2-17 changes, the Steps 1-15 retest checkpoint log, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `app/api/import/route.ts`
+  - `components/reports/import-export-panel.tsx`
+  - `components/onboarding/master-data-upload-step.tsx`
+  - `app/api/onboarding/master-data-template/[entity]/route.ts`
+  - `lib/onboarding/master-data-config.ts`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/components/import-export-panel.test.ts`
+  - `tests/api/onboarding-master-data-template.route.test.ts`
+- Files changed:
+  - `components/reports/import-export-panel.tsx`
+  - `tests/components/import-export-panel.test.ts`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/import-and-evidence.route.test.ts tests/components/import-export-panel.test.ts tests/api/onboarding-master-data-template.route.test.ts` - passed; 3 test files, 30 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `app/api/import/route.ts` already tenant-scopes imports through `requireOrganization`, owner/admin or legacy workspace-manager permission checks, active organization id, and per-import rate-limit buckets. The route was inspected and left behaviorally unchanged except for additional test coverage.
+  - The category import mismatch was fixed in `components/reports/import-export-panel.tsx`: Core Master Data Import now offers buyers, suppliers, materials, and categories, matching `MASTER_DATA_IMPORT_ENTITY_KEYS`, `/api/import`, and onboarding templates.
+  - Reports import guidance now documents the current saving-card workbook limitation: saving-card imports validate rows before writing and report the first blocking row. The remaining backlog is to return a full row-by-row saving-card import result like master-data import already does.
+  - Master-data import guidance now states row results appear after upload so teams can correct skipped or failed lines without guessing which records were created.
+  - `tests/api/import-and-evidence.route.test.ts` now verifies category import creates an organization-scoped category with `annualTarget: 0`, skips existing names, and skips duplicate names within the same workbook.
+  - `tests/components/import-export-panel.test.ts` verifies the category option is visible and the saving-card import limitation/master-data row-result guidance is present.
+  - `tests/api/onboarding-master-data-template.route.test.ts` passed, confirming template download behavior remains stable for onboarding entities.
+- Manual checks:
+  - Import-assisted activation behavior was verified by source inspection plus route/component/template tests. No live browser or provider storage smoke was run in this local environment.
+- Blockers:
+  - No blocker for Step 18.
+  - Backlog: saving-card workbook imports still return the first blocking row only. Master-data imports already provide row-by-row created/skipped/failed results.
+
+## 2026-06-02T17:41:23Z - Step 19
+
+- Step number: 19
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 19 retained existing Step 2-18 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `lib/workflow.ts`
+  - `lib/workflow/service.ts`
+  - `app/api/phase-change-request/route.ts`
+  - `app/api/approve-phase-change/route.ts`
+  - `app/api/saving-cards/[id]/route.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `components/saving-cards/approval-panel.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `components/kanban/kanban-board.tsx`
+  - `components/open-actions/open-actions-list.tsx`
+  - `tests/lib/workflow-definition.test.ts`
+  - `tests/api/workflow.route.test.ts`
+  - `tests/lib/data.workflow.test.ts`
+  - `tests/components/kanban-board.test.ts`
+  - `tests/app/open-actions.page.test.ts`
+  - `tests/api/saving-cards.route.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+- Files changed:
+  - `components/saving-cards/saving-card-form.tsx`
+  - `tests/components/saving-card-form.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/lib/workflow-definition.test.ts tests/api/workflow.route.test.ts tests/lib/data.workflow.test.ts tests/components/kanban-board.test.ts tests/app/open-actions.page.test.ts tests/components/saving-card-form.test.ts tests/api/saving-cards.route.test.ts tests/lib/data.saving-cards.test.ts` - passed; 8 test files, 72 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `lib/workflow.ts` defines the canonical sequence as Idea -> Validated -> Realized -> Achieved, with Canceled allowed only from existing phases and requiring a reason.
+  - `lib/workflow/service.ts` rejects non-sequential phase jumps, duplicate pending requests, cancellation without reason, and direct legacy approvals. It only mutates `savingCard.phase` inside final approval completion.
+  - `/api/phase-change-request` and `/api/approve-phase-change` are the active workflow routes. `/api/saving-cards/[id]` rejects direct phase PATCH requests and direct approve actions with 409 responses.
+  - `components/kanban/kanban-board.tsx` creates phase-change requests through `/api/phase-change-request`, blocks invalid moves, routes canceled moves through an explicit reason prompt, and keeps pending cards in their current phase until approval completes.
+  - `components/open-actions/open-actions-list.tsx` approves and rejects assigned workflow actions only through `/api/approve-phase-change`.
+  - `components/saving-cards/saving-card-form.tsx` no longer exposes an editable phase dropdown. It now renders workflow phase as read-only status while preserving the current phase in the save payload, so the form no longer presents a misleading direct mutation path.
+  - Required Step 19 tests verified workflow definitions, workflow API status mapping, data-layer request/approval behavior, Kanban pending behavior, and open-actions mapping. Supplemental saving-card route/data/form tests verified direct phase updates and direct approve actions stay blocked.
+- Manual checks:
+  - Source inspection plus focused route/service/component tests covered the workflow control paths. No live browser session was started because this step targeted workflow rules, API behavior, and render-time UI affordances.
+- Blockers: None for Step 19.
+
+## 2026-06-02T20:01:46Z - Step 20
+
+- Step number: 20
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 20 retained existing Step 2-19 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `lib/workflow.ts`
+  - `lib/permissions.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `components/saving-cards/results-tab.tsx`
+  - `components/saving-cards/approval-panel.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `tests/lib/workflow-definition.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `tests/api/saving-cards.route.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/api/tenant-scope-mutations.test.ts`
+- Files changed:
+  - `lib/permissions.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `components/saving-cards/approval-panel.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `tests/lib/workflow-definition.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/api/tenant-scope-mutations.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/lib/workflow-definition.test.ts tests/lib/data.saving-cards.test.ts tests/api/saving-cards.route.test.ts tests/components/saving-card-form.test.ts tests/api/tenant-scope-mutations.test.ts` - passed; 5 test files, 47 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - `lib/workflow.ts` keeps finance lock eligibility limited to the Validated phase. `setFinanceLock` still rejects lock attempts outside Validated with `Finance lock can only be enabled for validated savings.`
+  - `lib/permissions.ts` now lists the complete finance-controlled field bundle: baseline price, new price, annual volume, currency, FX rate, calculated savings, calculated savings USD, impact start date, and impact end date.
+  - `lib/saving-cards/mutations.ts` preserves the full finance-controlled bundle on edit attempts while `financeLocked` is true. Previously locked edits preserved raw price/volume/currency/date fields but still accepted payload FX and recalculated savings.
+  - Selected alternative supplier/material scenario application now fails on finance-locked cards before rewriting new price, currency, FX, or calculated savings. The user must remove the finance lock before changing validated financial assumptions.
+  - `components/saving-cards/saving-card-form.tsx` now disables finance-controlled inputs in the edit UI when the finance lock is active, while non-finance record fields remain editable.
+  - `components/saving-cards/approval-panel.tsx` now explains exactly which fields the finance lock protects.
+  - Required Step 20 tests verify finance lock phase eligibility, locked-field metadata, route status behavior, data-layer preservation of locked financial fields, and locked-form render behavior. Supplemental tenant mutation tests verify selected alternatives cannot bypass the finance lock.
+- Manual checks:
+  - Finance-lock behavior was verified by source inspection plus focused route/service/component tests. No browser session was started because this step targeted mutation rules and server-rendered UI affordances.
+- Blockers: None for Step 20.
+
+## 2026-06-02T20:06:21Z - Step 21
+
+- Step number: 21
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 21 retained existing Step 2-20 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `app/api/upload/evidence/route.ts`
+  - `app/api/evidence/[id]/download/route.ts`
+  - `lib/uploads.ts`
+  - `lib/evidence-config.ts`
+  - `components/saving-cards/evidence-uploader.tsx`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/api/storage-tenant-access.test.ts`
+  - `tests/api/quota-enforcement.test.ts`
+  - `tests/api/rate-limit.test.ts`
+  - `docs/upload-current-state.md`
+  - `docs/db-security-access-matrix.md`
+- Files changed:
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/api/storage-tenant-access.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/import-and-evidence.route.test.ts tests/api/storage-tenant-access.test.ts tests/api/quota-enforcement.test.ts tests/api/rate-limit.test.ts` - passed; 4 test files, 42 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass for code and local test proof.
+- Proof:
+  - `/api/upload/evidence` requires authentication, applies the `evidenceUpload` rate-limit policy with action `evidence.upload`, rejects unexpected form fields, validates exactly one saving-card id, blocks slash-containing ids, limits upload batches to 10 files, rejects empty files, rejects files over 25 MB, validates file extension and content-type alignment, and checks saving-card access before storage.
+  - Upload access is tenant-scoped. Global procurement/finance roles can upload within the active organization; non-global users must be assigned as a stakeholder or approver on the saving card. New tests assert the participant access query shape.
+  - Evidence upload quota is enforced before storage and usage is recorded after successful upload. Existing quota tests verify storage is not called when the evidence quota is exhausted and that successful uploads record `EVIDENCE_UPLOADS` usage metadata.
+  - `lib/uploads.ts` stores evidence in the configured private bucket, defaulting to `evidence-private`, under `organizations/{organizationId}/saving-cards/{savingCardId}/evidence/{generatedFileName}` with the Supabase service-role server client. The browser receives only app download routes, never storage credentials or public storage URLs.
+  - `/api/evidence/[id]/download` requires authentication, validates the evidence id, scopes metadata through `savingCard.organizationId`, applies the same stakeholder/approver participant rule for non-global users, verifies the bucket and managed storage namespace before signing, creates a 60-second signed URL, and writes an `evidence.downloaded` audit event.
+  - Storage tests now verify same-tenant signing, foreign-tenant path rejection, path traversal rejection, and bucket mismatch rejection before signed URL creation.
+  - `components/saving-cards/evidence-uploader.tsx` keeps client-side validation aligned with server file extensions and size limit, while server-side validation remains authoritative.
+- Manual checks:
+  - Source and local mocked Supabase tests verified the code contract for private bucket naming, path namespace validation, and short-lived signed URL generation.
+  - Live Supabase dashboard/CLI verification was not run from this local environment. Before a paid-pilot release, preview/production should manually confirm the `evidence-private` or configured `SUPABASE_STORAGE_BUCKET` bucket exists, is private/public access disabled, and can create signed URLs through the service-role server route only.
+- Blockers:
+  - No code blocker for Step 21.
+  - External provider QA remains: live Supabase private bucket privacy and signed URL behavior must be checked in the target staging/production project.
+
+## 2026-06-02T20:14:51Z - Step 22
+
+- Step number: 22
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 22 retained existing Step 2-21 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `components/saving-cards/detail-workspace.tsx`
+  - `components/saving-cards/saving-card-form.tsx`
+  - `app/api/saving-cards/[id]/alternative-suppliers/route.ts`
+  - `app/api/saving-cards/[id]/alternative-suppliers/[alternativeId]/route.ts`
+  - `app/api/saving-cards/[id]/alternative-materials/route.ts`
+  - `app/api/saving-cards/[id]/alternative-materials/[alternativeId]/route.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `lib/validation.ts`
+  - `tests/api/saving-cards.route.test.ts`
+  - `tests/api/tenant-scope-mutations.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+- Files changed:
+  - `app/api/saving-cards/[id]/alternative-suppliers/route.ts`
+  - `app/api/saving-cards/[id]/alternative-suppliers/[alternativeId]/route.ts`
+  - `app/api/saving-cards/[id]/alternative-materials/route.ts`
+  - `app/api/saving-cards/[id]/alternative-materials/[alternativeId]/route.ts`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `lib/saving-cards/mutations.ts`
+  - `lib/validation.ts`
+  - `tests/api/saving-cards.route.test.ts`
+  - `tests/api/tenant-scope-mutations.test.ts`
+  - `tests/lib/data.saving-cards.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/saving-cards.route.test.ts tests/lib/data.saving-cards.test.ts tests/components/saving-card-form.test.ts tests/api/tenant-scope-mutations.test.ts` - passed; 4 test files, 49 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Alternative supplier and material quoted prices now reject negative values before a transaction starts, keeping scenario savings from being inflated by invalid prices.
+  - Create routes pass the active saving-card id, authenticated user id, and organization id into the alternative supplier/material mutations.
+  - Update and delete routes now pass the route saving-card id into the mutation layer. The mutation guard rejects same-tenant URL/card mismatches with not-found-style errors before resolving suppliers/materials or updating/deleting alternatives.
+  - Selected supplier/material scenarios continue to apply the selected alternative into the card case fields and audit trail, while the Step 20 finance-lock guard blocks selected alternatives from rewriting validated financial assumptions on locked cards.
+  - The detail workspace keeps alternatives optional and explainable: quoted price inputs enforce a zero minimum, selected-scenario checkboxes are disabled under finance lock, and lock copy explains which assumptions selection would update.
+  - Tenant mutation tests cover cross-tenant access, same-tenant route-card mismatch, selected scenario impact, and finance-lock protection for alternative suppliers and materials.
+- Manual checks:
+  - Source and local route/service/component tests verified the alternative supplier and material flows. No browser session was started because this step targeted API, data-layer, and server-rendered UI affordances.
+- Blockers: None for Step 22.
+
+## 2026-06-02T20:25:38Z - Step 23
+
+- Step number: 23
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 23 retained existing Step 2-22 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `app/api/saving-cards/[id]/volume/route.ts`
+  - `app/api/saving-cards/[id]/volume/forecast/route.ts`
+  - `app/api/saving-cards/[id]/volume/actual/route.ts`
+  - `app/api/saving-cards/[id]/volume/import/route.ts`
+  - `app/api/saving-cards/[id]/volume/shared.ts`
+  - `lib/volume.ts`
+  - `components/timeline/timeline-board.tsx`
+  - `components/timeline/volume-scurve.tsx`
+  - `lib/dashboard/data.ts`
+  - `components/dashboard/dashboard-client.tsx`
+  - `lib/command-center/data.ts`
+  - `components/command-center/command-center-client.tsx`
+  - `tests/api/tenant-isolation-queries.test.ts`
+  - `tests/app/timeline.page.test.ts`
+  - `tests/app/dashboard.page.test.ts`
+  - `tests/app/command-center.page.test.ts`
+  - `tests/api/command-center.route.test.ts`
+  - `tests/components/dashboard-client.test.ts`
+  - `tests/components/command-center-client.test.ts`
+  - `tests/lib/command-center-data.test.ts`
+- Files changed:
+  - `lib/volume.ts`
+  - `components/timeline/volume-scurve.tsx`
+  - `tests/api/tenant-isolation-queries.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/tenant-isolation-queries.test.ts tests/app/timeline.page.test.ts tests/app/dashboard.page.test.ts tests/app/command-center.page.test.ts tests/api/command-center.route.test.ts tests/components/dashboard-client.test.ts tests/components/command-center-client.test.ts tests/lib/command-center-data.test.ts` - passed; 8 test files, 31 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Volume reads and writes remain tenant-scoped through the saving-card relation; existing tests verify foreign-tenant reads, writes, and deletes fail before touching forecast or actual rows.
+  - Direct forecast/actual upserts now validate finite, nonnegative quantities defensively before writing, matching the route-level validation already present for manual entries.
+  - CSV/Excel import now validates the row before writing either side. Negative forecast or actual quantities are rejected with row-level errors, and current/future actuals are rejected instead of being silently skipped or partially importing a forecast from the same row.
+  - Timeline aggregation now treats an explicit actual row with quantity `0` as confirmed actual data. `isConfirmed` and `confirmedMonths` are based on actual-row presence, not a positive quantity, so zero consumption is no longer confused with missing actuals.
+  - The portfolio Volume S-curve now plots actual savings only when the monthly timeline has confirmed actual data; missing actual months render as gaps while confirmed zero actuals remain valid zero values.
+  - Dashboard and command-center forecast surfaces were inspected for date and empty-state behavior. Existing focused tests verify invalid/empty forecast data is handled without breaking executive reporting.
+- Manual checks:
+  - Source inspection covered the volume API routes, import path, timeline chart aggregation, dashboard forecast data handling, and command-center forecast bucketing. No browser session was started because this step was validated through route/data/component tests and typecheck.
+- Blockers: None for Step 23.
+
+## 2026-06-02T20:32:34Z - Step 24
+
+- Step number: 24
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 24 retained existing Step 2-23 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, and the Step 12 import-export runtime test.
+- Files inspected:
+  - `lib/audit.ts`
+  - `lib/notifications.ts`
+  - `lib/workflow/service.ts`
+  - `app/api/notifications/route.ts`
+  - `app/api/approve-phase-change/route.ts`
+  - `app/api/phase-change-request/route.ts`
+  - `app/api/pending-approvals/route.ts`
+  - `components/layout/notification-bell.tsx`
+  - `components/open-actions/open-actions-list.tsx`
+  - `app/(app)/open-actions/page.tsx`
+  - `app/(app)/admin/settings/page.tsx`
+  - `components/admin/admin-activity-list.tsx`
+  - `tests/api/audit-events.test.ts`
+  - `tests/api/notifications.route.test.ts`
+  - `tests/components/notification-bell.test.ts`
+  - `tests/app/open-actions.page.test.ts`
+  - `tests/lib/data.workflow.test.ts`
+- Files changed:
+  - `lib/audit.ts`
+  - `lib/workflow/service.ts`
+  - `components/admin/admin-activity-list.tsx`
+  - `app/(app)/admin/settings/loading.tsx`
+  - `app/(app)/admin/insights/loading.tsx`
+  - `tests/api/audit-events.test.ts`
+  - `tests/api/admin-settings-audit.test.ts`
+  - `tests/lib/data.workflow.test.ts`
+  - `tests/components/admin-ui.test.ts`
+  - `tests/components/admin-insights-ui.test.ts`
+  - `tests/components/open-actions-list.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/audit-events.test.ts tests/api/notifications.route.test.ts tests/components/notification-bell.test.ts tests/app/open-actions.page.test.ts tests/components/open-actions-list.test.ts tests/lib/data.workflow.test.ts tests/components/admin-ui.test.ts tests/components/admin-insights-ui.test.ts tests/api/admin-settings-audit.test.ts tests/api/admin-insights.test.ts` - passed; 10 test files, 50 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Notification API reads and updates are scoped to the authenticated user and active organization, with null-organization notifications still allowed as user-global items. Route tests verify feed loading, single read, mark-all read, 404 on non-owned notification, and auth guard behavior.
+  - Phase-change requests notify assigned approvers, and approval/rejection completion notifies the requester with links back to `/open-actions` or the saving card.
+  - Workflow audit rows now include `organizationId`, `actorUserId`, `targetEntityId`, and canonical `eventType`/`action` values for requested, approved, rejected, and completed phase changes.
+  - Organization activity feeds now include phase-change workflow decisions alongside admin settings, member, invite, and onboarding events, so tenant-scoped admin/activity views can show important workflow decisions.
+  - Open-actions page tests verify assigned approvals map into the personal queue, degraded dependencies render an empty fallback with observability capture, and the workspace-wide queue shows all pending requests with pending approver summaries.
+  - Open-actions list tests verify bulk approval is available only for multiple assigned personal actions and hidden in the workspace-wide queue, while workflow service tests prove each individual decision leaves a scoped audit record.
+- Manual checks:
+  - Source inspection covered notification scoping, optimistic bell behavior, pending approval queries, open-actions mapping, workflow notifications, workflow audit writes, and admin activity visibility. No browser session was started because this step was validated through route/data/component tests and typecheck.
+- Blockers: None for Step 24.
+
+## 2026-06-02T20:38:22Z - Step 25
+
+- Step number: 25
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 25 retained existing Step 2-24 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `tests/scripts/seed-utopiatrax-demo.test.ts`
+  - `docs/demo-utopiatrax.md`
+  - `app/(app)/dashboard/page.tsx`
+  - `app/(app)/reports/page.tsx`
+  - `app/(app)/command-center/page.tsx`
+  - `app/(app)/open-actions/page.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `lib/command-center/data.ts`
+- Files changed:
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `tests/scripts/seed-utopiatrax-demo.test.ts`
+  - `docs/demo-utopiatrax.md`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/scripts/seed-utopiatrax-demo.test.ts` - passed; 1 test file, 6 tests.
+  - `npx vitest run tests/scripts/seed-utopiatrax-demo.test.ts tests/app/reports.page.test.ts tests/app/dashboard.page.test.ts tests/app/command-center.page.test.ts tests/app/open-actions.page.test.ts tests/components/executive-savings-summary.test.ts tests/lib/command-center-data.test.ts` - passed; 7 test files, 20 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass for local code, dataset, and surface proof.
+- Proof:
+  - The pure UtopiaTrax dataset validates 25 saving cards, 6 direct procurement categories, a realistic phase distribution, at least 12 evidence definitions, at least 8 alternatives, mixed EUR/USD cards, stable natural keys, and finance locks restricted to Validated cards.
+  - The seed now exposes and tests pending demo action expectations: 5 pending phase-change requests produce 7 assigned open actions, and at least 12 cards include volume profiles for forecast/actual timeline and S-curve demos.
+  - Billing trial inputs are part of the tested seed contract: UtopiaTrax uses trialing billing access through `2028-12-31T23:59:59.000Z` so billing gates should not block the demo workspace.
+  - Historical and pending demo phase-change requests now write canonical workflow audit events with organization scope, actor user, target request id, saving card id, and Step 24 event types for requested, approved, rejected, and completed workflow activity.
+  - The seed remains bounded to the UtopiaTrax workspace slug and demo natural keys. Reset refuses to delete a UtopiaTrax workspace if non-demo users are present, then deletes only the UtopiaTrax graph and demo users.
+  - `docs/demo-utopiatrax.md` now includes a staging validation checklist covering seed counts, dashboard, saving cards, Kanban, timeline, command center, open actions, reports, admin activity, billing, and private evidence downloads.
+- Manual checks:
+  - Source inspection covered seed safety, upserts, reset scope, billing records, storage/auth fallback behavior, evidence storage paths, alternatives, finance locks, phase history, pending requests, volume forecast/actual rows, and cache invalidation.
+  - `npm run db:seed:utopiatrax` was not run because Step 25 requires an approved non-production database, and this thread has not provided one. Use the new staging checklist after running the seed in an approved staging database.
+- Blockers:
+  - No code blocker for Step 25.
+  - External staging validation remains: run `npm run db:seed:utopiatrax -- --reset` only against an approved non-production database with Supabase Auth/Storage configured, then verify the checklist in `docs/demo-utopiatrax.md`.
+
+## 2026-06-03T05:44:37Z - Step 26
+
+- Step number: 26
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 26 retained existing Step 2-25 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `app/(app)/dashboard/page.tsx`
+  - `components/dashboard/dashboard-client.tsx`
+  - `app/(app)/kanban/page.tsx`
+  - `components/kanban/kanban-board.tsx`
+  - `app/(app)/command-center/page.tsx`
+  - `components/command-center/command-center-client.tsx`
+  - `app/(app)/timeline/page.tsx`
+  - `app/(app)/open-actions/page.tsx`
+  - `tests/app/dashboard.page.test.ts`
+  - `tests/app/kanban.page.test.ts`
+  - `tests/app/command-center.page.test.ts`
+  - `tests/app/timeline.page.test.ts`
+  - `tests/app/open-actions.page.test.ts`
+  - `tests/components/dashboard-client.test.ts`
+  - `tests/components/kanban-board.test.ts`
+  - `tests/components/command-center-client.test.ts`
+  - `scripts/seed-utopiatrax-demo.ts`
+- Files changed:
+  - `tests/components/dashboard-client.test.ts`
+  - `tests/components/kanban-board.test.ts`
+  - `tests/components/command-center-client.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/dashboard-client.test.ts tests/components/kanban-board.test.ts tests/components/command-center-client.test.ts` - passed; 3 test files, 30 tests.
+  - `npx vitest run tests/app/dashboard.page.test.ts tests/app/kanban.page.test.ts tests/app/command-center.page.test.ts tests/app/timeline.page.test.ts tests/app/open-actions.page.test.ts tests/components/dashboard-client.test.ts tests/components/kanban-board.test.ts tests/components/command-center-client.test.ts` - passed; 8 test files, 41 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Dashboard component proof now derives metrics from the complete UtopiaTrax seed: 25 cards, positive pipeline/realized/achieved/forecast values, populated monthly trend, top projects, all five phase buckets, and all six direct categories. The rendered dashboard avoids first-value and chart-empty states for the seeded portfolio.
+  - Kanban component proof now maps the same UtopiaTrax seed into portfolio cards and checks the phase-column counts against the tested dataset summary. All five pending demo phase-change requests remain in their current columns with pending approval UI, proving governed work does not jump columns before approval.
+  - Command-center component proof now builds UtopiaTrax executive context from the seed: active project count excludes canceled cards, pending approvals match the expected 7 open approver actions from 5 requests, pending queue titles are present in normalized data, finance-locked items and recent decisions are populated, filters are seeded from categories/buyers/business units/suppliers, and the rendered analytics view avoids empty states.
+  - Page tests prove dashboard, Kanban, command center, timeline, and open actions load tenant-scoped data through the authenticated organization and degrade to explicit fallbacks when their dependencies fail.
+  - Step 23 and Step 24 coverage remains aligned with these surfaces: UtopiaTrax volume profiles feed timeline/S-curve demos, and pending phase-change requests feed open actions and command-center queues.
+- Manual checks:
+  - Source inspection covered the dashboard, Kanban, command-center, timeline, and open-actions pages and their component data contracts. No browser session was started because this step was validated through page/component tests and typecheck.
+  - The live UtopiaTrax seed was not run against a database in this step; staging validation still depends on an approved non-production environment from Step 25.
+- Blockers:
+  - No code blocker for Step 26.
+  - External staging validation remains: after running `npm run db:seed:utopiatrax -- --reset` in an approved non-production database, manually verify the populated dashboard, Kanban, command center, timeline, and open-actions screens with the Step 25 checklist.
+
+## 2026-06-03T05:49:45Z - Step 27
+
+- Step number: 27
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 27 retained existing Step 2-26 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `app/(app)/reports/page.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `components/reports/import-export-panel.tsx`
+  - `app/api/export/route.ts`
+  - `lib/data.ts`
+  - `lib/saving-cards/queries.ts`
+  - `lib/constants.ts`
+  - `tests/api/export.route.test.ts`
+  - `tests/components/executive-savings-summary.test.ts`
+  - `tests/components/import-export-panel.test.ts`
+  - `tests/app/reports.page.test.ts`
+- Files changed:
+  - `app/api/export/route.ts`
+  - `lib/data.ts`
+  - `lib/saving-cards/queries.ts`
+  - `components/reports/import-export-panel.tsx`
+  - `tests/api/export.route.test.ts`
+  - `tests/components/import-export-panel.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/export.route.test.ts tests/components/executive-savings-summary.test.ts tests/components/import-export-panel.test.ts tests/app/reports.page.test.ts` - passed; 4 test files, 8 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Export workbook rows now use controller-friendly headers with stable columns even when the portfolio is empty: Card ID, Saving Card Title, Phase, Saving Type, Supplier, Material, Alternative Supplier, Alternative Material, Category, Buyer, Business Unit, Saving Driver, Implementation Complexity, Qualification Status, Baseline Price, New Price, Annual Volume, Currency, Savings EUR, Savings USD, Start Date, End Date, Impact Start Date, Impact End Date, and Finance Locked.
+  - Saving-card export rows now use customer-facing phase labels from `phaseLabels`, so `REALISED` exports as `Realized` and `CANCELLED` exports as `Canceled` without changing database enums. Finance lock status exports as `Yes`/`No`, and alternative manual fallbacks remain available for offline review.
+  - The report summary sheet now records organization-scoped reporting basis, portfolio scope, active card count, active savings, realized savings, achieved savings, finance-locked count and value, setup completeness, master-data coverage, workflow coverage, last portfolio update, and all five phase counts.
+  - The export route test now proves rate limiting, tenant-scoped `getSavingCards` access, workbook sheet order, stable export headers, active savings math, achieved value, finance-lock totals, and US phase-count labels.
+  - Reports page tests continue to prove the executive summary receives command-center and dashboard values, keeps rendering during degraded dependency failures, and passes readiness into the import/export panel.
+  - The import/export panel now tells users the workbook includes active savings, realized and achieved value, finance locks, phase counts, setup completeness, and workflow coverage before download.
+- Manual checks:
+  - Source inspection covered the reports page loader, executive summary, import/export panel, export API, export mapper, and constants-backed phase labels. No browser session was started because this step was validated through route/component/app tests and typecheck.
+  - The workbook was not opened manually against a live database in this step. Staging validation should download `/api/export` from the seeded UtopiaTrax workspace and confirm the two sheets, filename, summary totals, and row columns in Excel or Google Sheets.
+- Blockers:
+  - No code blocker for Step 27.
+  - External staging validation remains: after running the UtopiaTrax seed in an approved non-production database, download the report workbook from `/reports` and verify the generated `.xlsx` in a spreadsheet viewer.
+
+## 2026-06-03T05:54:37Z - Step 28
+
+- Step number: 28
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 28 retained existing Step 2-27 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `app/api/import/route.ts`
+  - `app/api/export/route.ts`
+  - `components/reports/import-export-panel.tsx`
+  - `components/onboarding/master-data-upload-step.tsx`
+  - `lib/onboarding/master-data-config.ts`
+  - `lib/validation.ts`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/api/export.route.test.ts`
+  - `tests/components/import-export-panel.test.ts`
+  - `tests/components/import-export-panel.runtime.test.ts`
+- Files changed:
+  - `app/api/import/route.ts`
+  - `components/reports/import-export-panel.tsx`
+  - `tests/api/import-and-evidence.route.test.ts`
+  - `tests/components/import-export-panel.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/api/import-and-evidence.route.test.ts tests/api/export.route.test.ts tests/components/import-export-panel.test.ts` - passed; 3 test files, 33 tests.
+  - `npx vitest run tests/components/import-export-panel.runtime.test.ts` - passed; 1 test file, 2 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Saving-card workbook import now validates every row before quota checks or writes. If any row fails, the API returns `422` with `importType: "saving_cards"`, a total/valid/failed summary, and per-row error messages; no saving cards are imported, and `enforceUsageQuota`, `importSavingCards`, and usage recording are skipped.
+  - Saving-card import now accepts both legacy operational headers and controller-friendly spaced headers where the fields overlap, including Saving Card Title, Saving Type, Business Unit, Baseline Price, New Price, Annual Volume, FX Rate, Start Date, End Date, Impact Start Date, and Impact End Date.
+  - Phase import now normalizes customer-facing US labels and legacy spellings back to stable internal enums: for example `Realized` imports as `REALISED`, and `Canceled`/`Cancelled` imports as `CANCELLED`.
+  - The report import UI now shows saving-card row-error summaries with rows checked, ready, and failed counts, plus individual failed-row messages, so users can fix a workbook without guessing.
+  - Import/export expectations are clearer: exports are described as controller review workbooks, while new saving-card imports should use operational import columns so required fields such as plant, dates, and financial assumptions are present.
+  - Category master-data import remains exposed consistently through the report panel and onboarding config, with route tests proving category rows are tenant-scoped and default annual target values are controlled by the server.
+  - Export route coverage from Step 27 remains green alongside import hardening, proving tenant-scoped export behavior was not regressed.
+- Manual checks:
+  - Source inspection covered import parsing, saving-card validation, master-data category import, onboarding master-data upload config, report import/export copy, and export route tenant scoping. No browser session was started because this step was validated through API/component/runtime tests and typecheck.
+  - Live spreadsheet import was not run against a database in this step. Staging validation should upload a workbook with one valid and one invalid saving-card row to confirm the UI row-error panel and no-partial-write behavior against an approved non-production database.
+- Blockers:
+  - No code blocker for Step 28.
+  - External staging validation remains: test saving-card import, category import, and workbook export from `/reports` in an approved non-production UtopiaTrax workspace.
+
+## 2026-06-03T06:00:57Z - Step 29
+
+- Step number: 29
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 29 retained existing Step 2-28 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `lib/constants.ts`
+  - `app/(app)/admin/page.tsx`
+  - `components/layout/app-shell-client.tsx`
+  - `app/(app)/profile/page.tsx`
+  - `components/onboarding/workspace-setup-guide.tsx`
+  - `components/onboarding/first-value-launchpad.tsx`
+  - `components/onboarding/workspace-onboarding-form.tsx`
+  - `components/reports/executive-savings-summary.tsx`
+  - `app/(app)/open-actions/page.tsx`
+  - `docs/demo-utopiatrax.md`
+  - Targeted role-label and onboarding/report/admin tests.
+- Files changed:
+  - `lib/constants.ts`
+  - `app/(app)/admin/page.tsx`
+  - `components/onboarding/workspace-setup-guide.tsx`
+  - `components/onboarding/first-value-launchpad.tsx`
+  - `components/onboarding/workspace-onboarding-form.tsx`
+  - `docs/demo-utopiatrax.md`
+  - `tests/api/admin-rbac.test.ts`
+  - `tests/api/workspace-onboarding.test.ts`
+  - `tests/app/onboarding.page.test.ts`
+  - `tests/app/open-actions.page.test.ts`
+  - `tests/app/profile.page.test.ts`
+  - `tests/components/app-shell-client.test.ts`
+  - `tests/components/executive-savings-summary.test.ts`
+  - `tests/components/saving-card-form.test.ts`
+  - `tests/integration/first-value-onboarding.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/app-shell-client.test.ts tests/app/profile.page.test.ts tests/api/admin-rbac.test.ts tests/integration/first-value-onboarding.test.ts tests/components/saving-card-form.test.ts tests/app/onboarding.page.test.ts tests/app/admin-pages.test.ts tests/components/admin-ui.test.ts tests/components/executive-savings-summary.test.ts tests/app/open-actions.page.test.ts tests/components/workspace-onboarding-form.test.ts tests/api/workspace-onboarding.test.ts` - passed; 12 test files, 50 tests.
+  - `npx vitest run tests/lib/command-center-data.test.ts tests/components/command-center-client.test.ts tests/app/command-center.page.test.ts tests/app/open-actions.page.test.ts tests/components/open-actions-list.test.ts tests/api/audit-events.test.ts tests/lib/data.workflow.test.ts` - passed; 7 test files, 34 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - Role labels remain presentation-only and still map to the existing Prisma enum values. No schema or enum migration was introduced.
+  - Customer-facing business-role labels now use plainer US SME language: `HEAD_OF_GLOBAL_PROCUREMENT` displays as `Procurement Lead`, `GLOBAL_CATEGORY_LEADER` displays as `Category Owner`, and `FINANCIAL_CONTROLLER` displays as `Finance Reviewer`.
+  - App shell, profile, admin readiness, onboarding, saving-card readiness, executive summary, and open-action tests now assert the new labels while workflow/data tests continue to prove the underlying enum behavior.
+  - Onboarding copy now says `Team coverage`, describes workspace access vs business-role coverage more plainly, and asks admins to invite finance reviewers and procurement leads.
+  - Workspace creation placeholder now uses a more concrete US manufacturing framing: `US manufacturing savings pilot for direct materials.`
+  - Admin settings now labels the workflow readiness signal as `Approval Coverage` instead of `Workflow Roles`.
+  - UtopiaTrax demo docs now use the buyer-facing labels `Procurement Lead` and `Finance Reviewer`, and the phase list uses US `Realized`/`Canceled`.
+  - Terminology scan command for app/components/lib/demo-doc copy returned no matches for old buyer-facing terms: `Procurement Manager`, `Procurement Specialist`, `Finance Approver`, `Financial Controller`, `Head of Global Procurement`, `SME procurement savings pilot`, `Workflow Roles`, `Team and roles`, `finance approver`, or `enterprise`.
+- Manual checks:
+  - Source inspection covered role labels, sidebar/profile rendering, onboarding team/readiness copy, admin readiness copy, report/open-actions role displays, and demo docs. No browser session was started because this step was presentation-label-only and validated through render/component/app/data tests and typecheck.
+  - Remaining old terms in the broader repository scan are backend workflow/audit test fixture names, not app/component/demo-doc customer-facing labels.
+- Blockers:
+  - No code blocker for Step 29.
+  - External staging validation remains: spot-check `/onboarding`, `/admin/settings`, `/profile`, `/open-actions`, and `/command-center` in a seeded UtopiaTrax workspace to confirm the labels read naturally for pilot buyers.
+
+## 2026-06-03T06:18:05Z - Step 30
+
+- Step number: 30
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after Step 30 retained existing Step 2-29 changes, modified `tsconfig.tsbuildinfo`, untracked readiness docs, the Step 12 import-export runtime test, and the Step 24 open-actions list test.
+- Files inspected:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `next.config.ts`
+  - `README.md`
+  - `docs/demo-utopiatrax.md`
+  - `docs/readiness-40-step-plan.md`
+  - `lib/billing/config.ts`
+  - `lib/billing/presentation.ts`
+  - Home/page, docs, onboarding, demo-seed, security-header, and release-safety tests.
+- Files changed:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `next.config.ts`
+  - `README.md`
+  - `docs/demo-utopiatrax.md`
+  - `docs/paid-pilot-buyer-package.md`
+  - `tests/app/home.page.test.ts`
+  - `tests/docs/paid-pilot-buyer-package.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts` - passed; 2 test files, 4 tests.
+  - `npx vitest run tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts tests/integration/first-login-onboarding-provisioning.test.ts tests/scripts/seed-utopiatrax-demo.test.ts tests/app/onboarding.page.test.ts tests/api/workspace-onboarding.test.ts tests/config/http-security-headers.test.ts tests/ci/release-safety-consistency.test.ts` - passed; 8 test files, 39 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass.
+- Proof:
+  - The public homepage now presents a paid-pilot buyer story for `50-500 employee US manufacturers`, with a concrete promise, product snapshot, proof points, CTAs, and trust boundaries tied to implemented saving cards, workflow, evidence, reporting, and XLSX export.
+  - `app/layout.tsx` metadata now matches the finance-trusted US manufacturing pilot positioning.
+  - `next.config.ts` no longer redirects `/` to `/dashboard`, so the buyer page is reachable in a real deployment. `tests/app/home.page.test.ts` now guards against reintroducing that root redirect.
+  - `docs/paid-pilot-buyer-package.md` defines the landing-page promise, paid-pilot offer, demo script, security/trust page needs, support expectations, data export expectations, and explicit first-pilot exclusions.
+  - `README.md` links to the buyer package, updates ideal-user language to Procurement Lead, Category Owner, Buyer, and Finance Reviewer, and aligns the workflow contract with US phase labels and buyer-facing role names.
+  - `docs/demo-utopiatrax.md` now includes a paid-pilot demo flow that starts from dashboard proof, moves through Kanban, saving-card detail, open actions, command center, timeline, reports/export, and admin/billing boundaries.
+  - Terminology scan across the changed page/docs/tests returned no old customer-facing role or UK phase terms. The only matches were negative assertions inside tests that prevent `TODO`, `TBD`, and `Global Category Leader / Member` from returning.
+- Manual checks:
+  - Started `npm run dev -- --port 3000`; `curl -H 'Cookie:' http://127.0.0.1:3000/` returned `200 OK` after removing the config-level root redirect.
+  - In-app browser loaded `http://127.0.0.1:3000/`, confirmed the expected title, H1, pilot copy, UtopiaTrax product snapshot, and trust-boundary text.
+  - Browser layout check on the available narrow viewport reported `bodyScrollWidth` equal to `bodyClientWidth`, no horizontal overflow, and zero console errors.
+  - Browser computed-style check confirmed the primary CTA uses white text on the primary background after accounting for the global anchor color reset.
+- Blockers:
+  - No code blocker for Step 30.
+  - External staging validation remains: review the public homepage on the deployed preview domain, walk through the paid-pilot demo flow in a seeded UtopiaTrax workspace, and only publish a full trust/security page after the Step 31 Supabase and Step 32 Stripe provider proofs are recorded.
+
+## 2026-06-03T15:15:28Z - Step 30 Four-Pass Retest
+
+- Step number: Step 30 retest
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree after the retest retained existing Step 2-30 changes, modified `tsconfig.tsbuildinfo`, and generated fresh `.next` build artifacts from `npm run build`.
+- Files inspected:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `next.config.ts`
+  - `README.md`
+  - `docs/demo-utopiatrax.md`
+  - `docs/paid-pilot-buyer-package.md`
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `.github/workflows/ci.yml`
+  - Step 30 home/docs/config tests.
+- Files changed:
+  - `app/page.tsx`
+  - `tests/app/home.page.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests/checks run:
+  - Static/source scan: inspected Step 30 diff, scanned changed page/docs/tests for stale buyer-facing terms, placeholders, and unbuilt-capability overclaims.
+  - Seed metric check: `node --import tsx -e "import { UTOPIATRAX_SAVING_CARDS } from './scripts/seed-utopiatrax-demo.ts'; ..."` - passed; seed counts are `total: 25`, `active: 23`, `financeLocked: 5`.
+  - `npx vitest run tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts tests/integration/first-login-onboarding-provisioning.test.ts tests/scripts/seed-utopiatrax-demo.test.ts tests/app/onboarding.page.test.ts tests/api/workspace-onboarding.test.ts tests/config/http-security-headers.test.ts tests/ci/release-safety-consistency.test.ts` - passed; 8 test files, 39 tests.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+  - Live route check: `curl -H 'Cookie:' http://127.0.0.1:3000/` - passed; returned `200 OK` and rendered the public buyer page with `Total cards`, `25`, `Finance locked`, and `5`.
+  - In-app browser check: loaded `http://127.0.0.1:3000/` - passed; title/H1/pilot copy/trust boundaries rendered, no horizontal overflow, zero console errors, and primary CTA computed as white text on primary blue.
+  - `npm run build` - passed; route table shows `/` as dynamic server-rendered. Existing unrelated lint warnings remain in other files, not Step 30 files.
+  - `npm run predeploy` under local `APP_ENV=development` - correctly blocked by environment gate.
+  - `env APP_ENV=preview ... npm run predeploy` using preview-safe CI-style non-secret env values - passed.
+- Pass/fail: Pass after one fix.
+- Fault found and fixed:
+  - The homepage product snapshot previously said `Active cards 25` and `Finance locked 8`, which did not match the UtopiaTrax seed. The seed has 25 total cards, 23 non-canceled active cards, and 5 finance-locked cards.
+  - `app/page.tsx` now says `Total cards 25` and `Finance locked 5`.
+  - `tests/app/home.page.test.ts` now asserts the corrected homepage snapshot labels and values.
+- Proof:
+  - Four independent retest approaches were completed one at a time: static/source consistency, automated regression checks, live HTTP/browser rendering, and build/predeploy readiness.
+  - No stale customer-facing UK phase labels or old buyer-facing role names were found in the changed Step 30 page/docs surfaces, aside from negative assertions that prevent regressions.
+  - The public homepage remains reachable because `next.config.ts` no longer redirects `/` to `/dashboard`, and the home test guards against restoring that redirect.
+- Manual checks:
+  - Browser screenshot saved at `/tmp/traxium-home-pass3.png` for the live rendered homepage check.
+  - Dev server was stopped after browser proof.
+- Blockers:
+  - No code blocker found in the four-pass Step 30 retest.
+  - Remaining external checks are unchanged: deployed preview homepage review, seeded UtopiaTrax demo walkthrough, Step 31 Supabase provider proof, and Step 32 Stripe provider proof.
+
+## 2026-06-03T15:32:40Z - Step 31 Supabase Provider Validation
+
+- Step number: 31
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-30 changes plus Step 31 validation artifacts.
+- Files inspected:
+  - `lib/supabase/server.ts`
+  - `lib/supabase/client.ts`
+  - `middleware.ts`
+  - `lib/auth-email.ts`
+  - `lib/uploads.ts`
+  - `app/api/upload/evidence/route.ts`
+  - `app/api/evidence/[id]/download/route.ts`
+  - `docs/environment-setup.md`
+  - `docs/upload-current-state.md`
+  - Auth invitation, recovery, middleware, environment, and storage tests.
+- Files changed:
+  - `package.json`
+  - `scripts/validate-supabase-provider.ts`
+  - `docs/supabase-provider-validation.md`
+  - `tests/docs/supabase-provider-validation.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests/checks run:
+  - `npm run supabase:validate` - passed with 8 provider checks passed, 0 failed, and 1 blocked redirect allow-list check.
+  - `npx vitest run tests/api/password-recovery.test.ts tests/api/invitations.test.ts tests/api/invitation-acceptance.test.ts tests/api/invitation-account-setup.test.ts tests/api/storage-tenant-access.test.ts tests/api/import-and-evidence.route.test.ts tests/middleware.auth-routing.test.ts tests/lib/env-config.test.ts tests/lib/auth-guards.test.ts tests/docs/supabase-provider-validation.test.ts` - passed; 10 test files, 82 tests.
+  - `npx eslint scripts/validate-supabase-provider.ts tests/docs/supabase-provider-validation.test.ts` - passed.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Partial pass; storage, service-role, and app-side Auth contracts are provider-proven, but full Step 31 remains blocked until the Supabase Auth redirect allow-list is verified in the dashboard or Management API.
+- Faults found and fixed:
+  - Added a repeatable read-only provider validation command, `npm run supabase:validate`, so Supabase Auth Admin reachability, private evidence storage, signed URL behavior, and public/anon evidence denial are no longer manual-only assumptions.
+  - Tightened the provider script so an evidence row fails validation if its stored bucket does not match the configured private bucket, even when the path shape is valid.
+  - Added `docs/supabase-provider-validation.md` and a docs regression test to keep the command, expected redirect URLs, and app-side coverage checklist visible.
+- Proof:
+  - The configured Supabase project ref is `kdsfmmwmpdhtezwdqbnk`; anon JWT role is `anon`, service-role JWT role is `service_role`, and the anon project ref matches the Supabase URL.
+  - Service-role Auth Admin read succeeded and observed 1 user without printing user emails or secrets.
+  - The configured storage bucket is `evidence-private`; provider metadata reports `public: false`.
+  - The latest DB evidence row matches the managed storage contract, uses the configured bucket, and was logged only by a short path hash (`a94b3a4c53b2e34c`).
+  - Service-role storage created a 60-second signed URL and `HEAD` returned `200`.
+  - The anon key could not create a signed URL for the same object and could not download the same object directly; Supabase returned `Object not found`.
+  - The unauthenticated public storage URL was not readable; `HEAD` returned `400`.
+- Manual checks:
+  - `docs/supabase-provider-validation.md` now records the required Supabase dashboard checks for Auth Site URL, redirect URLs, invite setup links, existing-user accept links, password recovery links, email templates, bucket privacy, and public policy absence.
+  - Manual dashboard verification was not performed in this environment.
+- Blockers:
+  - `auth_redirect_allow_list` remains blocked because Supabase anon and service-role application keys cannot read the project Auth redirect allow-list. Finish the dashboard check or provide a Supabase Management API access token before calling Step 31 fully provider-proven.
+
+## 2026-06-03T15:40:06Z - Step 32 Stripe Provider Validation
+
+- Step number: 32
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-31 changes plus Step 32 validation artifacts.
+- Files inspected:
+  - `lib/billing/config.ts`
+  - `lib/billing/stripe.ts`
+  - `lib/billing/checkout.ts`
+  - `lib/billing/webhooks.ts`
+  - `lib/billing/access.ts`
+  - `app/api/billing/checkout/route.ts`
+  - `app/api/billing/portal/route.ts`
+  - `app/api/billing/webhook/route.ts`
+  - `app/billing/recover/route.ts`
+  - `docs/billing-access-staging-qa.md`
+  - `docs/subscription-gating-and-billing-recovery.md`
+  - Billing config, checkout, recovery, webhook, page, component, integration, and docs tests.
+- Files changed:
+  - `package.json`
+  - `scripts/validate-stripe-provider.ts`
+  - `docs/stripe-provider-validation.md`
+  - `docs/billing-access-staging-qa.md`
+  - `tests/docs/stripe-provider-validation.test.ts`
+  - `tests/docs/billing-access-staging-qa.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests/checks run:
+  - `npm run stripe:validate` - passed with 5 provider checks passed, 0 failed, and 3 blocked checks.
+  - `npm run stripe:validate -- --exercise-provider-flows` - passed with 8 provider checks passed, 0 failed, and 2 blocked checks.
+  - `npx vitest run tests/lib/stripe-config.test.ts tests/lib/stripe-billing-safety.test.ts tests/lib/billing-access.test.ts tests/api/billing-checkout.test.ts tests/api/billing-recover.route.test.ts tests/api/stripe-webhook.test.ts tests/app/billing-required.page.test.ts tests/app/settings-billing.page.test.ts tests/components/workspace-billing-settings-card.test.ts tests/integration/subscription-gating-regression.test.ts tests/docs/billing-access-staging-qa.test.ts tests/docs/subscription-gating-docs.test.ts tests/docs/stripe-provider-validation.test.ts` - passed; 13 test files, 97 tests.
+  - `npx eslint scripts/validate-stripe-provider.ts tests/docs/stripe-provider-validation.test.ts tests/docs/billing-access-staging-qa.test.ts` - passed.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Partial pass; Stripe catalog, Checkout Session creation, Billing Portal Session creation, app-side webhook processing, billing matrix, and deploy guards are proven, but full Step 32 remains blocked until `STRIPE_WEBHOOK_SECRET` is configured and Stripe CLI/dashboard webhook delivery evidence is recorded.
+- Faults found and fixed:
+  - Added `npm run stripe:validate`, a repeatable provider validation command that checks runtime config, SDK API version, Stripe Product/Price catalog alignment, and optional guarded test-mode Checkout/Portal session creation without printing secret values.
+  - Added `docs/stripe-provider-validation.md` and a docs regression test for the provider command, state matrix, app-side coverage list, and remaining webhook proof requirements.
+  - Updated `docs/billing-access-staging-qa.md` and its test so staging QA includes the Stripe provider validation commands.
+  - Fixed one static type issue in the new provider script around Stripe deleted Product narrowing before typecheck.
+- Proof:
+  - The configured local Stripe runtime uses test mode, plans `starter` and `growth`, and the installed Stripe SDK reports API version `2026-03-25.dahlia`.
+  - Starter catalog proof: Product `prod_UYKSLzWl8PfVwD` is active; base Price `price_1TZDo7Ai9EZKLurC4delJZfQ` is active, recurring, licensed, monthly, USD, and belongs to the Starter Product.
+  - Growth catalog proof: Product `prod_UYKS6sQIcm3cZL` is active; base Price `price_1TZDo8Ai9EZKLurCoVlxZuie` is active, recurring, licensed, monthly, USD, and belongs to the Growth Product.
+  - Metered Prices are not configured for either plan, which matches the current simple subscription catalog.
+  - Guarded test-mode provider flow created test customer `cus_UdXz30Q1PI0HCr`, subscription Checkout Session `cs_test_b1WdLLiQ7kYRs9qSWujJO61WubuBUT0j7mHxSB52ya85wXBhBJDNc9DNox`, and Billing Portal Session `bps_1TeGtYAi9EZKLurCrxicC9z9`; all returned `livemode: false`.
+  - App-side tests prove active, trialing, grace-period past_due, blocked past_due, unpaid, canceled, paused, incomplete, incomplete_expired, and no-subscription access mapping, along with admin/member recovery permissions and structured `402` API behavior.
+  - Webhook tests prove signed-event construction, duplicate handling, supported event processing, ignored event handling, subscription status mapping, and database sync behavior locally.
+- Manual checks:
+  - Stripe provider object creation was exercised through the configured test-mode secret key, not through a browser checkout completion.
+  - No Stripe CLI forwarding or dashboard webhook delivery was performed in this environment because the local `STRIPE_WEBHOOK_SECRET` is empty.
+- Blockers:
+  - `STRIPE_WEBHOOK_SECRET` is missing locally, so signed webhook delivery cannot be provider-proven.
+  - Record Stripe CLI or dashboard delivery for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`, plus DB sync evidence, before calling Step 32 fully provider-proven.
+
+## 2026-06-03T16:11:07Z - Step 33 Async Jobs And Admin Operations Validation
+
+- Step number: 33
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-32 changes plus Step 33 worker fixes.
+- Files inspected:
+  - `scripts/run-job-worker.ts`
+  - `lib/job-runner.ts`
+  - `lib/jobs.ts`
+  - `lib/auth-email.ts`
+  - `lib/supabase/server.ts`
+  - `app/(app)/admin/jobs/page.tsx`
+  - `app/api/admin/jobs/route.ts`
+  - `app/api/admin/jobs/[jobId]/retry/route.ts`
+  - `docs/operations-runbook.md`
+  - Worker, jobs, admin jobs route/page/UI, invitation, password recovery, async email, and admin member lifecycle tests.
+- Files changed:
+  - `lib/supabase/service.ts`
+  - `lib/supabase/server.ts`
+  - `lib/auth-email.ts`
+  - `lib/jobs.ts`
+  - `docs/readiness-proof-log.md`
+- Tests/checks run:
+  - `npm run jobs:worker:healthcheck` - initially failed on a `server-only` import from the CLI worker path, then passed after the Supabase client split.
+  - `npx vitest run tests/lib/jobs.test.ts tests/lib/job-runner.test.ts tests/api/admin-jobs.test.ts tests/components/admin-jobs-ui.test.ts` - passed; 4 test files, 19 tests.
+  - `npx vitest run tests/lib/jobs.test.ts tests/lib/job-runner.test.ts tests/api/admin-jobs.test.ts tests/components/admin-jobs-ui.test.ts tests/app/admin-jobs.page.test.ts tests/api/invitations.test.ts tests/api/password-recovery.test.ts tests/api/async-email-telemetry.test.ts tests/api/admin-member-lifecycle.test.ts` - passed; 9 test files, 39 tests.
+  - `npx eslint scripts/run-job-worker.ts lib/job-runner.ts lib/jobs.ts lib/auth-email.ts lib/supabase/server.ts lib/supabase/service.ts app/api/admin/jobs/route.ts app/api/admin/jobs/[jobId]/retry/route.ts app/(app)/admin/jobs/page.tsx tests/api/admin-jobs.test.ts tests/components/admin-jobs-ui.test.ts tests/app/admin-jobs.page.test.ts` - passed.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass after one fix.
+- Faults found and fixed:
+  - `npm run jobs:worker:healthcheck` crashed before registering handlers because `scripts/run-job-worker.ts` imported `lib/auth-email.ts`, which imported `lib/supabase/server.ts`; that module imports Next's `server-only` marker and throws in a plain Node worker process.
+  - Added `lib/supabase/service.ts` for CLI-safe Supabase admin/public clients and JWT role validation.
+  - Kept the cookie-backed Next route client in `lib/supabase/server.ts` behind `server-only`, while re-exporting the shared admin/public clients for existing server imports.
+  - Updated `lib/auth-email.ts` to use the CLI-safe Supabase service clients so the worker can load invitation and password recovery handlers.
+  - Cleaned up small lint warnings in `lib/auth-email.ts` and `lib/jobs.ts`.
+- Proof:
+  - Final `npm run jobs:worker:healthcheck` emitted `jobs.worker.healthcheck.started` and `jobs.worker.healthcheck.passed`.
+  - Registered handlers were visible to the worker: `analytics.identify`, `analytics.track`, `auth_email.invitation_delivery`, `auth_email.password_recovery_delivery`, `observability.exception`, and `observability.message`.
+  - The healthcheck was read-only and reported `visibleDueJobs: 6` without reserving or mutating jobs.
+  - Job tests prove tenant-scoped enqueue, idempotency, payload redaction at persistence, due-job reservation, competing-worker reservation retry, completion, retry scheduling, retry exhaustion logging, and manual retry reset.
+  - Job runner tests prove registered-handler processing, missing-handler failure without auto-retry, handler-thrown failure with retry scheduling, idle exit, and idle polling recovery.
+  - Admin jobs route/page/UI tests prove active-organization-only reads, sanitized `payloadKeys` without sensitive values like token/email, admin/member RBAC, tenant-scoped retry, idempotent retry behavior, retry rate-limit wiring, and the worker command guidance on `/admin/jobs`.
+  - Invitation, password recovery, and async email tests prove web routes queue auth email jobs without inline Supabase delivery and tolerate queue-unavailable acceptance paths.
+- Manual checks:
+  - Did not run `npm run jobs:worker:once` against the local queue because healthcheck reported 6 due jobs and one-shot processing could send real auth emails or telemetry.
+  - No browser admin jobs page check was run in this step; admin jobs rendering and RBAC were covered by route/page/component tests.
+- Blockers:
+  - No Step 33 code blocker remains.
+  - Preview/production still need the separate long-lived worker process deployed and monitored; `npm run jobs:worker:healthcheck` should be run in that deployed worker environment after release.
+
+## 2026-06-03T16:16:52Z - Step 34 Observability, Rate Limits, Quotas, And Admin Insights Validation
+
+- Step number: 34
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-33 changes plus Step 34 lint cleanup.
+- Files inspected:
+  - `lib/observability.ts`
+  - `lib/analytics.ts`
+  - `lib/rate-limit.ts`
+  - `lib/usage.ts`
+  - `lib/admin-insights.ts`
+  - `lib/audit.ts`
+  - `app/api/admin/insights/route.ts`
+  - `app/api/admin/audit/route.ts`
+  - `app/(app)/admin/insights/page.tsx`
+  - Rate-limit, quota, usage, observability, analytics, audit, and admin insights tests.
+- Files changed:
+  - `lib/analytics.ts`
+  - `lib/rate-limit.ts`
+  - `docs/readiness-proof-log.md`
+- Tests/checks run:
+  - `npx vitest run tests/api/rate-limit.test.ts tests/api/quota-enforcement.test.ts tests/lib/usage-tracking.test.ts tests/lib/observability.test.ts tests/app/admin-insights.page.test.ts` - passed; 5 test files, 21 tests.
+  - `npx vitest run tests/api/rate-limit.test.ts tests/api/quota-enforcement.test.ts tests/lib/usage-tracking.test.ts tests/lib/observability.test.ts tests/app/admin-insights.page.test.ts tests/api/admin-insights.test.ts tests/api/audit-events.test.ts tests/api/admin-settings-audit.test.ts tests/components/admin-insights-ui.test.ts tests/lib/rate-limit.test.ts tests/lib/analytics-events.test.ts tests/lib/analytics-browser-boundary.test.ts tests/lib/analytics-helper.test.ts` - passed; 13 test files, 54 tests.
+  - `npm run typecheck` - passed.
+  - `npx eslint lib/observability.ts lib/analytics.ts lib/rate-limit.ts lib/usage.ts lib/admin-insights.ts lib/audit.ts app/api/admin/insights/route.ts app/api/admin/audit/route.ts app/(app)/admin/insights/page.tsx tests/api/rate-limit.test.ts tests/api/quota-enforcement.test.ts tests/lib/usage-tracking.test.ts tests/lib/observability.test.ts tests/app/admin-insights.page.test.ts tests/api/admin-insights.test.ts tests/api/audit-events.test.ts tests/components/admin-insights-ui.test.ts tests/lib/analytics-events.test.ts` - passed.
+  - `git diff --check` - passed.
+- Pass/fail: Pass after lint cleanup.
+- Faults found and fixed:
+  - `NoopAnalyticsProvider` carried unused payload parameters even though the no-op implementation intentionally ignores analytics events. Removed the unused parameters while preserving the provider interface compatibility.
+  - `consumeRateLimit` had an unused caught error in the failure-mode fallback. Changed the block to `catch` because the implementation intentionally does not log the raw store exception.
+- Proof:
+  - Observability sanitizes structured logs and serialized errors before writing or queueing, redacts sensitive keys and bearer-style values, and fails open when Sentry/job queue forwarding is unavailable.
+  - Analytics sanitizes event properties, user IDs, emails, and sensitive metadata before server-side queueing or provider delivery.
+  - Rate limits use scoped keys for IP, user, organization, and organization-user policies, hash persisted keys, return actionable 429 headers, and preserve the configured closed/open failure behavior without exposing raw backing-store details.
+  - Quota enforcement records usage inside a transaction, reads active organization feature limits, and sanitizes usage metadata before logging.
+  - Admin insights and audit APIs require an active organization, enforce admin/member role boundaries, scope reads to the current organization, and emit telemetry counts instead of sensitive row payloads.
+  - The app admin insights page redirects non-admin users and only renders active-organization insights.
+- Manual checks:
+  - No browser check was run because Step 34 made no frontend behavior changes; admin insights rendering and RBAC were covered by page/component/API tests.
+  - No live production-like log sink was available in this environment, so Sentry/provider delivery was validated by source inspection and local tests only.
+- Blockers:
+  - No Step 34 code blocker remains.
+  - Preview/production release should still monitor real log, analytics, and rate-limit sink behavior after deployment as part of Step 35.
+
+## 2026-06-03T16:23:34Z - Step 35 Predeploy And Post-Release Smoke Readiness
+
+- Step number: 35
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-34 changes plus Step 35 proof-log update and regenerated TypeScript build info.
+- Files inspected:
+  - `scripts/predeploy-check.ts`
+  - `scripts/postdeploy-smoke.ts`
+  - `docs/post-release-smoke-tests.md`
+  - `docs/deployment-strategy.md`
+  - `docs/release-checklist.md`
+  - `docs/runtime-baseline.md`
+  - `docs/billing-access-staging-qa.md`
+  - `vercel.json`
+  - `.github/workflows/ci.yml`
+  - Release, deploy-guard, postdeploy smoke, runtime baseline, and billing staging QA tests.
+- Files changed:
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` (regenerated by `npm run typecheck` after the clean/build cycle)
+- Tests/checks run:
+  - `npx vitest run tests/ci/postdeploy-smoke-contract.test.ts tests/ci/release-safety-consistency.test.ts tests/ci/deploy-guard.test.ts tests/ci/smoke-contract.test.ts tests/docs/runtime-baseline.test.ts tests/docs/billing-access-staging-qa.test.ts` - passed; 6 test files, 28 tests.
+  - `env APP_ENV=preview ... npm run predeploy` with CI-style preview-safe non-secret values - passed and emitted a secret-safe `predeploy.check.passed` summary.
+  - `env APP_ENV=preview ... npm run build` with preview-safe non-secret values - passed.
+  - `POSTDEPLOY_BASE_URL=http://127.0.0.1:3000 node --import tsx scripts/postdeploy-smoke.ts` before starting the local server - failed as expected with 0/12 connection failures because nothing was listening on port 3000.
+  - `npm run dev -- --hostname 127.0.0.1 --port 3000` - passed startup, including env check, Prisma client generation, and Next dev readiness.
+  - `POSTDEPLOY_BASE_URL=http://127.0.0.1:3000 node --import tsx scripts/postdeploy-smoke.ts` after starting the local server - passed; 12/12 unauthenticated smoke checks.
+  - Browser smoke against `http://127.0.0.1:3000/login` and `/dashboard` - passed; login shell rendered email, password, and sign-in controls; unauthenticated `/dashboard` redirected to `/login`; browser console error count was 0 for the checked flow.
+  - `npm run predeploy` in the local `.env` development environment - correctly blocked with `predeploy-check can only run for preview or production deployments`.
+  - `npm run jobs:worker:healthcheck` - passed with registered handlers `analytics.identify`, `analytics.track`, `auth_email.invitation_delivery`, `auth_email.password_recovery_delivery`, `observability.exception`, and `observability.message`.
+  - `npm run typecheck` - passed and regenerated `tsconfig.tsbuildinfo`.
+- Pass/fail: Repo and local release-readiness pass; full post-release proof remains externally blocked until an approved preview/production deployment URL and authenticated release-validation session are available.
+- Faults found and fixed:
+  - No Step 35 source-code fault was found.
+  - The first localhost smoke attempt failed because the local server was not running; started the dev server and reran the smoke successfully.
+  - `npm run build` removed generated TypeScript build info through the clean/build cycle; ran `npm run typecheck` to regenerate it before closing the step.
+- Proof:
+  - `vercel.json` still enforces `npm run predeploy && npm run build` for Vercel builds.
+  - CI release contracts still run env check, Prisma generation/validation, CI smoke, typecheck, full tests, and build in the expected order with non-secret preview-safe env values.
+  - Predeploy rejects development/local execution, accepts preview-style deploy configuration, redacts secret values from summaries, rejects local hosts and placeholders, validates Supabase JWT roles/project refs, and preserves preview/production domain separation.
+  - Postdeploy smoke covers auth pages, forgot-password validation, onboarding protection, auth bootstrap fail-closed behavior, invalid invitation lookup, admin member/settings protection, admin observability APIs, jobs page/API protection, and optional authenticated dashboard/Kanban portfolio checks when `POSTDEPLOY_SESSION_COOKIE` is provided.
+  - Local route-contract smoke proved the unauthenticated release-risk routes return controlled 200, 307, 401, 404, and 422 responses instead of unexpected 500s or open admin leaks.
+  - The local `/login` response includes production security headers, including CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and `Cross-Origin-Resource-Policy`.
+  - Worker healthcheck remains available for release-day validation and is read-only.
+- Manual checks:
+  - Browser screenshot saved at `/tmp/traxium-step35-login.png`.
+  - No authenticated dashboard/Kanban freshness browser pass was performed because no release-validation session cookie or test credentials were provided.
+  - No approved preview/production deployment was provided, so the postdeploy smoke script was executed against local `http://127.0.0.1:3000` only.
+- Blockers:
+  - Before calling Step 35 fully release-proven, run `node --import tsx scripts/postdeploy-smoke.ts` with `POSTDEPLOY_BASE_URL` set to the approved preview or production deployment.
+  - Provide/export `POSTDEPLOY_SESSION_COOKIE` for a seeded release-validation workspace so scripted `/dashboard` and `/kanban` portfolio smoke checks execute against the deployment.
+  - Perform the manual dashboard/Kanban freshness check from `docs/post-release-smoke-tests.md`: make one safe workflow or saving-card mutation, then refresh `/dashboard`, `/kanban`, and `/saving-cards` and confirm the same persisted state appears across all three surfaces.
+  - Run `npm run jobs:worker:healthcheck` in the deployed worker environment after the worker is deployed or restarted.
+  - Build passed but still printed existing non-failing unused-variable warnings in unrelated app/lib files. They are not Step 35 blockers, but they should be cleaned before enforcing a zero-warning release gate.
+
+## 2026-06-03T16:30:04Z - Step 36 Landing-Page Promise For US Manufacturing SMEs
+
+- Step number: 36
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-35 changes plus Step 36 landing-page copy tightening.
+- Files inspected:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `README.md`
+  - `docs/paid-pilot-buyer-package.md`
+  - `docs/demo-utopiatrax.md`
+  - `tests/app/home.page.test.ts`
+  - `tests/docs/paid-pilot-buyer-package.test.ts`
+  - Current product routes for dashboard, Kanban, reports, saving-card evidence, export, billing recovery, admin, and onboarding claim support.
+- Files changed:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `README.md`
+  - `docs/paid-pilot-buyer-package.md`
+  - `tests/app/home.page.test.ts`
+  - `tests/docs/paid-pilot-buyer-package.test.ts`
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` (regenerated by `npm run typecheck`)
+- Tests/checks run:
+  - `npx vitest run tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts` - passed; 2 test files, 5 tests.
+  - `npx eslint app/page.tsx app/layout.tsx tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts` - passed.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+  - `rg -n "Finance-trusted savings governance for US manufacturing teams|50-500 employee US manufacturers|US manufacturing organizations with recurring" app README.md docs/paid-pilot-buyer-package.md tests/app/home.page.test.ts tests/docs/paid-pilot-buyer-package.test.ts` - returned no matches.
+  - Browser render of `http://127.0.0.1:3000/` - passed.
+- Pass/fail: Pass.
+- Faults found and fixed:
+  - The landing page and metadata already had the right paid-pilot wedge, but they still used the broader phrases `US manufacturing teams` and `50-500 employee US manufacturers`.
+  - Tightened the first-viewport promise, eyebrow, product snapshot subtitle, metadata description, README positioning, buyer-package promise, and regression tests to say `US manufacturing SMEs` explicitly.
+- Proof:
+  - The homepage now states `Finance-trusted savings governance for US manufacturing SMEs.` and `Paid pilot package for 50-500 employee US manufacturing SMEs` in the unauthenticated first viewport.
+  - The supporting copy remains tied to implemented capabilities: saving cards, evidence, approvals, open actions, portfolio views, and controller-ready export.
+  - Product snapshot values stay aligned with UtopiaTrax seed proof: 25 total cards, 7 pending actions, and 5 finance-locked cards.
+  - Trust boundaries continue to avoid overclaiming: the page explicitly says the pilot is not a broad ERP replacement and does not promise SSO/SAML, ERP connectors, or a custom approval builder.
+  - The buyer package still marks SOC 2, 24/7 support, SSO/SAML, ERP integration, vendor risk scoring, spend analytics, custom BI feeds, and public compliance certification as excluded or not-yet-claimable.
+  - The homepage test now guards the US manufacturing SME promise, metadata, root-route availability, proof points, UtopiaTrax snapshot values, CTAs, and exclusions.
+  - Browser check confirmed the rendered root page includes the SME promise, audience, proof points, and trust boundaries with zero console errors.
+- Manual checks:
+  - Browser screenshot saved at `/tmp/traxium-step36-homepage.png`.
+  - Manual claim review mapped each public claim back to implemented/product-proven surfaces from prior steps and avoided unproven provider or compliance language.
+- Blockers:
+  - No Step 36 blocker remains.
+  - Future public marketing CTAs such as `Request demo` or `Start pilot` should wait until a real public lead-capture or sales handoff route exists.
+
+## 2026-06-03T16:34:22Z - Step 37 Paid Pilot Offer And Pricing Hypothesis
+
+- Step number: 37
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing Step 2-36 changes plus Step 37 paid-pilot offer documentation.
+- Files inspected:
+  - `docs/paid-pilot-buyer-package.md`
+  - `docs/subscription-gating-and-billing-recovery.md`
+  - `docs/billing-access-staging-qa.md`
+  - `docs/stripe-provider-validation.md`
+  - `README.md`
+  - `lib/billing/config.ts`
+  - `app/settings/billing/page.tsx`
+  - `app/billing/recover/route.ts`
+  - `lib/billing/access.ts`
+  - Billing settings, Stripe config, and paid-pilot docs tests.
+- Files changed:
+  - `docs/paid-pilot-offer-and-pricing.md`
+  - `docs/paid-pilot-buyer-package.md`
+  - `README.md`
+  - `tests/docs/paid-pilot-offer-and-pricing.test.ts`
+  - `tests/docs/paid-pilot-buyer-package.test.ts`
+  - `docs/readiness-proof-log.md`
+  - `tsconfig.tsbuildinfo` (regenerated by `npm run typecheck`)
+- Tests/checks run:
+  - `npx vitest run tests/docs/paid-pilot-offer-and-pricing.test.ts tests/docs/paid-pilot-buyer-package.test.ts tests/app/settings-billing.page.test.ts tests/lib/stripe-config.test.ts` - passed; 4 test files, 22 tests.
+  - `npx eslint tests/docs/paid-pilot-offer-and-pricing.test.ts tests/docs/paid-pilot-buyer-package.test.ts` - passed.
+  - `npm run typecheck` - passed.
+  - `git diff --check` - passed.
+  - `rg -n "TODO|TBD" docs/paid-pilot-offer-and-pricing.md` - returned no matches.
+- Pass/fail: Pass.
+- Faults found and fixed:
+  - No Step 37 source-code fault was found.
+  - The paid-pilot buyer package had a high-level offer summary, but there was no dedicated commercial artifact with concrete buyer fit, inclusion/exclusion scope, support model, price hypothesis, and Stripe plan relationship.
+  - Added `docs/paid-pilot-offer-and-pricing.md` and linked it from the buyer package and README.
+- Proof:
+  - The offer defines a 30-45 day guided paid pilot for one 50-500 employee US manufacturing SME workspace.
+  - Included scope covers kickoff, UtopiaTrax walkthrough, first real saving card, inline master-data setup, canonical workflow review, at least one phase-change approval, evidence-handling review when configured, weekly operating reviews, and an end-of-pilot recap.
+  - Exclusions stay explicit: no SSO/SAML, ERP/MRP connectors, custom approval builder, contract lifecycle management, vendor risk scoring, broad spend analytics, custom BI feeds, custom workbook layouts, direct finance-system posting, 24/7 support, or public compliance certification claims.
+  - Success criteria are product-fit and trust based: real saving-card creation, cross-surface portfolio agreement, one approval flow, finance assumption/evidence review, admin billing/trust understanding, controller-review export, and a continue/expand/pause/stop recommendation.
+  - Support model is business-hours, with same-business-day attention for login, billing access, blocked workspace, evidence download, or export failures and next-business-day targets for workflow/reporting/import/master-data/UX questions.
+  - Pricing hypothesis is fixed and sales-led, not self-serve: Starter Pilot at USD 4,500-7,500 and Growth Pilot at USD 9,000-15,000 for the pilot period.
+  - The document maps `Starter Pilot` to the existing `starter` Stripe plan code and `Growth Pilot` to `growth`, matching `stripePlanCatalogKeys` in `lib/billing/config.ts`.
+  - The document explicitly avoids unbuilt complexity by saying not to publish seat, card, upload, API, or metered-usage limits until plan metadata and billing copy are finalized together.
+  - Existing billing UI/config tests still prove `app/settings/billing/page.tsx` renders only Starter/Growth choices and the billing config requires Product/base Price IDs for the same two plan codes.
+- Manual checks:
+  - No browser check was run because Step 37 changed documentation/tests only and did not change public UI or billing behavior.
+  - Manual docs review confirmed the offer does not require billing-code changes, public price pages, public lead capture, usage metering, or plan-limit enforcement.
+- Blockers:
+  - No Step 37 engineering blocker remains.
+  - Before using the ranges in a real buyer proposal, founder/sales should approve the USD 4,500-7,500 and USD 9,000-15,000 hypotheses and configure matching Stripe live Product/Price IDs for the chosen commercial package.
+
+## Step Execution Template
+
+Copy this block for each approved step.
+
+- Date/time:
+- Step number:
+- Working tree state or commit:
+- Files inspected:
+- Files changed:
+- Tests run:
+- Pass/fail:
+- Proof:
+- Manual checks:
+- Blockers:

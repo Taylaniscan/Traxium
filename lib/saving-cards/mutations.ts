@@ -188,9 +188,13 @@ export async function updateSavingCard(
           ? existing.annualVolume
           : payload.annualVolume,
         currency: existing.financeLocked ? existing.currency : payload.currency,
-        fxRate: payload.fxRate,
-        calculatedSavings: payload.calculatedSavings,
-        calculatedSavingsUSD: payload.calculatedSavingsUSD,
+        fxRate: existing.financeLocked ? existing.fxRate : payload.fxRate,
+        calculatedSavings: existing.financeLocked
+          ? existing.calculatedSavings
+          : payload.calculatedSavings,
+        calculatedSavingsUSD: existing.financeLocked
+          ? existing.calculatedSavingsUSD
+          : payload.calculatedSavingsUSD,
         frequency: payload.frequency,
         savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
         implementationComplexity: normalizeOptionalName(
@@ -306,7 +310,8 @@ export async function updateAlternativeSupplier(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
   const payload = alternativeSupplierSchema.parse(input);
@@ -317,6 +322,10 @@ export async function updateAlternativeSupplier(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative supplier not found.");
+    }
 
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
@@ -370,7 +379,8 @@ export async function updateAlternativeSupplier(
 
 export async function deleteAlternativeSupplier(
   alternativeId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
 
@@ -380,6 +390,10 @@ export async function deleteAlternativeSupplier(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative supplier not found.");
+    }
 
     return tx.savingCardAlternativeSupplier.delete({
       where: { id: existing.id },
@@ -457,7 +471,8 @@ export async function updateAlternativeMaterial(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
   const payload = alternativeMaterialSchema.parse(input);
@@ -468,6 +483,10 @@ export async function updateAlternativeMaterial(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative material not found.");
+    }
 
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
@@ -525,7 +544,8 @@ export async function updateAlternativeMaterial(
 
 export async function deleteAlternativeMaterial(
   alternativeId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
 
@@ -535,6 +555,10 @@ export async function deleteAlternativeMaterial(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative material not found.");
+    }
 
     return tx.savingCardAlternativeMaterial.delete({
       where: { id: existing.id },
@@ -563,6 +587,13 @@ async function applySelectedAlternativeSupplier(
 
   if (!card || !alternative) {
     throw new Error("Unable to apply selected supplier scenario.");
+  }
+
+  if (card.financeLocked) {
+    throw new WorkflowError(
+      "Finance-locked savings cannot apply alternative supplier scenarios. Remove the finance lock before changing validated financial assumptions.",
+      409
+    );
   }
 
   const fxRate = await getLatestFxRate(tx, alternative.currency);
@@ -621,6 +652,13 @@ async function applySelectedAlternativeMaterial(
 
   if (!card || !alternative) {
     throw new Error("Unable to apply selected material scenario.");
+  }
+
+  if (card.financeLocked) {
+    throw new WorkflowError(
+      "Finance-locked savings cannot apply alternative material scenarios. Remove the finance lock before changing validated financial assumptions.",
+      409
+    );
   }
 
   const fxRate = await getLatestFxRate(tx, alternative.currency);

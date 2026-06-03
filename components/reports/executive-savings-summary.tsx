@@ -161,9 +161,9 @@ export function ExecutiveSavingsSummary({
               detail={`${formatPlainNumber(portfolioScope)} initiatives currently in scope`}
             />
             <ExecutiveMetric
-              label="Realised Savings"
+              label="Realized Savings"
               value={formatCurrency(realisedSavings, "EUR")}
-              detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into realised or achieved delivery`}
+              detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into realized or achieved delivery`}
             />
             <ExecutiveMetric
               label="Achieved Savings"
@@ -235,7 +235,7 @@ export function ExecutiveSavingsSummary({
             </OutlookLine>
             <OutlookLine>
               {formatPercent(deliveryCoverage)} of pipeline value has already
-              progressed into realised or achieved delivery.
+              progressed into realized or achieved delivery.
             </OutlookLine>
             <OutlookLine>
               {formatPlainNumber(pendingApprovals)} approvals are still pending

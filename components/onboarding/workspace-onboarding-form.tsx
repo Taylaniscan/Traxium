@@ -165,7 +165,7 @@ export function WorkspaceOnboardingForm({
                   onChange={(event) => setDescription(event.target.value)}
                   maxLength={240}
                   rows={4}
-                  placeholder="Example: SME procurement pilot for direct materials savings."
+                  placeholder="Example: US manufacturing savings pilot for direct materials."
                 />
                 <p className="text-sm text-[var(--muted-foreground)]">
                   Keep this practical. A short purpose helps admins and new teammates understand the workspace later.
@@ -200,7 +200,7 @@ export function WorkspaceOnboardingForm({
             {[
               "Workspace basics",
               "Business structure and master data",
-              "Team and roles",
+              "Team coverage",
               "Create first saving card",
               "Evidence and finance trust",
               "Dashboard and reporting",

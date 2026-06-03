@@ -240,7 +240,7 @@ export function TimelineBoard({
               />
               <TimelinePromise
                 title="Pipeline progression"
-                description="The timeline highlights which savings are still in pipeline, realised, or already achieved."
+                description="The timeline highlights which savings are still in pipeline, realized, or already achieved."
               />
               <TimelinePromise
                 title="Portfolio filtering"

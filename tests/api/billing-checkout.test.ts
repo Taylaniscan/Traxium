@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
 
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -421,6 +422,38 @@ describe("billing checkout routes", () => {
     });
     expect(customersCreateMock).not.toHaveBeenCalled();
     expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout for organization members even when their legacy app role can manage workspaces", async () => {
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        role: Role.GLOBAL_CATEGORY_LEADER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-member",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
+
+    const response = await billingCheckoutRoute(
+      createCheckoutRequest({
+        planCode: "starter",
+        priceId: process.env.STRIPE_STARTER_BASE_PRICE_ID,
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Only workspace admins and owners can manage billing checkout.",
+    });
+    expect(customersCreateMock).not.toHaveBeenCalled();
+    expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+    expect(prismaState.billingCustomers).toHaveLength(0);
   });
 
   it("rejects checkout when the submitted price id does not match the configured plan catalog", async () => {

@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import {
   createSupabaseAdminClient,
   createSupabasePublicClient,
-} from "@/lib/supabase/server";
+} from "@/lib/supabase/service";
 import {
   organizationInvitationSelect,
   type OrganizationInvitationRecord,
@@ -391,7 +391,7 @@ export async function queueInvitationEmailJobSafely(input: {
 }): Promise<QueuedDeliveryResult | QueueUnavailableDeliveryResult> {
   try {
     return await queueInvitationEmailJob(input);
-  } catch (error) {
+  } catch {
     trackServerEvent(
       {
         event: "jobs.auth_email.invitation_delivery.enqueue_failed",
@@ -444,7 +444,7 @@ export async function queuePasswordRecoveryEmailJobSafely(input: {
 }): Promise<QueuedDeliveryResult | QueueUnavailableDeliveryResult> {
   try {
     return await queuePasswordRecoveryEmailJob(input);
-  } catch (error) {
+  } catch {
     trackServerEvent(
       {
         event: "jobs.auth_email.password_recovery_delivery.enqueue_failed",

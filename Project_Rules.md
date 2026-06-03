@@ -51,24 +51,24 @@ EUR and USD with FX conversion.
 Savings phases:
 - Idea
 - Validated
-- Realised
+- Realized
 - Achieved
-- Cancelled
+- Canceled
 
 Approval Workflow
 
 Canonical lifecycle:
 - New saving cards must start in `Idea`.
-- Allowed non-cancelled progression is `Idea -> Validated -> Realised -> Achieved`.
-- Any non-cancelled phase may move to `Cancelled` only with a cancellation reason.
+- Allowed non-canceled progression is `Idea -> Validated -> Realized -> Achieved`.
+- Any non-canceled phase may move to `Canceled` only with a cancellation reason.
 - No phase skipping is allowed.
 
 Target-phase approvals:
 - `Idea`: initial phase for new cards rather than a normal requested destination
 - `Validated`: Head of Global Procurement + Financial Controller
-- `Realised`: Financial Controller
+- `Realized`: Financial Controller
 - `Achieved`: Financial Controller
-- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+- `Canceled`: requires a reason and follows the implemented phase-change approval path
 
 Workflow guardrail:
 - Saving-card create and edit flows must not bypass workflow by writing phase directly.

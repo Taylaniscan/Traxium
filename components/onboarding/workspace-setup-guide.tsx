@@ -19,6 +19,7 @@ import {
   getMasterDataTemplateDownloadHref,
   isMasterDataImportEntityKey,
 } from "@/lib/onboarding/master-data-config";
+import { roleLabels } from "@/lib/constants";
 import type { WorkspaceMasterDataItem, WorkspaceReadiness } from "@/lib/types";
 
 type WorkspaceSetupGuideProps = {
@@ -167,7 +168,7 @@ function getActivationModel(readiness: WorkspaceReadiness | null) {
     },
     {
       key: "finance-team",
-      label: "Finance approver/team setup",
+      label: "Finance reviewer/team setup",
       description: "Finance validation and procurement approvals become clearer.",
       ready:
         financialControllerReady &&
@@ -176,9 +177,9 @@ function getActivationModel(readiness: WorkspaceReadiness | null) {
     },
     {
       key: "evidence",
-      label: "Evidence attached to saving cards",
+      label: "Evidence can be attached to saving cards",
       description:
-        "Quotes, confirmations, and calculation files strengthen finance trust.",
+        "After a card exists, attach quote, contract, invoice, and calculation evidence for finance trust.",
       ready: savingCardCount > 0,
     },
   ];
@@ -536,33 +537,33 @@ function TeamAndRolesStep({
   return (
     <StepShell
       stepNumber={3}
-      title="Team and roles"
-      description="Workspace roles control administration. Business roles control procurement workflow actions and approval coverage."
+      title="Team coverage"
+      description="Workspace access controls settings and billing. Business roles cover sourcing ownership, procurement approval, and finance review."
       status={status}
     >
       <div className="space-y-5">
         <div className="grid gap-4 md:grid-cols-2">
           <RoleCoverageRow
             label="Workspace Admin / Owner"
-            detail={`Your current workspace access is ${viewerMembershipRole.toLowerCase()}. Owners and admins control workspace setup, members, and billing/admin actions.`}
+            detail={`Your current workspace access is ${viewerMembershipRole.toLowerCase()}. Owners and admins control workspace setup, members, and billing settings.`}
             count={1}
             readyLabel="Available"
           />
           <RoleCoverageRow
-            label="Financial Controller"
+            label={roleLabels.FINANCIAL_CONTROLLER}
             detail="Needed for finance validation and confidence in reported savings."
             count={financialController?.count ?? 0}
             readyLabel="Covered"
           />
           <RoleCoverageRow
-            label="Head of Global Procurement"
-            detail="Needed for Validated approvals and senior procurement governance."
+            label={roleLabels.HEAD_OF_GLOBAL_PROCUREMENT}
+            detail="Needed for validated approvals and procurement governance."
             count={headOfProcurement?.count ?? 0}
             readyLabel="Covered"
           />
           <RoleCoverageRow
-            label="Business procurement roles"
-            detail="Category leaders and buyers keep saving cards moving through real commercial workflow."
+            label="Category owners and buyers"
+            detail="Category owners and buyers keep saving cards moving through real commercial workflow."
             count={categoryLeader?.count ?? 0}
             readyLabel="Covered"
           />
@@ -646,10 +647,10 @@ function EvidenceTrustStep({
       <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            "Supplier quotes",
-            "Supplier letters",
-            "Price confirmations",
-            "Calculation files",
+            "Supplier quote or bid",
+            "Contract or purchase order",
+            "Invoice or actual proof",
+            "Calculation workbook",
             "Finance approval support",
           ].map((item) => (
             <div
@@ -856,7 +857,7 @@ export function WorkspaceSetupGuide({
   const completedStepLabels = [
     workspaceStatus === "complete" ? "Workspace identity" : null,
     businessStatus === "complete" ? "Business structure and master data" : null,
-    teamStatus === "complete" ? "Team and roles" : null,
+    teamStatus === "complete" ? "Team coverage" : null,
     savingCardStatus === "complete" ? "First saving card" : null,
     reportingStatus === "complete" ? "Reporting and dashboard" : null,
   ].filter((value): value is string => Boolean(value));

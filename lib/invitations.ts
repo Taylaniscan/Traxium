@@ -438,7 +438,7 @@ export async function revokeOrganizationInvitation(input: {
       actorUserId: input.actor.id,
       targetEntityId: updatedInvitation.id,
       eventType: auditEventTypes.INVITE_REVOKED,
-      detail: "Cancelled a pending invitation.",
+      detail: "Canceled a pending invitation.",
       payload: {
         invitationRole: updatedInvitation.role,
         status: updatedInvitation.status,

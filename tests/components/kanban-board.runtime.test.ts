@@ -531,7 +531,7 @@ describe("kanban board runtime regression", () => {
     );
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
-    ).toEqual(["Move to...", "Validated", "Cancelled"]);
+    ).toEqual(["Move to...", "Validated", "Canceled"]);
 
     await dragCardToPhase({
       runtime,
@@ -591,7 +591,7 @@ describe("kanban board runtime regression", () => {
 
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
-    ).toEqual(["Move to...", "Validated", "Cancelled"]);
+    ).toEqual(["Move to...", "Validated", "Canceled"]);
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
     ).not.toContain("Achieved");
@@ -605,7 +605,7 @@ describe("kanban board runtime regression", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(runtime.getText()).toContain("Move blocked");
     expect(runtime.getText()).toContain(
-      "Cannot move from Idea to Achieved. You can only request Validated or Cancelled."
+      "Cannot move from Idea to Achieved. You can only request Validated or Canceled."
     );
     expect(runtime.getColumnText("IDEA")).toContain("Packaging renegotiation");
     expect(runtime.getColumnText("ACHIEVED")).not.toContain(

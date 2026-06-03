@@ -45,7 +45,13 @@ import {
   DashboardClient,
   deriveDashboardMetrics,
 } from "@/components/dashboard/dashboard-client";
+import { calculateSavings } from "@/lib/calculations";
 import type { DashboardData } from "@/lib/types";
+import {
+  getUtopiaTraxDatasetSummary,
+  UTOPIATRAX_DIRECT_CATEGORIES,
+  UTOPIATRAX_SAVING_CARDS,
+} from "@/scripts/seed-utopiatrax-demo";
 
 function createDashboardCard(
   overrides: Record<string, unknown> = {}
@@ -75,6 +81,52 @@ function createDashboardCard(
     },
     ...overrides,
   } as DashboardData["cards"][number];
+}
+
+function resolveUtopiaFxRate(
+  currency: (typeof UTOPIATRAX_SAVING_CARDS)[number]["currency"]
+) {
+  return currency === "USD" ? 0.92 : 1;
+}
+
+function parseUtopiaDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function createUtopiaDashboardCards(): DashboardData["cards"] {
+  return UTOPIATRAX_SAVING_CARDS.map((card) => {
+    const savings = calculateSavings({
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      fxRate: resolveUtopiaFxRate(card.currency),
+    });
+
+    return {
+      title: card.title,
+      phase: card.phase,
+      categoryId: `utopiatrax-category-${card.categoryName}`,
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      calculatedSavings: savings.savingsEUR,
+      frequency: "RECURRING",
+      savingDriver: card.savingDriver,
+      implementationComplexity: card.implementationComplexity,
+      qualificationStatus: card.qualificationStatus,
+      impactStartDate: parseUtopiaDate(card.impactStart),
+      category: {
+        name: card.categoryName,
+      },
+      buyer: {
+        name: card.buyerName,
+      },
+      businessUnit: {
+        name: card.businessUnitName,
+      },
+    } as DashboardData["cards"][number];
+  });
 }
 
 describe("dashboard client", () => {
@@ -236,5 +288,51 @@ describe("dashboard client", () => {
         forecast: 48000,
       },
     ]);
+  });
+
+  it("derives populated executive metrics from the UtopiaTrax demo portfolio", () => {
+    const cards = createUtopiaDashboardCards();
+    const metrics = deriveDashboardMetrics(cards);
+    const summary = getUtopiaTraxDatasetSummary();
+
+    expect(cards).toHaveLength(summary.savingCardCount);
+    expect(metrics.pipelineSavings).toBeGreaterThan(0);
+    expect(metrics.realisedSavings).toBeGreaterThan(0);
+    expect(metrics.achievedSavings).toBeGreaterThan(0);
+    expect(metrics.forecastSavings).toBeGreaterThan(metrics.pipelineSavings);
+    expect(metrics.monthlyTrend).toHaveLength(6);
+    expect(metrics.monthlyTrend.every((point) => point.forecast > 0)).toBe(true);
+    expect(metrics.topProjects).toHaveLength(5);
+
+    for (const point of metrics.byPhase) {
+      expect(point.phase).toBeDefined();
+      expect(point.savings).toBeGreaterThan(0);
+      if (point.phase) {
+        expect(summary.phaseCounts[point.phase]).toBeGreaterThan(0);
+      }
+    }
+
+    expect(metrics.byCategory.map((point) => point.label).sort()).toEqual(
+      UTOPIATRAX_DIRECT_CATEGORIES.map((category) => category.name).sort()
+    );
+
+    const markup = renderToStaticMarkup(
+      React.createElement(DashboardClient, {
+        data: {
+          cards,
+        },
+        readiness: null,
+        viewer: {
+          organizationMembershipRole: OrganizationRole.ADMIN,
+        },
+      })
+    );
+
+    expect(markup).toContain("Savings by Phase");
+    expect(markup).toContain("Savings by Category");
+    expect(markup).toContain("Savings Forecast");
+    expect(markup).not.toContain("No live saving cards yet.");
+    expect(markup).not.toContain("No phase savings are available yet.");
+    expect(markup).not.toContain("No savings forecast data is available yet.");
   });
 });

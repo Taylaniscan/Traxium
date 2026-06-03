@@ -8,17 +8,17 @@ This file is the contributor-facing guidance for future Codex runs. It is not an
 Saving cards follow one canonical lifecycle:
 
 - New cards must start in `Idea`.
-- Allowed non-cancelled progression is `Idea -> Validated -> Realised -> Achieved`.
-- Any non-cancelled phase may move to `Cancelled` only with a cancellation reason.
-- No skipping is allowed between non-cancelled phases.
+- Allowed non-canceled progression is `Idea -> Validated -> Realized -> Achieved`.
+- Any non-canceled phase may move to `Canceled` only with a cancellation reason.
+- No skipping is allowed between non-canceled phases.
 
 Target-phase approval requirements:
 
 - `Idea`: initial phase for new cards rather than a normal requested destination
 - `Validated`: `Head of Global Procurement` and `Financial Controller`
-- `Realised`: `Financial Controller`
+- `Realized`: `Financial Controller`
 - `Achieved`: `Financial Controller`
-- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+- `Canceled`: requires a reason and follows the implemented phase-change approval path
 
 Finance lock:
 

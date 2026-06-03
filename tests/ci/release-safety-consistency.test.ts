@@ -175,7 +175,15 @@ describe("release safety consistency", () => {
     expect(releaseChecklist).toContain("npm run build");
     expect(releaseChecklist).toContain("STRIPE_SECRET_KEY");
     expect(releaseChecklist).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
-    expect(releaseChecklist).toContain("STRIPE_GROWTH_METERED_PRICE_ID");
+    expect(releaseChecklist).toContain(
+      "optional Stripe plan catalog values are present only when the live plan uses metered recurring pricing"
+    );
+    expect(environmentSetup).toContain(
+      "Metered Stripe price IDs are optional unless a plan also has a metered recurring Stripe Price"
+    );
+    expect(deploymentStrategy).toContain(
+      "Metered Stripe price ids are optional unless a live plan also has metered recurring pricing."
+    );
     expect(releaseChecklist).toContain("dashboard and Kanban changes include both focused regression tests");
     expect(releaseChecklist).toContain("POSTDEPLOY_SESSION_COOKIE");
     expect(releaseChecklist).toContain("/dashboard");

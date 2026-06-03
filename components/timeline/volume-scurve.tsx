@@ -22,9 +22,9 @@ type AggregatedRow = {
   period: string;
   periodKey: string;
   forecastSaving: number;
-  actualSaving: number;
+  actualSaving: number | null;
   cumulativeForecast: number;
-  cumulativeActual: number;
+  cumulativeActual: number | null;
 };
 
 export function VolumeSCurve({
@@ -78,7 +78,13 @@ export function VolumeSCurve({
 
         const monthlyMap = new Map<
           string,
-          { period: string; periodKey: string; forecastSaving: number; actualSaving: number }
+          {
+            period: string;
+            periodKey: string;
+            forecastSaving: number;
+            actualSaving: number;
+            hasActual: boolean;
+          }
         >();
 
         for (const timeline of successful) {
@@ -88,10 +94,14 @@ export function VolumeSCurve({
               periodKey: row.periodKey,
               forecastSaving: 0,
               actualSaving: 0,
+              hasActual: false,
             };
 
             current.forecastSaving += row.forecastSaving;
-            current.actualSaving += row.actualSaving;
+            if (row.isConfirmed) {
+              current.actualSaving += row.actualSaving;
+              current.hasActual = true;
+            }
             monthlyMap.set(row.periodKey, current);
           }
         }
@@ -102,12 +112,17 @@ export function VolumeSCurve({
           .sort((a, b) => a.periodKey.localeCompare(b.periodKey))
           .map((row) => {
             cumulativeForecast += row.forecastSaving;
-            cumulativeActual += row.actualSaving;
+            if (row.hasActual) {
+              cumulativeActual += row.actualSaving;
+            }
 
             return {
-              ...row,
+              period: row.period,
+              periodKey: row.periodKey,
+              forecastSaving: row.forecastSaving,
+              actualSaving: row.hasActual ? row.actualSaving : null,
               cumulativeForecast,
-              cumulativeActual,
+              cumulativeActual: row.hasActual ? cumulativeActual : null,
             };
           });
 
@@ -187,7 +202,7 @@ export function VolumeSCurve({
         <CardHeader>
           <CardTitle>Monthly Forecast vs Actual</CardTitle>
           <CardDescription>
-            Portfolio-level monthly savings impact from forecast and actual volumes.
+            Portfolio-level monthly savings impact from forecast and confirmed actual volumes.
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
@@ -198,8 +213,10 @@ export function VolumeSCurve({
               <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                formatter={(value: number, name: string) => [
-                  formatCurrency(Math.round(value), "EUR"),
+                formatter={(value, name) => [
+                  typeof value === "number" && Number.isFinite(value)
+                    ? formatCurrency(Math.round(value), "EUR")
+                    : "No confirmed actual",
                   name === "forecastSaving" ? "Forecast" : "Actual",
                 ]}
               />
@@ -230,7 +247,7 @@ export function VolumeSCurve({
         <CardHeader>
           <CardTitle>Cumulative Volume S-Curve</CardTitle>
           <CardDescription>
-            Cumulative forecast and actual savings progression across the portfolio.
+            Cumulative forecast and confirmed actual savings progression across the portfolio.
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
@@ -241,8 +258,10 @@ export function VolumeSCurve({
               <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                formatter={(value: number, name: string) => [
-                  formatCurrency(Math.round(value), "EUR"),
+                formatter={(value, name) => [
+                  typeof value === "number" && Number.isFinite(value)
+                    ? formatCurrency(Math.round(value), "EUR")
+                    : "No confirmed actual",
                   name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                 ]}
               />

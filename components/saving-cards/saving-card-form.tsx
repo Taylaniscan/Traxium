@@ -247,11 +247,6 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       return false;
     }
 
-    if (step === 1 && form.phase === "CANCELLED" && !form.cancellationReason.trim()) {
-      setError("Cancellation reason is required when a card is cancelled.");
-      return false;
-    }
-
     return true;
   }
 
@@ -412,15 +407,30 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         required
                       />
                     </Field>
-                    <Field label="Saving Type">
+                    <Field
+                      label="Saving Type"
+                      helper="Classify the case as hard savings, cost avoidance, supplier switch, material substitution, or another procurement value type."
+                    >
                       <Input
-                        placeholder="Ex: Supplier switch"
+                        placeholder="Ex: Hard savings - supplier switch"
+                        list="saving-type-options"
                         value={form.savingType}
                         onChange={(event) => setForm({ ...form, savingType: event.target.value })}
                         required
                       />
+                      <datalist id="saving-type-options">
+                        <option value="Hard savings - price reduction" />
+                        <option value="Cost avoidance - inflation mitigation" />
+                        <option value="Supplier switch" />
+                        <option value="Material substitution" />
+                        <option value="Volume consolidation" />
+                      </datalist>
                     </Field>
-                    <Field label="Description" className="md:col-span-2" optional>
+                    <Field
+                      label="Description"
+                      className="md:col-span-2"
+                      helper="Required. Add a short business case so reviewers understand the initiative."
+                    >
                       <Textarea
                         placeholder="Summarize the sourcing opportunity, business case, and expected impact."
                         value={form.description}
@@ -428,25 +438,28 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         required
                       />
                     </Field>
-                    <Field label="Phase">
-                      <Select
-                        value={form.phase}
-                        onChange={(event) => setForm({ ...form, phase: event.target.value as FormState["phase"] })}
-                      >
-                        {phases.map((phase) => (
-                          <option key={phase} value={phase}>
-                            {phaseLabels[phase]}
-                          </option>
-                        ))}
-                      </Select>
+                    <Field
+                      label="Workflow Status"
+                      helper={
+                        isCreateMode
+                          ? "New cards start in Idea and move after workflow approval."
+                          : "Record edits preserve the current approved phase."
+                      }
+                    >
+                      <div className="flex min-h-11 items-center justify-between gap-3 rounded-[8px] border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2">
+                        <PhaseBadge phase={form.phase}>{phaseLabels[form.phase]}</PhaseBadge>
+                        <span className="text-sm text-[var(--muted-foreground)]">
+                          {isCreateMode ? "Initial phase" : "Current approved phase"}
+                        </span>
+                      </div>
                     </Field>
-                    <Field label="Cancellation Reason" optional>
-                      <Input
-                        placeholder="Only required if cancelled"
-                        value={form.cancellationReason}
-                        onChange={(event) => setForm({ ...form, cancellationReason: event.target.value })}
-                      />
-                    </Field>
+                    {form.phase === "CANCELLED" && form.cancellationReason.trim() ? (
+                      <Field label="Cancellation Reason" helper="Recorded from the approved cancellation request.">
+                        <div className="min-h-11 rounded-[8px] border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2 text-sm text-[var(--foreground)]">
+                          {form.cancellationReason}
+                        </div>
+                      </Field>
+                    ) : null}
                   </div>
                 </SectionBlock>
 
@@ -650,10 +663,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         >
                           <Input
                             type="number"
+                            min="0.01"
                             step="0.01"
                             placeholder="0.00"
                             value={form.baselinePrice}
                             onChange={(event) => setForm({ ...form, baselinePrice: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
@@ -667,10 +682,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         >
                           <Input
                             type="number"
+                            min="0"
                             step="0.01"
                             placeholder="0.00"
                             value={form.newPrice}
                             onChange={(event) => setForm({ ...form, newPrice: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
@@ -684,10 +701,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         >
                           <Input
                             type="number"
+                            min="0.01"
                             step="0.01"
                             placeholder="0"
                             value={form.annualVolume}
                             onChange={(event) => setForm({ ...form, annualVolume: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
@@ -700,7 +719,11 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           locked={financeLockActive}
                           statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
                         >
-                          <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}>
+                          <Select
+                            value={form.currency}
+                            onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}
+                            disabled={financeLockActive}
+                          >
                             {currencies.map((currency) => (
                               <option key={currency} value={currency}>
                                 {currency}
@@ -708,7 +731,11 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             ))}
                           </Select>
                         </Field>
-                        <Field label="Frequency">
+                        <Field
+                          label="Frequency"
+                          tooltip="How finance should interpret the recognized value cadence."
+                          helper="Use one-time for a single event, recurring for annual run-rate value, and multi-year for contracted value across several years."
+                        >
                           <Select
                             value={form.frequency}
                             onChange={(event) => setForm({ ...form, frequency: event.target.value as FormState["frequency"] })}
@@ -729,10 +756,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         >
                           <Input
                             type="number"
+                            min="0.0001"
                             step="0.0001"
                             placeholder="1.0000"
                             value={form.fxRate}
                             onChange={(event) => setForm({ ...form, fxRate: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
@@ -774,12 +803,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
                       </p>
                       {isNegativeSavings ? (
-                        <p className="mt-1 text-sm">⚠ New price is higher</p>
+                        <p className="mt-1 text-sm">New price is higher than baseline; submit validation will reject this commercial case.</p>
                       ) : null}
                     </div>
 
                     <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 md:p-5">
-                      <SectionLabel title="Calculated View" description="Use this as a quick cross-check before submitting the card." />
+                      <SectionLabel title="Calculated View" description="Use this as a quick cross-check before submitting the card; finance will review the baseline, new price, annual volume, currency, FX, impact dates, and evidence together." />
                       <div className="grid gap-4 md:grid-cols-3">
                         <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
                         <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
@@ -827,7 +856,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       <div className="grid gap-5">
                         <Field
                           label="Impact Start Date"
-                          optional
+                          helper="Finance recognition start; must be on or before the impact end date."
                           emphasis="finance"
                           locked={financeLockActive}
                           statusLabel={financeLockActive ? "Finance-controlled" : "Recognition date"}
@@ -836,12 +865,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             type="date"
                             value={form.impactStartDate}
                             onChange={(event) => setForm({ ...form, impactStartDate: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
                         <Field
                           label="Impact End Date"
-                          optional
+                          helper="Finance recognition end; keep this aligned with the value period used for forecast and actual tracking."
                           emphasis="finance"
                           locked={financeLockActive}
                           statusLabel={financeLockActive ? "Finance-controlled" : "Recognition date"}
@@ -850,6 +880,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             type="date"
                             value={form.impactEndDate}
                             onChange={(event) => setForm({ ...form, impactEndDate: event.target.value })}
+                            disabled={financeLockActive}
                             required
                           />
                         </Field>
@@ -873,7 +904,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </Field>
                 </SectionBlock>
 
-                <SectionBlock title="Evidence Register" description="Keep supporting documents with the record so review and finance validation can happen from one place.">
+                <SectionBlock title="Evidence Register" description="Keep quotes, contracts, invoices, and calculation workbooks with the record so finance validation can happen from one place.">
                   {card?.id ? (
                     <EvidenceUploader
                       savingCardId={card.id}
@@ -883,7 +914,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                     />
                   ) : (
                     <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/55 px-4 py-4 text-sm text-[var(--muted-foreground)]">
-                      Save the card first, then upload supporting evidence.
+                      Save the card first, then attach quote, contract or purchase-order, invoice, and calculation evidence before finance validation.
                     </div>
                   )}
                 </SectionBlock>
@@ -1000,6 +1031,10 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                 value={`${linkedEvidenceCount}${evidenceIssueCount ? ` linked, ${evidenceIssueCount} issue` : " linked"}`}
               />
               <InfoRow
+                label="Evidence Guidance"
+                value="Save first, then attach quote, contract/PO, invoice, and calculation evidence for finance validation."
+              />
+              <InfoRow
                 label="Approval Status"
                 value={<Badge tone={approvalStatusTone}>{approvalStatus}</Badge>}
               />
@@ -1052,6 +1087,12 @@ function getInlineFirstCardSetupGaps(referenceData: ReferenceData) {
     { key: "suppliers", label: "suppliers", count: referenceData.suppliers.length },
     { key: "materials", label: "materials", count: referenceData.materials.length },
     { key: "categories", label: "categories", count: referenceData.categories.length },
+    { key: "plants", label: "plants", count: referenceData.plants.length },
+    {
+      key: "businessUnits",
+      label: "business units",
+      count: referenceData.businessUnits.length,
+    },
   ]
     .filter((item) => item.count === 0)
     .map((item) => item.label);

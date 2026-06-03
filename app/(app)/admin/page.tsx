@@ -349,7 +349,7 @@ export default async function AdminPage() {
               ready={readiness.counts.buyers > 0}
             />
             <MetricCard
-              label="Workflow Roles"
+              label="Approval Coverage"
               value={readiness.isWorkflowReady ? "Covered" : "Incomplete"}
               detail="Approval routing is only production-ready when all required roles are assigned"
               ready={readiness.isWorkflowReady}

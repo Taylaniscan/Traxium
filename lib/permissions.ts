@@ -55,6 +55,9 @@ const LOCKED_FINANCE_FIELDS = new Set([
   "newPrice",
   "annualVolume",
   "currency",
+  "fxRate",
+  "calculatedSavings",
+  "calculatedSavingsUSD",
   "impactStartDate",
   "impactEndDate",
 ]);

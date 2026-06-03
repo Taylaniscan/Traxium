@@ -216,7 +216,7 @@ function getRecoveryBanner(recoveryCode: string | null, canManageBilling: boolea
     case "checkout_cancelled":
       return {
         tone: "amber" as const,
-        title: "Billing checkout was cancelled",
+        title: "Billing checkout was canceled",
         message:
           "The checkout flow was not completed. The workspace will stay blocked until billing setup finishes.",
       };

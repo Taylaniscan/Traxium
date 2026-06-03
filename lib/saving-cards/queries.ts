@@ -1,4 +1,5 @@
 import { buildOrganizationUserWhere } from "@/lib/organizations";
+import { phaseLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
 import {
@@ -113,32 +114,62 @@ export async function getNotificationsForUser(userId: string) {
   });
 }
 
+export const savingCardExportColumns = [
+  "Card ID",
+  "Saving Card Title",
+  "Phase",
+  "Saving Type",
+  "Supplier",
+  "Material",
+  "Alternative Supplier",
+  "Alternative Material",
+  "Category",
+  "Buyer",
+  "Business Unit",
+  "Saving Driver",
+  "Implementation Complexity",
+  "Qualification Status",
+  "Baseline Price",
+  "New Price",
+  "Annual Volume",
+  "Currency",
+  "Savings EUR",
+  "Savings USD",
+  "Start Date",
+  "End Date",
+  "Impact Start Date",
+  "Impact End Date",
+  "Finance Locked",
+] as const;
+
 export function mapSavingCardsForExport(cards: SavingCardPortfolio[]) {
   return cards.map((card) => ({
-    Title: card.title,
-    Phase: card.phase,
-    Supplier: card.supplier.name,
-    Material: card.material.name,
-    AlternativeSupplier:
+    "Card ID": card.id,
+    "Saving Card Title": card.title,
+    Phase: phaseLabels[card.phase] ?? card.phase,
+    "Saving Type": card.savingType,
+    Supplier: card.supplier?.name ?? "",
+    Material: card.material?.name ?? "",
+    "Alternative Supplier":
       card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "",
-    AlternativeMaterial:
+    "Alternative Material":
       card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "",
-    SavingDriver: card.savingDriver ?? "",
-    ImplementationComplexity: card.implementationComplexity ?? "",
-    QualificationStatus: card.qualificationStatus ?? "",
-    Category: card.category.name,
-    Buyer: card.buyer.name,
-    BusinessUnit: card.businessUnit.name,
-    BaselinePrice: card.baselinePrice,
-    NewPrice: card.newPrice,
-    AnnualVolume: card.annualVolume,
+    Category: card.category?.name ?? "",
+    Buyer: card.buyer?.name ?? "",
+    "Business Unit": card.businessUnit?.name ?? "",
+    "Saving Driver": card.savingDriver ?? "",
+    "Implementation Complexity": card.implementationComplexity ?? "",
+    "Qualification Status": card.qualificationStatus ?? "",
+    "Baseline Price": card.baselinePrice,
+    "New Price": card.newPrice,
+    "Annual Volume": card.annualVolume,
     Currency: card.currency,
-    SavingsEUR: card.calculatedSavings,
-    SavingsUSD: card.calculatedSavingsUSD,
-    StartDate: card.startDate,
-    EndDate: card.endDate,
-    ImpactStartDate: card.impactStartDate,
-    ImpactEndDate: card.impactEndDate,
-    FinanceLocked: card.financeLocked,
+    "Savings EUR": card.calculatedSavings,
+    "Savings USD": card.calculatedSavingsUSD,
+    "Start Date": card.startDate,
+    "End Date": card.endDate,
+    "Impact Start Date": card.impactStartDate,
+    "Impact End Date": card.impactEndDate,
+    "Finance Locked": card.financeLocked ? "Yes" : "No",
   }));
 }

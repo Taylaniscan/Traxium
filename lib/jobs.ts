@@ -494,7 +494,7 @@ export async function markJobCompleted(
   client: JobClient = prisma
 ): Promise<Job | null> {
   const processedAt = new Date();
-  const completion = await client.job.updateMany({
+  await client.job.updateMany({
     where: {
       id: jobId,
       status: JobStatus.RUNNING,

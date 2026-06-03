@@ -33,6 +33,7 @@ vi.mock("@/lib/prisma", () => ({
 import {
   deleteActual,
   getVolumeTimeline,
+  importFromCsv,
   normalizePeriod,
   upsertForecast,
 } from "@/lib/volume";
@@ -114,7 +115,7 @@ describe("tenant isolation queries", () => {
     mockPrisma.materialConsumptionActual.findMany.mockResolvedValueOnce([
       {
         period,
-        actualQty: 90,
+        actualQty: 0,
         unit: "kg",
         source: ForecastSource.ERP_CSV_UPLOAD,
       },
@@ -203,13 +204,59 @@ describe("tenant isolation queries", () => {
       expect.objectContaining({
         periodKey: "2026-01",
         forecastQty: 120,
-        actualQty: 90,
+        actualQty: 0,
         forecastSaving: 240,
-        actualSaving: 180,
+        actualSaving: 0,
         isConfirmed: true,
       }),
     ]);
+    expect(timeline.summary.confirmedMonths).toBe(1);
     expect(updatedForecast).toEqual({ id: "forecast-1" });
     expect(deletedActual).toEqual({ count: 1 });
+  });
+
+  it("rejects imported negative forecast and actual quantities before writing rows", async () => {
+    mockPrisma.savingCard.findFirst.mockResolvedValueOnce(createScopedSavingCard());
+
+    const result = await importFromCsv(
+      "card-1",
+      [
+        "period,forecast,actual,unit",
+        "2026-01,-5,,kg",
+        "2026-01,,-2,kg",
+      ].join("\n"),
+      DEFAULT_USER_ID,
+      DEFAULT_ORGANIZATION_ID
+    );
+
+    expect(result).toEqual({
+      imported: 0,
+      rejected: 2,
+      errors: [
+        "Row 2: forecast quantity must be zero or greater.",
+        "Row 3: actual quantity must be zero or greater.",
+      ],
+    });
+    expect(mockPrisma.materialConsumptionForecast.upsert).not.toHaveBeenCalled();
+    expect(mockPrisma.materialConsumptionActual.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects imported current or future actuals without partially importing the row", async () => {
+    mockPrisma.savingCard.findFirst.mockResolvedValueOnce(createScopedSavingCard());
+
+    const result = await importFromCsv(
+      "card-1",
+      "period,forecast,actual,unit\n2999-01,120,100,kg",
+      DEFAULT_USER_ID,
+      DEFAULT_ORGANIZATION_ID
+    );
+
+    expect(result).toEqual({
+      imported: 0,
+      rejected: 1,
+      errors: ["Row 2: Actuals can only be entered for past months."],
+    });
+    expect(mockPrisma.materialConsumptionForecast.upsert).not.toHaveBeenCalled();
+    expect(mockPrisma.materialConsumptionActual.upsert).not.toHaveBeenCalled();
   });
 });

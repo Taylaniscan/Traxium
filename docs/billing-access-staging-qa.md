@@ -275,6 +275,8 @@ Prepare these before manual testing:
 
 Use these suites before manual staging work:
 
+- `npm run stripe:validate`
+- `npm run stripe:validate -- --exercise-provider-flows`
 - `tests/lib/billing-access.test.ts`
 - `tests/lib/auth-guards.test.ts`
 - `tests/app/billing-required.page.test.ts`

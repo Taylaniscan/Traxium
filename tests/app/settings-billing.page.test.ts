@@ -203,7 +203,7 @@ describe("settings billing page", () => {
     expect(markup).toContain("Resolve payment failure");
   });
 
-  it("renders cancelled checkout returns as a visible billing status message", async () => {
+  it("renders canceled checkout returns as a visible billing status message", async () => {
     bootstrapCurrentUserMock.mockResolvedValueOnce(createBlockedBillingResult());
 
     const page = await BillingReturnPage({
@@ -211,7 +211,7 @@ describe("settings billing page", () => {
     });
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("Stripe checkout was cancelled");
+    expect(markup).toContain("Stripe checkout was canceled");
     expect(markup).toContain("Billing status");
     expect(markup).toContain("Access state");
     expect(markup).toContain("Resolve payment failure");

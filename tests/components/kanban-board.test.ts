@@ -76,7 +76,13 @@ import {
   previewKanbanCrossColumnMove,
   resolveKanbanMoveOutcome,
 } from "@/components/kanban/kanban-board";
+import { calculateSavings } from "@/lib/calculations";
 import type { SavingCardPortfolio } from "@/lib/types";
+import {
+  getUtopiaTraxDatasetSummary,
+  UTOPIATRAX_PENDING_PHASE_REQUESTS,
+  UTOPIATRAX_SAVING_CARDS,
+} from "@/scripts/seed-utopiatrax-demo";
 
 function createSavingCard(
   overrides: Partial<SavingCardPortfolio> = {}
@@ -134,6 +140,125 @@ function createSavingCard(
   } as SavingCardPortfolio;
 }
 
+function createStableSeedId(prefix: string, value: string) {
+  return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+}
+
+function parseUtopiaDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function resolveUtopiaFxRate(
+  currency: (typeof UTOPIATRAX_SAVING_CARDS)[number]["currency"]
+) {
+  return currency === "USD" ? 0.92 : 1;
+}
+
+function createUtopiaKanbanCards(): SavingCardPortfolio[] {
+  return UTOPIATRAX_SAVING_CARDS.map((card, index) => {
+    const impactStartDate = parseUtopiaDate(card.impactStart);
+    const impactEndDate = parseUtopiaDate(card.impactEnd);
+    const supplierId = createStableSeedId("supplier", card.supplierName);
+    const materialId = createStableSeedId("material", card.materialName);
+    const categoryId = createStableSeedId("category", card.categoryName);
+    const buyerId = createStableSeedId("buyer", card.buyerName);
+    const businessUnitId = createStableSeedId(
+      "business-unit",
+      card.businessUnitName
+    );
+    const savings = calculateSavings({
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      fxRate: resolveUtopiaFxRate(card.currency),
+    });
+    const phaseChangeRequests = UTOPIATRAX_PENDING_PHASE_REQUESTS.filter(
+      (request) => request.cardTitle === card.title
+    ).map((request, requestIndex) => ({
+      id: `utopiatrax-request-${index}-${requestIndex}`,
+      approvalStatus: "PENDING",
+      requestedPhase: request.requestedPhase,
+      requestedBy: {
+        id: createStableSeedId("user", request.requestedByEmail),
+        name: request.requestedByEmail.includes("+7")
+          ? "Can Kaya"
+          : "Aylin Demir",
+      },
+    }));
+
+    return {
+      id: createStableSeedId("card", card.title),
+      title: card.title,
+      savingType: card.savingType,
+      phase: card.phase,
+      supplierId,
+      materialId,
+      categoryId,
+      businessUnitId,
+      buyerId,
+      alternativeSupplierManualName: null,
+      alternativeMaterialManualName: null,
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      calculatedSavings: savings.savingsEUR,
+      calculatedSavingsUSD: savings.savingsUSD,
+      savingDriver: card.savingDriver,
+      implementationComplexity: card.implementationComplexity,
+      qualificationStatus: card.qualificationStatus,
+      startDate: addUtcDays(impactStartDate, -75),
+      endDate: addUtcDays(impactStartDate, -7),
+      impactStartDate,
+      impactEndDate,
+      financeLocked: card.financeLocked ?? false,
+      supplier: {
+        id: supplierId,
+        name: card.supplierName,
+      },
+      material: {
+        id: materialId,
+        name: card.materialName,
+      },
+      alternativeSupplier: card.alternativeSupplierName
+        ? {
+            id: createStableSeedId(
+              "supplier",
+              card.alternativeSupplierName
+            ),
+            name: card.alternativeSupplierName,
+          }
+        : null,
+      alternativeMaterial: card.alternative?.materialName
+        ? {
+            id: createStableSeedId("material", card.alternative.materialName),
+            name: card.alternative.materialName,
+          }
+        : null,
+      category: {
+        id: categoryId,
+        name: card.categoryName,
+      },
+      buyer: {
+        id: buyerId,
+        name: card.buyerName,
+      },
+      businessUnit: {
+        id: businessUnitId,
+        name: card.businessUnitName,
+      },
+      phaseChangeRequests,
+    } as SavingCardPortfolio;
+  });
+}
+
 describe("kanban board", () => {
   it("renders all five columns", () => {
     const markup = renderToStaticMarkup(
@@ -145,9 +270,9 @@ describe("kanban board", () => {
 
     expect(markup).toContain("Idea");
     expect(markup).toContain("Validated");
-    expect(markup).toContain("Realised");
+    expect(markup).toContain("Realized");
     expect(markup).toContain("Achieved");
-    expect(markup).toContain("Cancelled");
+    expect(markup).toContain("Canceled");
   });
 
   it("renders cards in the correct initial columns", () => {
@@ -320,7 +445,7 @@ describe("kanban board", () => {
       type: "blocked",
       nextColumns: snapshot,
       message:
-        "Cannot move from Idea to Achieved. You can only request Validated or Cancelled.",
+        "Cannot move from Idea to Achieved. You can only request Validated or Canceled.",
     });
   });
 
@@ -355,7 +480,7 @@ describe("kanban board", () => {
     ]);
   });
 
-  it("routes cancelled moves into the explicit cancellation flow", () => {
+  it("routes canceled moves into the explicit cancellation flow", () => {
     const snapshot = buildKanbanColumns([createSavingCard()]);
     const outcome = resolveKanbanMoveOutcome({
       snapshot,
@@ -424,5 +549,41 @@ describe("kanban board", () => {
 
     expect(markup).toContain("Kanban board is unavailable");
     expect(markup).toContain("Refresh board");
+  });
+
+  it("keeps the UtopiaTrax demo portfolio coherent across columns and pending requests", () => {
+    const cards = createUtopiaKanbanCards();
+    const columns = buildKanbanColumns(cards);
+    const summary = getUtopiaTraxDatasetSummary();
+    const pendingCards = cards.filter(
+      (card) => card.phaseChangeRequests.length > 0
+    );
+
+    expect(cards).toHaveLength(summary.savingCardCount);
+    expect(pendingCards).toHaveLength(UTOPIATRAX_PENDING_PHASE_REQUESTS.length);
+
+    for (const [phase, count] of Object.entries(summary.phaseCounts)) {
+      expect(columns[phase as keyof typeof columns]).toHaveLength(count);
+    }
+
+    for (const card of pendingCards) {
+      expect(columns[card.phase].map((columnCard) => columnCard.title)).toContain(
+        card.title
+      );
+      expect(getVisibleKanbanPhase(card)).toBe(card.phase);
+      expect(card.phaseChangeRequests[0]?.requestedPhase).not.toBe(card.phase);
+    }
+
+    const markup = renderToStaticMarkup(
+      React.createElement(KanbanBoard, {
+        initialCards: cards,
+        readiness: null,
+      })
+    );
+
+    expect(markup).toContain("Bio-based carrier pilot sourcing");
+    expect(markup).toContain("Quinacridone red MOQ renegotiation");
+    expect(markup).toContain("Pending approval");
+    expect(markup).not.toContain("No saving cards yet");
   });
 });

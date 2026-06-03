@@ -8,7 +8,10 @@ import {
   savingDrivers
 } from "@/lib/constants";
 
-const numberField = z.coerce.number().finite();
+const positiveNumberField = (message: string) =>
+  z.coerce.number().finite().positive(message);
+const nonNegativeNumberField = (message: string) =>
+  z.coerce.number().finite().nonnegative(message);
 const masterDataField = z
   .object({
     id: z.string().optional(),
@@ -44,11 +47,11 @@ export const savingCardSchema = z
     plant: masterDataField,
     businessUnit: masterDataField,
     buyer: masterDataField,
-    baselinePrice: numberField,
-    newPrice: numberField,
-    annualVolume: numberField,
+    baselinePrice: positiveNumberField("Baseline price must be greater than zero."),
+    newPrice: nonNegativeNumberField("New price must be zero or greater."),
+    annualVolume: positiveNumberField("Annual volume must be greater than zero."),
     currency: z.enum(currencies),
-    fxRate: z.coerce.number().positive(),
+    fxRate: positiveNumberField("FX rate must be greater than zero."),
     frequency: z.enum(frequencies),
     savingDriver: z.enum(savingDrivers).optional().nullable().or(z.literal("")),
     implementationComplexity: z.enum(implementationComplexities).optional().nullable().or(z.literal("")),
@@ -97,7 +100,7 @@ export const savingCardSchema = z
     if (value.phase === "CANCELLED" && !value.cancellationReason) {
       ctx.addIssue({
         code: "custom",
-        message: "Cancellation reason is required when a card is cancelled.",
+        message: "Cancellation reason is required when a card is canceled.",
         path: ["cancellationReason"]
       });
     }
@@ -116,7 +119,7 @@ export const loginSchema = z.object({
 export const alternativeSupplierSchema = z.object({
   supplier: masterDataField.optional().default({}),
   country: z.string().min(2),
-  quotedPrice: numberField,
+  quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
   currency: z.enum(currencies),
   leadTimeDays: z.coerce.number().int().nonnegative(),
   moq: z.coerce.number().int().nonnegative(),
@@ -131,7 +134,7 @@ export const alternativeMaterialSchema = z.object({
   material: masterDataField.optional().default({}),
   supplier: masterDataField.optional().default({}),
   specification: z.string().min(2),
-  quotedPrice: numberField,
+  quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
   currency: z.enum(currencies),
   performanceImpact: z.string().min(2),
   qualificationStatus: z.string().min(2),

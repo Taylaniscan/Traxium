@@ -193,7 +193,7 @@ export function SavingCardTable({
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
-        <SummaryTile label="Realised or Achieved" value={String(realisedCount)} />
+        <SummaryTile label="Realized or Achieved" value={String(realisedCount)} />
       </div>
 
       {!filteredCards.length ? (

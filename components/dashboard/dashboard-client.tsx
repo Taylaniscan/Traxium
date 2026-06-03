@@ -735,7 +735,7 @@ export function DashboardClient({
             }
           />
           <KpiCard
-            label="Realised Value"
+            label="Realized Value"
             value={formatCurrency(executiveMetrics.realisedValue, "EUR")}
             description="Savings currently in delivery and expected to convert into achieved value."
             tone="warning"
@@ -799,7 +799,7 @@ export function DashboardClient({
           <KpiCard
             label="Validated+ Coverage"
             value={formatDashboardPercent(executiveMetrics.validatedCoverage)}
-            description="Share of pipeline already in validated, realised, or achieved status."
+            description="Share of pipeline already in validated, realized, or achieved status."
             tone="info"
             size="secondary"
           />
@@ -901,7 +901,7 @@ export function DashboardClient({
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard
             title="Savings Forecast"
-            description="Movement between current realised value and forecasted savings by month."
+            description="Movement between current realized value and forecasted savings by month."
             status={resolveChartState({
               error: null,
               points: metrics.monthlyTrend,
@@ -1015,7 +1015,7 @@ function TargetProgressCard({
       <CardHeader>
         <CardTitle>Target vs Achieved</CardTitle>
         <CardDescription>
-          Benchmark attainment relative to current realised, achieved, and
+          Benchmark attainment relative to current realized, achieved, and
           forecasted value.
         </CardDescription>
       </CardHeader>
@@ -1032,7 +1032,7 @@ function TargetProgressCard({
         </div>
 
         <ProgressRow
-          label="Realised"
+          label="Realized"
           value={formatCurrency(realisedValue, "EUR")}
           width={realisedWidth}
           toneClassName="bg-[var(--warning)]"

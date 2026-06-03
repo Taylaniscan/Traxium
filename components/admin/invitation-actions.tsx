@@ -86,7 +86,7 @@ export function InvitationActions({
         trackClientEvent(
           {
             event: "admin.invitations.revoke.rejected",
-            message: payload?.error ?? "Invitation could not be cancelled.",
+            message: payload?.error ?? "Invitation could not be canceled.",
             payload: {
               invitationId,
               status: response.status,
@@ -94,7 +94,7 @@ export function InvitationActions({
           },
           "warn"
         );
-        setError(payload?.error ?? "Invitation could not be cancelled.");
+        setError(payload?.error ?? "Invitation could not be canceled.");
         inFlightRef.current = false;
         setLoadingAction(null);
         return;
@@ -114,7 +114,7 @@ export function InvitationActions({
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Invitation could not be cancelled."
+          : "Invitation could not be canceled."
       );
       inFlightRef.current = false;
       setLoadingAction(null);

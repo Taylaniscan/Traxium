@@ -103,7 +103,7 @@ function createWorkspaceReadiness(
     workspace: {
       id: "org-1",
       name: "Atlas Procurement",
-      description: "SME procurement savings pilot.",
+      description: "US manufacturing savings pilot for direct materials.",
       slug: "atlas-procurement",
       createdAt: new Date("2026-04-01T00:00:00.000Z"),
       updatedAt: new Date("2026-04-01T00:00:00.000Z"),
@@ -156,19 +156,19 @@ function createWorkspaceReadiness(
     workflowCoverage: [
       {
         key: "HEAD_OF_GLOBAL_PROCUREMENT",
-        label: "Procurement Manager",
+        label: "Procurement Lead",
         count: 0,
         ready: false,
       },
       {
         key: "GLOBAL_CATEGORY_LEADER",
-        label: "Procurement Specialist",
+        label: "Category Owner",
         count: 0,
         ready: false,
       },
       {
         key: "FINANCIAL_CONTROLLER",
-        label: "Finance Approver",
+        label: "Finance Reviewer",
         count: 0,
         ready: false,
       },
@@ -190,9 +190,9 @@ function createWorkspaceReadiness(
     isWorkspaceReady: false,
     missingCoreSetup: ["Suppliers", "Categories", "Plants", "Business Units"],
     missingWorkflowCoverage: [
-      "Procurement Manager",
-      "Procurement Specialist",
-      "Finance Approver",
+      "Procurement Lead",
+      "Category Owner",
+      "Finance Reviewer",
     ],
   };
 }
@@ -263,7 +263,7 @@ describe("onboarding page", () => {
     expect(markup).toContain("First-value progress");
     expect(markup).toContain("80%");
     expect(markup).toContain("Workspace identity");
-    expect(markup).toContain("SME procurement savings pilot.");
+    expect(markup).toContain("US manufacturing savings pilot for direct materials.");
     expect(markup).toContain("Business structure and master data");
     expect(markup).toContain("Buyers");
     expect(markup).toContain("Set up suppliers");
@@ -281,11 +281,19 @@ describe("onboarding page", () => {
     expect(markup).toContain("Excel workbook (.xlsx)");
     expect(markup).toContain("name, code, country, contactEmail");
     expect(markup).toContain("Result summary");
-    expect(markup).toContain("Team and roles");
-    expect(markup).toContain("Financial Controller");
+    expect(markup).toContain("Team coverage");
+    expect(markup).toContain("Finance Reviewer");
     expect(markup).toContain("Create first saving card");
     expect(markup).toContain("At least one saving card exists, so this step is complete.");
     expect(markup).toContain("Evidence and finance trust");
+    expect(markup).toContain("Evidence can be attached to saving cards");
+    expect(markup).toContain(
+      "After a card exists, attach quote, contract, invoice, and calculation evidence for finance trust."
+    );
+    expect(markup).toContain("Supplier quote or bid");
+    expect(markup).toContain("Contract or purchase order");
+    expect(markup).toContain("Invoice or actual proof");
+    expect(markup).toContain("Calculation workbook");
     expect(markup).toContain("Reporting and dashboard");
     expect(markup).toContain("Go to Dashboard");
     expect(markup).toContain("Go to Reports");

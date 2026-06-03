@@ -127,6 +127,8 @@ export function SavingCardDetailWorkspace({
     card.phase !== "ACHIEVED" &&
     card.phase !== "CANCELLED" &&
     Boolean(nextPhase);
+  const selectedSupplierChangeBlocked = card.financeLocked && supplierForm.isSelected;
+  const selectedMaterialChangeBlocked = card.financeLocked && materialForm.isSelected;
 
   async function submitAlternativeSupplier() {
     setError(null);
@@ -401,6 +403,11 @@ export function SavingCardDetailWorkspace({
             <CardDescription>Commercial inputs first, then scenario comparison and evaluated alternatives.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/65 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
+              Finance validation compares the saving type, frequency, baseline price, new price, annual volume,
+              currency, FX rate, and impact window against supporting evidence and forecast-versus-actual results.
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
               <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
@@ -503,7 +510,7 @@ export function SavingCardDetailWorkspace({
           </p>
           <CardTitle>Evidence</CardTitle>
           <CardDescription>
-            Files supporting sourcing negotiations and finance validation.
+            Quotes, contracts, invoices, and calculation workbooks supporting sourcing negotiations and finance validation.
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -518,6 +525,10 @@ export function SavingCardDetailWorkspace({
     </CardHeader>
 
     <CardContent className="space-y-3">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
+        Finance validation uses the quote or supplier bid for the new price, the contract or purchase order for the baseline, invoices or actual proof for realized value, and calculation workbooks for the savings bridge.
+      </div>
+
       {card.evidence.length ? (
         card.evidence.map((item) => (
           <div
@@ -560,7 +571,7 @@ export function SavingCardDetailWorkspace({
             No evidence uploaded yet
           </p>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Upload contracts, quotations, and confirmations to make the commercial case and audit trail complete.
+            Upload quote, contract, invoice, and calculation evidence to make the commercial case and audit trail complete.
           </p>
         </div>
       )}
@@ -598,7 +609,7 @@ export function SavingCardDetailWorkspace({
                 <Input value={supplierForm.country} onChange={(event) => setSupplierForm({ ...supplierForm, country: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" step="0.01" />
+                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
               </Field>
               <Field label="Currency">
                 <Select value={supplierForm.currency} onChange={(event) => setSupplierForm({ ...supplierForm, currency: event.target.value as "EUR" | "USD" })}>
@@ -632,11 +643,17 @@ export function SavingCardDetailWorkspace({
                   type="checkbox"
                   checked={supplierForm.isSelected}
                   onChange={(event) => setSupplierForm({ ...supplierForm, isSelected: event.target.checked })}
+                  disabled={card.financeLocked}
                 />
                 Mark as selected supplier
               </label>
+              {card.financeLocked ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm text-[var(--muted-foreground)] md:col-span-2 xl:col-span-3">
+                  Finance lock is active. You can still track supplier alternatives, but unlock finance before selecting one because selection updates validated price, currency, FX, and savings assumptions.
+                </div>
+              ) : null}
               <div className="flex gap-3">
-                <Button type="button" onClick={submitAlternativeSupplier}>
+                <Button type="button" onClick={submitAlternativeSupplier} disabled={selectedSupplierChangeBlocked}>
                   {editingSupplierId ? "Update Alternative Supplier" : "Add Alternative Supplier"}
                 </Button>
                 {editingSupplierId ? (
@@ -743,7 +760,7 @@ export function SavingCardDetailWorkspace({
                 <Input value={materialForm.specification} onChange={(event) => setMaterialForm({ ...materialForm, specification: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" step="0.01" />
+                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
               </Field>
               <Field label="Currency">
                 <Select value={materialForm.currency} onChange={(event) => setMaterialForm({ ...materialForm, currency: event.target.value as "EUR" | "USD" })}>
@@ -771,11 +788,17 @@ export function SavingCardDetailWorkspace({
                   type="checkbox"
                   checked={materialForm.isSelected}
                   onChange={(event) => setMaterialForm({ ...materialForm, isSelected: event.target.checked })}
+                  disabled={card.financeLocked}
                 />
                 Mark as selected material
               </label>
+              {card.financeLocked ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm text-[var(--muted-foreground)] md:col-span-2 xl:col-span-3">
+                  Finance lock is active. You can still track material alternatives, but unlock finance before selecting one because selection updates validated material, supplier, price, currency, FX, and savings assumptions.
+                </div>
+              ) : null}
               <div className="flex gap-3">
-                <Button type="button" onClick={submitAlternativeMaterial}>
+                <Button type="button" onClick={submitAlternativeMaterial} disabled={selectedMaterialChangeBlocked}>
                   {editingMaterialId ? "Update Alternative Material" : "Add Alternative Material"}
                 </Button>
                 {editingMaterialId ? (

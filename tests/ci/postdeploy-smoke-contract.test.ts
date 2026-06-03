@@ -224,9 +224,9 @@ describe("postdeploy smoke contract", () => {
               "Kanban Board",
               "Idea",
               "Validated",
-              "Realised",
+              "Realized",
               "Achieved",
-              "Cancelled",
+              "Canceled",
               "Pending approval",
               "Card remains in Idea until approval completes.",
             ].join(" "),
@@ -314,7 +314,7 @@ describe("postdeploy smoke contract", () => {
 
       if (url.pathname === "/kanban") {
         return createResponse(200, {
-          body: "Kanban Board Idea Validated Realised Achieved Cancelled",
+          body: "Kanban Board Idea Validated Realized Achieved Canceled",
         });
       }
 

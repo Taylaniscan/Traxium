@@ -12,7 +12,23 @@ type ImportMessage = {
   text: string;
 };
 
-type MasterDataImportType = "buyers" | "suppliers" | "materials";
+type MasterDataImportType = "buyers" | "suppliers" | "materials" | "categories";
+type SavingCardImportResult = {
+  row: number;
+  status: "valid" | "failed";
+  title: string;
+  message: string;
+};
+type SavingCardImportResponse = {
+  importType: "saving_cards";
+  error: string;
+  summary: {
+    total: number;
+    valid: number;
+    failed: number;
+  };
+  results: SavingCardImportResult[];
+};
 type MasterDataImportResult = {
   row: number;
   status: "created" | "skipped" | "failed";
@@ -28,6 +44,11 @@ type MasterDataImportResponse = {
   };
   results: MasterDataImportResult[];
 };
+
+const SAVING_CARD_IMPORT_TRANSPORT_ERROR =
+  "Unable to reach the import service. Check your connection and try again.";
+const MASTER_DATA_IMPORT_TRANSPORT_ERROR =
+  "Unable to reach the master-data import service. Check your connection and try again.";
 
 const MASTER_DATA_IMPORT_OPTIONS: Record<
   MasterDataImportType,
@@ -65,6 +86,20 @@ const MASTER_DATA_IMPORT_OPTIONS: Record<
     headers: [{ name: "Name" }],
     sampleRows: [["PET Resin"], ["Aluminum Coil"]],
   },
+  categories: {
+    label: "Categories",
+    description:
+      "Bulk-create category records for the current workspace. Existing names are skipped and never overwritten.",
+    headers: [
+      { name: "Name" },
+      { name: "Code", optional: true },
+      { name: "Owner", optional: true },
+    ],
+    sampleRows: [
+      ["Packaging", "CAT-100", "Direct Procurement"],
+      ["Raw Materials", "", ""],
+    ],
+  },
 };
 
 export function ImportExportPanel({
@@ -73,6 +108,8 @@ export function ImportExportPanel({
   readiness?: WorkspaceReadiness | null;
 }) {
   const [savingCardMessage, setSavingCardMessage] = useState<ImportMessage | null>(null);
+  const [savingCardResult, setSavingCardResult] =
+    useState<SavingCardImportResponse | null>(null);
   const [masterDataMessage, setMasterDataMessage] = useState<ImportMessage | null>(null);
   const [masterDataResult, setMasterDataResult] =
     useState<MasterDataImportResponse | null>(null);
@@ -87,56 +124,83 @@ export function ImportExportPanel({
   const selectedMasterDataOption = MASTER_DATA_IMPORT_OPTIONS[masterDataImportType];
 
   async function handleImport(formData: FormData) {
-    const response = await fetch("/api/import", {
-      method: "POST",
-      body: formData
-    });
+    try {
+      const response = await fetch("/api/import", {
+        method: "POST",
+        body: formData
+      });
 
-    const result = await response.json().catch(() => null);
-    setSavingCardMessage(
-      response.ok
-        ? {
-            tone: "success",
-            text: `Imported ${result?.count ?? 0} saving card${result?.count === 1 ? "" : "s"}.`,
-          }
-        : {
-            tone: "error",
-            text: result?.error ?? "Import failed.",
-          }
-    );
-  }
+      const result = (await response.json().catch(() => null)) as
+        | { count?: number; error?: string }
+        | SavingCardImportResponse
+        | null;
 
-  async function handleMasterDataImport(formData: FormData) {
-    const response = await fetch("/api/import", {
-      method: "POST",
-      body: formData,
-    });
+      if (response.ok) {
+        setSavingCardResult(null);
+        setSavingCardMessage({
+          tone: "success",
+          text: `Imported ${result && "count" in result ? result.count ?? 0 : 0} saving card${result && "count" in result && result.count === 1 ? "" : "s"}.`,
+        });
+        return;
+      }
 
-    const result = (await response.json().catch(() => null)) as MasterDataImportResponse | {
-      error?: string;
-    } | null;
-
-    if (!response.ok) {
-      setMasterDataResult(null);
-      setMasterDataMessage({
+      setSavingCardResult(
+        result && "importType" in result && result.importType === "saving_cards"
+          ? result
+          : null
+      );
+      setSavingCardMessage({
         tone: "error",
         text: result && "error" in result ? result.error ?? "Import failed." : "Import failed.",
       });
-      return;
+    } catch {
+      setSavingCardResult(null);
+      setSavingCardMessage({
+        tone: "error",
+        text: SAVING_CARD_IMPORT_TRANSPORT_ERROR,
+      });
     }
+  }
 
-    const summary =
-      result && "summary" in result
-        ? result.summary
-        : { created: 0, skipped: 0, failed: 0 };
+  async function handleMasterDataImport(formData: FormData) {
+    try {
+      const response = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      });
 
-    setMasterDataResult(
-      result && "summary" in result ? (result as MasterDataImportResponse) : null
-    );
-    setMasterDataMessage({
-      tone: summary.failed > 0 ? "error" : "success",
-      text: `${summary.created} created, ${summary.skipped} skipped, ${summary.failed} failed.`,
-    });
+      const result = (await response.json().catch(() => null)) as MasterDataImportResponse | {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        setMasterDataResult(null);
+        setMasterDataMessage({
+          tone: "error",
+          text: result && "error" in result ? result.error ?? "Import failed." : "Import failed.",
+        });
+        return;
+      }
+
+      const summary =
+        result && "summary" in result
+          ? result.summary
+          : { created: 0, skipped: 0, failed: 0 };
+
+      setMasterDataResult(
+        result && "summary" in result ? (result as MasterDataImportResponse) : null
+      );
+      setMasterDataMessage({
+        tone: summary.failed > 0 ? "error" : "success",
+        text: `${summary.created} created, ${summary.skipped} skipped, ${summary.failed} failed.`,
+      });
+    } catch {
+      setMasterDataResult(null);
+      setMasterDataMessage({
+        tone: "error",
+        text: MASTER_DATA_IMPORT_TRANSPORT_ERROR,
+      });
+    }
   }
 
   return (
@@ -215,7 +279,7 @@ export function ImportExportPanel({
               />
             </div>
             <div className="rounded-2xl bg-[var(--muted)]/60 p-4 text-sm text-[var(--muted-foreground)]">
-              The workbook filename uses the workspace slug and export date, and the summary sheet records portfolio scope, setup completeness, and workflow coverage at export time.
+              The workbook filename uses the workspace slug and export date. The summary sheet records portfolio scope, active savings, realized and achieved value, finance locks, phase counts, setup completeness, and workflow coverage at export time.
             </div>
             <a href="/api/export" className={buttonVariants()}>
               Download Workbook
@@ -253,6 +317,12 @@ export function ImportExportPanel({
               <p>
                 Missing shared setup such as buyers, suppliers, materials, categories, plants, or business units can reduce reporting consistency after import.
               </p>
+              <p>
+                Saving-card workbook imports validate all rows before writing. If any row fails, no saving cards are created and row errors appear below so you can fix the workbook and retry.
+              </p>
+              <p>
+                Exports are controller review workbooks. New saving-card imports should use the operational import columns so required fields such as plant, dates, and financial assumptions are present.
+              </p>
             </div>
             <form action={handleImport} className="space-y-4">
               <input type="file" name="file" accept=".xlsx,.xls" required />
@@ -270,6 +340,43 @@ export function ImportExportPanel({
                 {savingCardMessage.text}
               </p>
             ) : null}
+            {savingCardResult ? (
+              <div className="space-y-3 rounded-2xl border border-[var(--border)] bg-white/80 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <OperationsMetric
+                    label="Rows Checked"
+                    value={String(savingCardResult.summary.total)}
+                    detail="Workbook rows validated"
+                  />
+                  <OperationsMetric
+                    label="Ready"
+                    value={String(savingCardResult.summary.valid)}
+                    detail="Rows that passed validation"
+                  />
+                  <OperationsMetric
+                    label="Failed"
+                    value={String(savingCardResult.summary.failed)}
+                    detail="Rows to fix before retry"
+                  />
+                </div>
+                <div className="space-y-2">
+                  {savingCardResult.results.map((item) => (
+                    <div
+                      key={`${item.row}-${item.title}-${item.status}`}
+                      className="rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
+                    >
+                      <p className="font-medium text-[var(--foreground)]">
+                        Row {item.row}
+                        {item.title ? ` · ${item.title}` : ""}
+                      </p>
+                      <p className="mt-1 text-[var(--muted-foreground)]">
+                        {item.message}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -278,7 +385,7 @@ export function ImportExportPanel({
         <CardHeader>
           <CardTitle>Core Master Data Import</CardTitle>
           <CardDescription>
-            Bulk-create buyers, suppliers, or materials for this workspace from a structured CSV or `.xlsx` file.
+            Bulk-create buyers, suppliers, materials, or categories for this workspace from a structured CSV or `.xlsx` file.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -301,6 +408,7 @@ export function ImportExportPanel({
                 <option value="buyers">Buyers</option>
                 <option value="suppliers">Suppliers</option>
                 <option value="materials">Materials</option>
+                <option value="categories">Categories</option>
               </Select>
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4 text-sm text-[var(--muted-foreground)]">
@@ -335,6 +443,9 @@ export function ImportExportPanel({
               </div>
               <p className="mt-3 text-xs">
                 Duplicate names already present in this workspace, or repeated earlier in the same workbook, are skipped instead of overwritten.
+              </p>
+              <p className="mt-2 text-xs">
+                Row results appear after upload so teams can correct skipped or failed master-data lines without guessing which records were created.
               </p>
             </div>
           </div>

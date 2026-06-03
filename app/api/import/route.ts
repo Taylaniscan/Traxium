@@ -22,6 +22,7 @@ import {
   MASTER_DATA_IMPORT_ENTITY_KEYS,
   type MasterDataImportEntityKey,
 } from "@/lib/onboarding/master-data-config";
+import { phaseLabels, phases } from "@/lib/constants";
 
 const IMPORT_QUOTA_WINDOW = UsageWindow.MONTH;
 const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_IMPORT_ENTITY_KEYS;
@@ -29,6 +30,7 @@ const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_IMPORT_ENTITY_KEYS;
 type MasterDataImportType = MasterDataImportEntityKey;
 type ImportType = MasterDataImportType | "saving_cards";
 type MasterDataImportStatus = "created" | "skipped" | "failed";
+type SavingCardImportStatus = "valid" | "failed";
 
 type MasterDataImportResult = {
   row: number;
@@ -45,6 +47,24 @@ type MasterDataImportResponse = {
     failed: number;
   };
   results: MasterDataImportResult[];
+};
+
+type SavingCardImportResult = {
+  row: number;
+  status: SavingCardImportStatus;
+  title: string;
+  message: string;
+};
+
+type SavingCardImportErrorResponse = {
+  importType: "saving_cards";
+  error: string;
+  summary: {
+    total: number;
+    valid: number;
+    failed: number;
+  };
+  results: SavingCardImportResult[];
 };
 
 type ValidatedMasterDataImportRow = {
@@ -70,38 +90,100 @@ class ImportFileError extends Error {
 }
 
 const MASTER_DATA_IMPORT_EXTENSIONS = new Set([".csv", ".xlsx"]);
+const phaseImportAliases = new Map<string, (typeof phases)[number]>(
+  phases.flatMap((phase) => [
+    [normalizeImportKey(phase), phase],
+    [normalizeImportKey(phaseLabels[phase]), phase],
+  ])
+);
+
+phaseImportAliases.set("realised", "REALISED");
+phaseImportAliases.set("cancelled", "CANCELLED");
 
 function normalizeRow(
   row: Record<string, unknown>,
   referenceData: Awaited<ReturnType<typeof getReferenceData>>
 ) {
-  const resolveId = (collection: Array<{ id: string; name: string }>, columnName: string) => {
-    const match = collection.find((item) => item.name === row[columnName]);
+  const getCell = (...columnNames: string[]) => {
+    for (const columnName of columnNames) {
+      if (Object.hasOwn(row, columnName)) {
+        return row[columnName];
+      }
+    }
+
+    const normalizedRow = normalizeImportRow(row);
+
+    for (const columnName of columnNames) {
+      const normalizedKey = normalizeImportKey(columnName);
+
+      if (Object.hasOwn(normalizedRow, normalizedKey)) {
+        return normalizedRow[normalizedKey];
+      }
+    }
+
+    return undefined;
+  };
+  const resolveId = (
+    collection: Array<{ id: string; name: string }>,
+    ...columnNames: string[]
+  ) => {
+    const rawValue = getCell(...columnNames);
+    const normalizedValue = normalizeImportCell(rawValue);
+    const match = collection.find(
+      (item) => normalizeImportKey(item.name) === normalizeImportKey(normalizedValue)
+    );
     return match?.id ?? "";
   };
+  const rawPhase = normalizeImportCell(getCell("Phase"));
+  const normalizedPhase =
+    phaseImportAliases.get(normalizeImportKey(rawPhase)) ?? "IDEA";
 
   return {
-    title: row.Title,
-    description: row.Description ?? `${row.Title} imported from Excel`,
-    savingType: row.SavingType ?? "Imported",
-    phase: row.Phase ?? "IDEA",
-    supplier: { id: resolveId(referenceData.suppliers, "Supplier"), name: String(row.Supplier ?? "") },
-    material: { id: resolveId(referenceData.materials, "Material"), name: String(row.Material ?? "") },
-    category: { id: resolveId(referenceData.categories, "Category"), name: String(row.Category ?? "") },
-    plant: { id: resolveId(referenceData.plants, "Plant"), name: String(row.Plant ?? "") },
-    businessUnit: { id: resolveId(referenceData.businessUnits, "BusinessUnit"), name: String(row.BusinessUnit ?? "") },
-    buyer: { id: resolveId(referenceData.buyers, "Buyer"), name: String(row.Buyer ?? "") },
-    baselinePrice: row.BaselinePrice,
-    newPrice: row.NewPrice,
-    annualVolume: row.AnnualVolume,
-    currency: row.Currency ?? "EUR",
-    fxRate: row.FxRate ?? 1,
-    frequency: row.Frequency ?? "RECURRING",
-    startDate: row.StartDate,
-    endDate: row.EndDate,
-    impactStartDate: row.ImpactStartDate ?? row.StartDate,
-    impactEndDate: row.ImpactEndDate ?? row.EndDate,
-    cancellationReason: row.CancellationReason ?? "",
+    title: getCell("Title", "Saving Card Title"),
+    description:
+      getCell("Description") ??
+      `${getCell("Title", "Saving Card Title") ?? "Saving card"} imported from Excel`,
+    savingType: getCell("SavingType", "Saving Type") ?? "Imported",
+    phase: normalizedPhase,
+    supplier: {
+      id: resolveId(referenceData.suppliers, "Supplier"),
+      name: normalizeImportCell(getCell("Supplier")),
+    },
+    material: {
+      id: resolveId(referenceData.materials, "Material"),
+      name: normalizeImportCell(getCell("Material")),
+    },
+    category: {
+      id: resolveId(referenceData.categories, "Category"),
+      name: normalizeImportCell(getCell("Category")),
+    },
+    plant: {
+      id: resolveId(referenceData.plants, "Plant"),
+      name: normalizeImportCell(getCell("Plant")),
+    },
+    businessUnit: {
+      id: resolveId(referenceData.businessUnits, "BusinessUnit", "Business Unit"),
+      name: normalizeImportCell(getCell("BusinessUnit", "Business Unit")),
+    },
+    buyer: {
+      id: resolveId(referenceData.buyers, "Buyer"),
+      name: normalizeImportCell(getCell("Buyer")),
+    },
+    baselinePrice: getCell("BaselinePrice", "Baseline Price"),
+    newPrice: getCell("NewPrice", "New Price"),
+    annualVolume: getCell("AnnualVolume", "Annual Volume"),
+    currency: getCell("Currency") ?? "EUR",
+    fxRate: getCell("FxRate", "FX Rate") ?? 1,
+    frequency: getCell("Frequency") ?? "RECURRING",
+    startDate: getCell("StartDate", "Start Date"),
+    endDate: getCell("EndDate", "End Date"),
+    impactStartDate:
+      getCell("ImpactStartDate", "Impact Start Date") ??
+      getCell("StartDate", "Start Date"),
+    impactEndDate:
+      getCell("ImpactEndDate", "Impact End Date") ??
+      getCell("EndDate", "End Date"),
+    cancellationReason: getCell("CancellationReason", "Cancellation Reason") ?? "",
     stakeholderIds: [],
     evidence: [],
   };
@@ -162,6 +244,114 @@ function createImportResult(
     status,
     name,
     message,
+  };
+}
+
+function createSavingCardImportResult(
+  row: number,
+  status: SavingCardImportStatus,
+  title: string,
+  message: string
+): SavingCardImportResult {
+  return {
+    row,
+    status,
+    title,
+    message,
+  };
+}
+
+function getSavingCardImportFieldLabel(path: PropertyKey[]) {
+  const field = path[0];
+
+  if (typeof field !== "string") {
+    return "";
+  }
+
+  const labels: Record<string, string> = {
+    title: "Title",
+    description: "Description",
+    savingType: "Saving Type",
+    phase: "Phase",
+    supplier: "Supplier",
+    material: "Material",
+    category: "Category",
+    plant: "Plant",
+    businessUnit: "Business Unit",
+    buyer: "Buyer",
+    baselinePrice: "Baseline Price",
+    newPrice: "New Price",
+    annualVolume: "Annual Volume",
+    currency: "Currency",
+    fxRate: "FX Rate",
+    frequency: "Frequency",
+    savingDriver: "Saving Driver",
+    implementationComplexity: "Implementation Complexity",
+    qualificationStatus: "Qualification Status",
+    startDate: "Start Date",
+    endDate: "End Date",
+    impactStartDate: "Impact Start Date",
+    impactEndDate: "Impact End Date",
+    cancellationReason: "Cancellation Reason",
+  };
+
+  return labels[field] ?? field;
+}
+
+function formatSavingCardImportIssue(issue: z.ZodIssue) {
+  const label = getSavingCardImportFieldLabel(issue.path);
+
+  return label ? `${label}: ${issue.message}` : issue.message;
+}
+
+function validateSavingCardImportRows(
+  rows: ReturnType<typeof normalizeRow>[]
+): SavingCardImportErrorResponse | null {
+  const results: SavingCardImportResult[] = [];
+
+  for (const [index, row] of rows.entries()) {
+    const validation = savingCardSchema.safeParse(row);
+
+    if (validation.success) {
+      results.push(
+        createSavingCardImportResult(
+          index + 2,
+          "valid",
+          normalizeImportCell(row.title),
+          "Ready to import."
+        )
+      );
+      continue;
+    }
+
+    results.push(
+      createSavingCardImportResult(
+        index + 2,
+        "failed",
+        normalizeImportCell(row.title),
+        validation.error.issues.map(formatSavingCardImportIssue).join("; ")
+      )
+    );
+  }
+
+  const failed = results.filter((result) => result.status === "failed");
+
+  if (!failed.length) {
+    return null;
+  }
+
+  const failedCount = failed.length;
+  const validCount = results.length - failedCount;
+
+  return {
+    importType: "saving_cards",
+    error: `Saving-card import has ${failedCount} row error${failedCount === 1 ? "" : "s"}. No saving cards were imported. Fix the listed rows and retry.`,
+    summary: {
+      total: results.length,
+      valid: validCount,
+      failed: failedCount,
+    },
+    results: failed,
   };
 }
 
@@ -631,18 +821,10 @@ export async function POST(request: Request) {
     const referenceData = await getReferenceData(user.organizationId);
     const normalized = rows.map((row) => normalizeRow(row, referenceData));
 
-    for (const [index, row] of normalized.entries()) {
-      const validation = savingCardSchema.safeParse(row);
+    const validationErrorResponse = validateSavingCardImportRows(normalized);
 
-      if (!validation.success) {
-        const issue = validation.error.issues[0];
-        return NextResponse.json(
-          {
-            error: `Row ${index + 2}: ${issue?.message ?? "Import row is invalid."}`,
-          },
-          { status: 422 }
-        );
-      }
+    if (validationErrorResponse) {
+      return NextResponse.json(validationErrorResponse, { status: 422 });
     }
 
     await enforceUsageQuota({

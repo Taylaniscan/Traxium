@@ -41,12 +41,11 @@ Traxium uses a split deployment model: preview deployments are for validation ag
   - `STRIPE_CHECKOUT_CANCEL_URL`
   - `STRIPE_STARTER_PRODUCT_ID`
   - `STRIPE_STARTER_BASE_PRICE_ID`
-  - `STRIPE_STARTER_METERED_PRICE_ID`
   - `STRIPE_GROWTH_PRODUCT_ID`
   - `STRIPE_GROWTH_BASE_PRICE_ID`
-  - `STRIPE_GROWTH_METERED_PRICE_ID`
 - Preview must never reuse the production app domain.
 - Preview must never point at local hosts or example/template credentials.
+- Add `STRIPE_STARTER_METERED_PRICE_ID` and `STRIPE_GROWTH_METERED_PRICE_ID` only for plans that also have metered recurring Stripe Prices.
 - On Vercel, keep `VERCEL_ENV=preview` aligned with `APP_ENV=preview`.
 - Run `npm run predeploy` before allowing the build to continue.
 - Deploy the worker separately with `npm run jobs:worker`.
@@ -57,7 +56,8 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 
 - Use `APP_ENV=production`.
 - Production deployments must use the production application domain and live Supabase project.
-- Production deployments must also use live Stripe billing secrets, return URLs, product ids, and price ids.
+- Production deployments must also use live Stripe billing secrets, return URLs, product ids, and licensed base price ids.
+- Metered Stripe price ids are optional unless a live plan also has metered recurring pricing.
 - `STRIPE_SECRET_KEY` must be `sk_live_`, and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` must be `pk_live_` if it is set.
 - The predeploy guard rejects mixed Stripe mode config such as test keys in production or preview/local/test catalog IDs paired with a live secret.
 - Keep [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) aligned with deploy behavior whenever billing access or recovery flow changes.

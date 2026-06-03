@@ -207,6 +207,18 @@ describe("lib/data workflow flows", () => {
         },
       ],
     });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "requester-1",
+        actorUserId: "requester-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.requested",
+        action: "phase_change.requested",
+        detail: "Requested phase change from IDEA to VALIDATED",
+      },
+    });
     expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
@@ -237,7 +249,7 @@ describe("lib/data workflow flows", () => {
     expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
-  it("allows a validated card to request realised with finance approval", async () => {
+  it("allows a validated card to request realized with finance approval", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -310,7 +322,7 @@ describe("lib/data workflow flows", () => {
     );
   });
 
-  it("allows a realised card to request achieved", async () => {
+  it("allows a realized card to request achieved", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -381,7 +393,7 @@ describe("lib/data workflow flows", () => {
     });
 
     await expect(
-      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip realised")
+      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip realized")
     ).rejects.toMatchObject({
       name: "WorkflowError",
       status: 409,
@@ -410,7 +422,7 @@ describe("lib/data workflow flows", () => {
     expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
-  it("requires a cancellation reason and keeps cancelled requests pending approval", async () => {
+  it("requires a cancellation reason and keeps canceled requests pending approval", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -596,6 +608,30 @@ describe("lib/data workflow flows", () => {
     const auditActions = tx.auditLog.create.mock.calls.map(([call]) => call.data.action);
     expect(auditActions).toContain("phase_change.approved");
     expect(auditActions).toContain("phase_change.completed");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.approved",
+        action: "phase_change.approved",
+        detail: "Final approval recorded for phase change to VALIDATED",
+      },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.completed",
+        action: "phase_change.completed",
+        detail: "Phase changed from IDEA to VALIDATED",
+      },
+    });
     expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
       namespace: "dashboard-data",
       organizationId: "org-1",
@@ -669,6 +705,18 @@ describe("lib/data workflow flows", () => {
         href: "/saving-cards/card-1",
       },
     });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.rejected",
+        action: "phase_change.rejected",
+        detail: "Phase change to VALIDATED rejected",
+      },
+    });
     expect(result).toEqual(
       expect.objectContaining({
         approvalStatus: ApprovalStatus.REJECTED,
@@ -738,6 +786,18 @@ describe("lib/data workflow flows", () => {
 
     expect(tx.savingCard.update).not.toHaveBeenCalled();
     expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.approved",
+        action: "phase_change.approved",
+        detail: "Approval recorded for phase change to VALIDATED",
+      },
+    });
     expect(result).toEqual(
       expect.objectContaining({
         approvalStatus: ApprovalStatus.PENDING,

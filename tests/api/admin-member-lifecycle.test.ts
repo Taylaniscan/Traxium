@@ -370,7 +370,7 @@ describe("admin member lifecycle routes", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      message: "Invitation cancelled.",
+      message: "Invitation canceled.",
       invitation: {
         id: "invite-1",
         organizationId: DEFAULT_ORGANIZATION_ID,
@@ -396,7 +396,7 @@ describe("admin member lifecycle routes", () => {
         targetEntityId: "invite-1",
         eventType: "invite.revoked",
         action: "invite.revoked",
-        detail: "Cancelled a pending invitation.",
+        detail: "Canceled a pending invitation.",
         payload: {
           invitationRole: OrganizationRole.MEMBER,
           status: InvitationStatus.REVOKED,

@@ -28,15 +28,15 @@ export const qualificationStatuses = ["Not Started", "Lab Testing", "Plant Trial
 export const phaseLabels: Record<(typeof phases)[number], string> = {
   IDEA: "Idea",
   VALIDATED: "Validated",
-  REALISED: "Realised",
+  REALISED: "Realized",
   ACHIEVED: "Achieved",
-  CANCELLED: "Cancelled"
+  CANCELLED: "Canceled"
 };
 
 export const roleLabels: Record<(typeof roles)[number], string> = {
-  HEAD_OF_GLOBAL_PROCUREMENT: "Procurement Manager",
-  GLOBAL_CATEGORY_LEADER: "Procurement Specialist",
+  HEAD_OF_GLOBAL_PROCUREMENT: "Procurement Lead",
+  GLOBAL_CATEGORY_LEADER: "Category Owner",
   TACTICAL_BUYER: "Buyer",
   PROCUREMENT_ANALYST: "Procurement Analyst",
-  FINANCIAL_CONTROLLER: "Finance Approver"
+  FINANCIAL_CONTROLLER: "Finance Reviewer"
 };

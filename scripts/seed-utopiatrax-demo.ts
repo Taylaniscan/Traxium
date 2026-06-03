@@ -16,6 +16,7 @@ import {
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { calculateSavings } from "../lib/calculations";
+import { auditEventTypes } from "../lib/audit";
 import { invalidatePortfolioSurfaceCaches } from "../lib/workspace/portfolio-surface-cache";
 
 const DEMO_WORKSPACE_NAME = "UtopiaTrax";
@@ -29,6 +30,8 @@ const DEMO_YEAR = 2026;
 const USD_TO_EUR_RATE = 0.92;
 const SUPABASE_OPERATION_TIMEOUT_MS = 5_000;
 let storageUploadFailureSeen = false;
+
+export const UTOPIATRAX_DEMO_TRIAL_END = DEMO_TRIAL_END;
 
 type DemoUserSeed = {
   email: string;
@@ -128,6 +131,9 @@ export type UtopiaTraxDatasetSummary = {
   userCount: number;
   evidenceCount: number;
   alternativeCount: number;
+  volumeProfileCount: number;
+  pendingPhaseRequestCount: number;
+  expectedPendingOpenActions: number;
   phaseCounts: Record<Phase, number>;
   categoriesRepresented: string[];
   financeLockedViolations: string[];
@@ -468,7 +474,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     currency: Currency.EUR,
     impactStart: "2026-04-01",
     impactEnd: "2026-12-31",
-    narrative: "Cancelled after inconsistent MFI results.",
+    narrative: "Canceled after inconsistent MFI results.",
     savingType: "Localization",
     savingDriver: "Regional sourcing",
     implementationComplexity: "High",
@@ -778,7 +784,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     currency: Currency.EUR,
     impactStart: "2026-06-01",
     impactEnd: "2026-12-31",
-    narrative: "Cancelled due to failed shade approval.",
+    narrative: "Canceled due to failed shade approval.",
     savingType: "Reformulation",
     savingDriver: "Material substitution",
     implementationComplexity: "High",
@@ -788,7 +794,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
       evidence(
         "green-pigment-customer-rejection.txt",
         "Customer approval note",
-        "Customer shade approval failed after reformulation trial, so procurement cancelled the initiative."
+        "Customer shade approval failed after reformulation trial, so procurement canceled the initiative."
       ),
     ],
   },
@@ -1154,7 +1160,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
   },
 ] as const;
 
-const PENDING_PHASE_REQUESTS: ReadonlyArray<{
+export const UTOPIATRAX_PENDING_PHASE_REQUESTS: ReadonlyArray<{
   cardTitle: string;
   requestedPhase: Phase;
   requestedByEmail: string;
@@ -1172,14 +1178,14 @@ const PENDING_PHASE_REQUESTS: ReadonlyArray<{
     cardTitle: "Quinacridone red MOQ renegotiation",
     requestedPhase: Phase.REALISED,
     requestedByEmail: "taylaniscan+7@gmail.com",
-    comment: "Commercial terms are signed. Finance approval is needed before realised reporting.",
+    comment: "Commercial terms are signed. Finance approval is needed before realized reporting.",
     createdAt: "2026-04-22T14:30:00.000Z",
   },
   {
     cardTitle: "Antioxidant blend supplier switch",
     requestedPhase: Phase.REALISED,
     requestedByEmail: "taylaniscan+6@gmail.com",
-    comment: "Finance-locked USD case is ready for realised phase once the controller confirms FX treatment.",
+    comment: "Finance-locked USD case is ready for realized phase once the controller confirms FX treatment.",
     createdAt: "2026-04-18T10:45:00.000Z",
   },
   {
@@ -1193,7 +1199,7 @@ const PENDING_PHASE_REQUESTS: ReadonlyArray<{
     cardTitle: "Color matching lab service bundle",
     requestedPhase: Phase.REALISED,
     requestedByEmail: "taylaniscan+6@gmail.com",
-    comment: "Service bundle is approved by procurement and waiting for finance realised sign-off.",
+    comment: "Service bundle is approved by procurement and waiting for finance realized sign-off.",
     createdAt: "2026-04-05T11:00:00.000Z",
   },
 ] as const;
@@ -1287,6 +1293,13 @@ function getDuplicateValues(values: readonly string[]) {
   return [...duplicates].sort();
 }
 
+export function getUtopiaTraxExpectedPendingOpenActionCount() {
+  return UTOPIATRAX_PENDING_PHASE_REQUESTS.reduce(
+    (sum, request) => sum + getRequiredApproverRoles(request.requestedPhase).length,
+    0
+  );
+}
+
 export function getUtopiaTraxNaturalKeys() {
   return {
     organizationSlug: DEMO_WORKSPACE_SLUG,
@@ -1338,6 +1351,10 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
       0
     ),
     alternativeCount: UTOPIATRAX_SAVING_CARDS.filter((card) => card.alternative).length,
+    volumeProfileCount: UTOPIATRAX_SAVING_CARDS.filter((card) => card.volumeProfile)
+      .length,
+    pendingPhaseRequestCount: UTOPIATRAX_PENDING_PHASE_REQUESTS.length,
+    expectedPendingOpenActions: getUtopiaTraxExpectedPendingOpenActionCount(),
     phaseCounts,
     categoriesRepresented: [...categoriesRepresented].sort(),
     financeLockedViolations,
@@ -1381,7 +1398,7 @@ export function validateUtopiaTraxDemoDataset() {
 
   if (summary.phaseCounts[Phase.REALISED] !== 7) {
     errors.push(
-      `Expected 7 realised cards, found ${summary.phaseCounts[Phase.REALISED]}.`
+      `Expected 7 realized cards, found ${summary.phaseCounts[Phase.REALISED]}.`
     );
   }
 
@@ -1393,7 +1410,7 @@ export function validateUtopiaTraxDemoDataset() {
 
   if (summary.phaseCounts[Phase.CANCELLED] !== 2) {
     errors.push(
-      `Expected 2 cancelled cards, found ${summary.phaseCounts[Phase.CANCELLED]}.`
+      `Expected 2 canceled cards, found ${summary.phaseCounts[Phase.CANCELLED]}.`
     );
   }
 
@@ -2418,7 +2435,7 @@ async function seedSavingCardRelations(input: {
         ? ApprovalStatus.REJECTED
         : ApprovalStatus.APPROVED;
 
-    await prisma.phaseChangeRequest.create({
+    const phaseChangeRequest = await prisma.phaseChangeRequest.create({
       data: {
         savingCardId,
         currentPhase: transition.fromPhase ?? Phase.IDEA,
@@ -2453,6 +2470,71 @@ async function seedSavingCardRelations(input: {
       },
     });
     phaseChangeRequests += 1;
+    const decisionAt = addDays(requestedAt, 1);
+    const approverAuditRows = approverRoles.map((role) => {
+      const approver = getApproverByRole(users, role);
+
+      return {
+        organizationId,
+        userId: approver.id,
+        actorUserId: approver.id,
+        savingCardId,
+        targetEntityId: phaseChangeRequest.id,
+        eventType:
+          status === ApprovalStatus.APPROVED
+            ? auditEventTypes.PHASE_CHANGE_APPROVED
+            : auditEventTypes.PHASE_CHANGE_REJECTED,
+        action:
+          status === ApprovalStatus.APPROVED
+            ? auditEventTypes.PHASE_CHANGE_APPROVED
+            : auditEventTypes.PHASE_CHANGE_REJECTED,
+        detail:
+          status === ApprovalStatus.APPROVED
+            ? `Demo approval recorded for phase change to ${requestedPhase}.`
+            : `Demo rejection recorded for phase change to ${requestedPhase}.`,
+        createdAt: decisionAt,
+      };
+    });
+    const completionAuditRows =
+      status === ApprovalStatus.APPROVED
+        ? [
+            {
+              organizationId,
+              userId: getApproverByRole(
+                users,
+                approverRoles.at(-1) ?? Role.HEAD_OF_GLOBAL_PROCUREMENT
+              ).id,
+              actorUserId: getApproverByRole(
+                users,
+                approverRoles.at(-1) ?? Role.HEAD_OF_GLOBAL_PROCUREMENT
+              ).id,
+              savingCardId,
+              targetEntityId: phaseChangeRequest.id,
+              eventType: auditEventTypes.PHASE_CHANGE_COMPLETED,
+              action: auditEventTypes.PHASE_CHANGE_COMPLETED,
+              detail: `Demo phase changed from ${transition.fromPhase ?? Phase.IDEA} to ${requestedPhase}.`,
+              createdAt: decisionAt,
+            },
+          ]
+        : [];
+
+    await prisma.auditLog.createMany({
+      data: [
+        {
+          organizationId,
+          userId: buyerUser.id,
+          actorUserId: buyerUser.id,
+          savingCardId,
+          targetEntityId: phaseChangeRequest.id,
+          eventType: auditEventTypes.PHASE_CHANGE_REQUESTED,
+          action: auditEventTypes.PHASE_CHANGE_REQUESTED,
+          detail: `Demo requested phase change from ${transition.fromPhase ?? Phase.IDEA} to ${requestedPhase}.`,
+          createdAt: requestedAt,
+        },
+        ...approverAuditRows,
+        ...completionAuditRows,
+      ],
+    });
 
     await prisma.approval.createMany({
       data: approverRoles.map((role) => {
@@ -2675,7 +2757,7 @@ async function seedPendingPhaseRequests(input: {
   let pendingOpenActions = 0;
   let phaseChangeRequests = 0;
 
-  for (const pending of PENDING_PHASE_REQUESTS) {
+  for (const pending of UTOPIATRAX_PENDING_PHASE_REQUESTS) {
     const card = savingCardsByTitle[pending.cardTitle];
 
     if (!card) {
@@ -2686,7 +2768,7 @@ async function seedPendingPhaseRequests(input: {
     const approverRoles = getRequiredApproverRoles(pending.requestedPhase);
     const createdAt = parseDateTime(pending.createdAt);
 
-    await prisma.phaseChangeRequest.create({
+    const phaseChangeRequest = await prisma.phaseChangeRequest.create({
       data: {
         savingCardId: card.id,
         currentPhase: card.phase,
@@ -2712,6 +2794,20 @@ async function seedPendingPhaseRequests(input: {
     });
     pendingOpenActions += approverRoles.length;
     phaseChangeRequests += 1;
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId: requestedBy.id,
+        actorUserId: requestedBy.id,
+        savingCardId: card.id,
+        targetEntityId: phaseChangeRequest.id,
+        eventType: auditEventTypes.PHASE_CHANGE_REQUESTED,
+        action: auditEventTypes.PHASE_CHANGE_REQUESTED,
+        detail: `Demo requested phase change from ${card.phase} to ${pending.requestedPhase}.`,
+        createdAt,
+      },
+    });
 
     await prisma.notification.createMany({
       data: approverRoles.map((role) => {

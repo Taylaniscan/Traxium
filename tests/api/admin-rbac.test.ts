@@ -1,12 +1,11 @@
 import React from "react";
-import { MembershipStatus, OrganizationRole } from "@prisma/client";
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_USER_ID,
   MockAuthGuardError,
-  createAdminUser,
   createAuthGuardJsonResponse,
   createSessionUser,
 } from "../helpers/security-fixtures";
@@ -170,19 +169,19 @@ function createWorkspaceReadiness() {
     workflowCoverage: [
       {
         key: "HEAD_OF_GLOBAL_PROCUREMENT",
-        label: "Procurement Manager",
+        label: "Procurement Lead",
         count: 1,
         ready: true,
       },
       {
         key: "GLOBAL_CATEGORY_LEADER",
-        label: "Procurement Specialist",
+        label: "Category Owner",
         count: 1,
         ready: true,
       },
       {
         key: "FINANCIAL_CONTROLLER",
-        label: "Finance Approver",
+        label: "Finance Reviewer",
         count: 1,
         ready: true,
       },
@@ -275,7 +274,22 @@ function createFormDataRequest(formData: FormData | Error) {
 describe("admin RBAC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requirePermissionMock.mockResolvedValue(createAdminUser());
+    requirePermissionMock.mockResolvedValue(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        name: "Admin User",
+        email: "admin@example.com",
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-admin",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.ADMIN,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
     requireOrganizationMock.mockResolvedValue(
       createSessionUser({
         id: DEFAULT_USER_ID,

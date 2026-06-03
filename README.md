@@ -1,6 +1,6 @@
 # Traxium
 
-Traxium is a procurement savings governance platform for procurement and finance teams. It centralizes initiatives, approvals, supporting evidence, and portfolio reporting in one auditable workflow.
+Traxium is finance-trusted savings governance for 50-500 employee US manufacturing SMEs. It centralizes saving cards, approvals, supporting evidence, open actions, and portfolio reporting in one auditable paid-pilot workspace for procurement and finance teams.
 
 ## Why Traxium exists
 
@@ -33,12 +33,12 @@ Traxium helps teams:
 
 Traxium is designed for:
 
-- procurement leaders
-- category managers
-- tactical buyers
-- financial controllers
+- procurement leads
+- category owners
+- buyers
+- finance reviewers
 - business operations teams
-- industrial and manufacturing organizations with recurring savings targets
+- 50-500 employee US manufacturing SMEs with recurring savings targets
 
 ## Current product scope
 
@@ -55,27 +55,33 @@ Current modules in the application include:
 - Evidence upload and secure download
 - Approval and phase workflow support
 
+## Paid Pilot Buyer Package
+
+The current first-buyer story is a guided paid pilot for 50-500 employee US manufacturing SMEs that need finance-trusted savings governance before a broader rollout decision.
+
+See [paid-pilot-buyer-package.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-buyer-package.md) for the landing-page promise, demo script, trust page needs, support expectations, export expectations, and explicit first-pilot exclusions. See [paid-pilot-offer-and-pricing.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-offer-and-pricing.md) for the paid-pilot offer, pricing hypothesis, and Stripe plan-name relationship.
+
 ## Canonical Workflow Contract
 
 Traxium now treats the workflow contract as a first-class product rule, not a UI convention.
 
 - New saving cards must start in `Idea`.
-- The canonical lifecycle order is `Idea -> Validated -> Realised -> Achieved`.
+- The canonical lifecycle order is `Idea -> Validated -> Realized -> Achieved`.
 - Allowed transitions are:
   - `Idea -> Validated`
-  - `Validated -> Realised`
-  - `Realised -> Achieved`
-  - any non-cancelled phase -> `Cancelled`, but only with a cancellation reason
-- No skipping is allowed between non-cancelled phases.
+  - `Validated -> Realized`
+  - `Realized -> Achieved`
+  - any non-canceled phase -> `Canceled`, but only with a cancellation reason
+- No skipping is allowed between non-canceled phases.
 - Phase changes must go through the phase-change request and approval flow. Create and edit flows must not mutate `phase` directly.
 
 Target-phase approval requirements:
 
 - `Idea`: initial phase for new cards rather than a normal requested destination
-- `Validated`: `Head of Global Procurement` and `Financial Controller`
-- `Realised`: `Financial Controller`
-- `Achieved`: `Financial Controller`
-- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+- `Validated`: Procurement Lead and Finance Reviewer
+- `Realized`: Finance Reviewer
+- `Achieved`: Finance Reviewer
+- `Canceled`: requires a reason and follows the implemented phase-change approval path
 
 Additional workflow constraints:
 

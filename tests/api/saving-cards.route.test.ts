@@ -1,4 +1,5 @@
 import { Phase, Role } from "@prisma/client";
+import { ZodError } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MockAuthGuardError,
@@ -12,6 +13,12 @@ const createSavingCardMock = vi.hoisted(() => vi.fn());
 const getSavingCardMock = vi.hoisted(() => vi.fn());
 const updateSavingCardMock = vi.hoisted(() => vi.fn());
 const setFinanceLockMock = vi.hoisted(() => vi.fn());
+const createAlternativeSupplierMock = vi.hoisted(() => vi.fn());
+const updateAlternativeSupplierMock = vi.hoisted(() => vi.fn());
+const deleteAlternativeSupplierMock = vi.hoisted(() => vi.fn());
+const createAlternativeMaterialMock = vi.hoisted(() => vi.fn());
+const updateAlternativeMaterialMock = vi.hoisted(() => vi.fn());
+const deleteAlternativeMaterialMock = vi.hoisted(() => vi.fn());
 const canLockFinanceMock = vi.hoisted(() => vi.fn());
 const WorkflowErrorMock = vi.hoisted(
   () =>
@@ -65,6 +72,12 @@ vi.mock("@/lib/data", () => ({
   getSavingCard: getSavingCardMock,
   updateSavingCard: updateSavingCardMock,
   setFinanceLock: setFinanceLockMock,
+  createAlternativeSupplier: createAlternativeSupplierMock,
+  updateAlternativeSupplier: updateAlternativeSupplierMock,
+  deleteAlternativeSupplier: deleteAlternativeSupplierMock,
+  createAlternativeMaterial: createAlternativeMaterialMock,
+  updateAlternativeMaterial: updateAlternativeMaterialMock,
+  deleteAlternativeMaterial: deleteAlternativeMaterialMock,
   WorkflowError: WorkflowErrorMock,
 }));
 
@@ -90,6 +103,16 @@ import {
   POST as postSavingCardActionRoute,
   PUT as putSavingCardRoute,
 } from "@/app/api/saving-cards/[id]/route";
+import { POST as postAlternativeSupplierRoute } from "@/app/api/saving-cards/[id]/alternative-suppliers/route";
+import {
+  DELETE as deleteAlternativeSupplierRoute,
+  PUT as putAlternativeSupplierRoute,
+} from "@/app/api/saving-cards/[id]/alternative-suppliers/[alternativeId]/route";
+import { POST as postAlternativeMaterialRoute } from "@/app/api/saving-cards/[id]/alternative-materials/route";
+import {
+  DELETE as deleteAlternativeMaterialRoute,
+  PUT as putAlternativeMaterialRoute,
+} from "@/app/api/saving-cards/[id]/alternative-materials/[alternativeId]/route";
 
 function createValidSavingCardPayload(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -121,6 +144,39 @@ function createValidSavingCardPayload(overrides?: Partial<Record<string, unknown
     cancellationReason: "",
     stakeholderIds: ["stakeholder-1"],
     evidence: [],
+    ...overrides,
+  };
+}
+
+function createAlternativeSupplierPayload(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    supplier: { name: "Supplier B" },
+    country: "DE",
+    quotedPrice: 7.5,
+    currency: "EUR",
+    leadTimeDays: 14,
+    moq: 100,
+    paymentTerms: "60 days",
+    qualityRating: "AA",
+    riskLevel: "Medium",
+    notes: "Qualified backup supplier",
+    isSelected: false,
+    ...overrides,
+  };
+}
+
+function createAlternativeMaterialPayload(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    material: { name: "Recycled PET" },
+    supplier: { name: "Supplier B" },
+    specification: "Food grade",
+    quotedPrice: 6.25,
+    currency: "EUR",
+    performanceImpact: "Neutral",
+    qualificationStatus: "Approved",
+    riskLevel: "Low",
+    notes: "Validated material option",
+    isSelected: false,
     ...overrides,
   };
 }
@@ -231,6 +287,43 @@ describe("saving card API routes", () => {
           error: expect.any(String),
         })
       );
+      expect(createSavingCardMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        "zero baseline price",
+        { baselinePrice: 0 },
+        "Baseline price must be greater than zero.",
+      ],
+      [
+        "negative new price",
+        { newPrice: -1 },
+        "New price must be zero or greater.",
+      ],
+      [
+        "zero annual volume",
+        { annualVolume: 0 },
+        "Annual volume must be greater than zero.",
+      ],
+      [
+        "zero FX rate",
+        { fxRate: 0 },
+        "FX rate must be greater than zero.",
+      ],
+    ])("returns 422 for %s", async (_label, overrides, expectedError) => {
+      const response = await postSavingCardsRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards",
+          "POST",
+          createValidSavingCardPayload(overrides)
+        )
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        error: expectedError,
+      });
       expect(createSavingCardMock).not.toHaveBeenCalled();
     });
 
@@ -398,6 +491,164 @@ describe("saving card API routes", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
         error: "Finance lock can only be enabled for validated savings.",
+      });
+    });
+  });
+
+  describe("alternative scenario routes", () => {
+    it("creates alternative supplier and material scenarios through the active tenant", async () => {
+      createAlternativeSupplierMock.mockResolvedValueOnce({ id: "alt-supplier-1" });
+      createAlternativeMaterialMock.mockResolvedValueOnce({ id: "alt-material-1" });
+
+      const supplierPayload = createAlternativeSupplierPayload();
+      const supplierResponse = await postAlternativeSupplierRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-suppliers",
+          "POST",
+          supplierPayload
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+
+      const materialPayload = createAlternativeMaterialPayload();
+      const materialResponse = await postAlternativeMaterialRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-materials",
+          "POST",
+          materialPayload
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+
+      expect(createAlternativeSupplierMock).toHaveBeenCalledWith(
+        "card-1",
+        supplierPayload,
+        "user-1",
+        "org-1"
+      );
+      expect(createAlternativeMaterialMock).toHaveBeenCalledWith(
+        "card-1",
+        materialPayload,
+        "user-1",
+        "org-1"
+      );
+      expect(supplierResponse.status).toBe(201);
+      expect(materialResponse.status).toBe(201);
+    });
+
+    it("binds alternative supplier mutations to the route saving-card id", async () => {
+      updateAlternativeSupplierMock.mockResolvedValueOnce({ id: "alt-supplier-1" });
+      deleteAlternativeSupplierMock.mockResolvedValueOnce({ id: "alt-supplier-1" });
+
+      const payload = createAlternativeSupplierPayload({
+        isSelected: true,
+      });
+      const updateResponse = await putAlternativeSupplierRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-suppliers/alt-supplier-1",
+          "PUT",
+          payload
+        ),
+        { params: Promise.resolve({ id: "card-1", alternativeId: "alt-supplier-1" }) }
+      );
+      const deleteResponse = await deleteAlternativeSupplierRoute(
+        new Request("http://localhost/api/saving-cards/card-1/alternative-suppliers/alt-supplier-1"),
+        { params: Promise.resolve({ id: "card-1", alternativeId: "alt-supplier-1" }) }
+      );
+
+      expect(updateAlternativeSupplierMock).toHaveBeenCalledWith(
+        "alt-supplier-1",
+        payload,
+        "user-1",
+        "org-1",
+        "card-1"
+      );
+      expect(deleteAlternativeSupplierMock).toHaveBeenCalledWith(
+        "alt-supplier-1",
+        "org-1",
+        "card-1"
+      );
+      expect(updateResponse.status).toBe(200);
+      expect(deleteResponse.status).toBe(200);
+    });
+
+    it("binds alternative material mutations to the route saving-card id", async () => {
+      updateAlternativeMaterialMock.mockResolvedValueOnce({ id: "alt-material-1" });
+      deleteAlternativeMaterialMock.mockResolvedValueOnce({ id: "alt-material-1" });
+
+      const payload = createAlternativeMaterialPayload({
+        isSelected: true,
+      });
+      const updateResponse = await putAlternativeMaterialRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-materials/alt-material-1",
+          "PUT",
+          payload
+        ),
+        { params: Promise.resolve({ id: "card-1", alternativeId: "alt-material-1" }) }
+      );
+      const deleteResponse = await deleteAlternativeMaterialRoute(
+        new Request("http://localhost/api/saving-cards/card-1/alternative-materials/alt-material-1"),
+        { params: Promise.resolve({ id: "card-1", alternativeId: "alt-material-1" }) }
+      );
+
+      expect(updateAlternativeMaterialMock).toHaveBeenCalledWith(
+        "alt-material-1",
+        payload,
+        "user-1",
+        "org-1",
+        "card-1"
+      );
+      expect(deleteAlternativeMaterialMock).toHaveBeenCalledWith(
+        "alt-material-1",
+        "org-1",
+        "card-1"
+      );
+      expect(updateResponse.status).toBe(200);
+      expect(deleteResponse.status).toBe(200);
+    });
+
+    it("returns validation and workflow errors from alternative scenario routes", async () => {
+      createAlternativeSupplierMock.mockRejectedValueOnce(
+        new ZodError([
+          {
+            code: "custom",
+            message: "Quoted price must be zero or greater.",
+            path: ["quotedPrice"],
+          },
+        ])
+      );
+      updateAlternativeMaterialMock.mockRejectedValueOnce(
+        new WorkflowErrorMock(
+          "Finance-locked savings cannot apply alternative material scenarios.",
+          409
+        )
+      );
+
+      const supplierResponse = await postAlternativeSupplierRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-suppliers",
+          "POST",
+          createAlternativeSupplierPayload({ quotedPrice: -1 })
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+      const materialResponse = await putAlternativeMaterialRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1/alternative-materials/alt-material-1",
+          "PUT",
+          createAlternativeMaterialPayload({ isSelected: true })
+        ),
+        { params: Promise.resolve({ id: "card-1", alternativeId: "alt-material-1" }) }
+      );
+
+      expect(supplierResponse.status).toBe(422);
+      await expect(supplierResponse.json()).resolves.toEqual({
+        error: "Quoted price must be zero or greater.",
+      });
+      expect(materialResponse.status).toBe(409);
+      await expect(materialResponse.json()).resolves.toEqual({
+        error: "Finance-locked savings cannot apply alternative material scenarios.",
       });
     });
   });

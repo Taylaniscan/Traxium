@@ -45,7 +45,17 @@ import {
   CommandCenterClient,
   normalizeCommandCenterData,
 } from "@/components/command-center/command-center-client";
-import type { CommandCenterData } from "@/lib/types";
+import { calculateSavings } from "@/lib/calculations";
+import { phaseLabels, phases } from "@/lib/constants";
+import type { CommandCenterData, CommandCenterFilterOptions } from "@/lib/types";
+import {
+  getUtopiaTraxDatasetSummary,
+  getUtopiaTraxExpectedPendingOpenActionCount,
+  UTOPIATRAX_DIRECT_CATEGORIES,
+  UTOPIATRAX_PENDING_PHASE_REQUESTS,
+  UTOPIATRAX_SAVING_CARDS,
+  UTOPIATRAX_SUPPLIERS,
+} from "@/scripts/seed-utopiatrax-demo";
 
 function createCommandCenterData(
   overrides: Record<string, unknown> = {}
@@ -94,6 +104,208 @@ function createCommandCenterData(
     ],
     ...overrides,
   } as CommandCenterData;
+}
+
+function createStableSeedId(prefix: string, value: string) {
+  return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+}
+
+function resolveUtopiaFxRate(
+  currency: (typeof UTOPIATRAX_SAVING_CARDS)[number]["currency"]
+) {
+  return currency === "USD" ? 0.92 : 1;
+}
+
+function parseUtopiaDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function formatUtopiaMonth(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(parseUtopiaDate(value));
+}
+
+function getUtopiaSavingsEUR(card: (typeof UTOPIATRAX_SAVING_CARDS)[number]) {
+  return calculateSavings({
+    baselinePrice: card.baselinePrice,
+    newPrice: card.newPrice,
+    annualVolume: card.annualVolume,
+    currency: card.currency,
+    fxRate: resolveUtopiaFxRate(card.currency),
+  }).savingsEUR;
+}
+
+function sumSavings(
+  cards: readonly (typeof UTOPIATRAX_SAVING_CARDS)[number][]
+) {
+  return cards.reduce((sum, card) => sum + getUtopiaSavingsEUR(card), 0);
+}
+
+function buildUtopiaCommandCenterFilterOptions(): CommandCenterFilterOptions {
+  const buyerNames = [...new Set(UTOPIATRAX_SAVING_CARDS.map((card) => card.buyerName))];
+  const businessUnitNames = [
+    ...new Set(UTOPIATRAX_SAVING_CARDS.map((card) => card.businessUnitName)),
+  ];
+
+  return {
+    categories: UTOPIATRAX_DIRECT_CATEGORIES.map((category) => ({
+      id: createStableSeedId("category", category.name),
+      name: category.name,
+    })),
+    businessUnits: businessUnitNames.map((name) => ({
+      id: createStableSeedId("business-unit", name),
+      name,
+    })),
+    buyers: buyerNames.map((name) => ({
+      id: createStableSeedId("buyer", name),
+      name,
+    })),
+    plants: [],
+    suppliers: UTOPIATRAX_SUPPLIERS.map((supplier) => ({
+      id: createStableSeedId("supplier", supplier.name),
+      name: supplier.name,
+    })),
+  };
+}
+
+function buildUtopiaCommandCenterData(): CommandCenterData {
+  const activeCards = UTOPIATRAX_SAVING_CARDS.filter(
+    (card) => card.phase !== "CANCELLED"
+  );
+  const cardsByTitle = new Map(
+    UTOPIATRAX_SAVING_CARDS.map((card) => [card.title, card])
+  );
+  const forecastByMonth = new Map<string, number>();
+  const supplierSavings = new Map<string, number>();
+  const riskSavings = new Map<string, number>();
+  const qualificationSavings = new Map<string, number>();
+
+  for (const card of UTOPIATRAX_SAVING_CARDS) {
+    const savings = getUtopiaSavingsEUR(card);
+    const month = formatUtopiaMonth(card.impactStart);
+    forecastByMonth.set(month, (forecastByMonth.get(month) ?? 0) + savings);
+    supplierSavings.set(
+      card.supplierName,
+      (supplierSavings.get(card.supplierName) ?? 0) + savings
+    );
+    riskSavings.set(
+      card.alternative?.riskLevel ?? "No alternative",
+      (riskSavings.get(card.alternative?.riskLevel ?? "No alternative") ?? 0) +
+        savings
+    );
+    qualificationSavings.set(
+      card.qualificationStatus,
+      (qualificationSavings.get(card.qualificationStatus) ?? 0) + savings
+    );
+  }
+
+  return {
+    filters: {},
+    kpis: {
+      totalPipelineSavings: sumSavings(activeCards),
+      realisedSavings: sumSavings(
+        UTOPIATRAX_SAVING_CARDS.filter((card) => card.phase === "REALISED")
+      ),
+      achievedSavings: sumSavings(
+        UTOPIATRAX_SAVING_CARDS.filter((card) => card.phase === "ACHIEVED")
+      ),
+      savingsForecast: sumSavings(activeCards) * 1.2,
+      activeProjects: activeCards.length,
+      pendingApprovals: getUtopiaTraxExpectedPendingOpenActionCount(),
+    },
+    pipelineByPhase: phases.map((phase) => ({
+      phase,
+      label: phaseLabels[phase],
+      savings: sumSavings(
+        UTOPIATRAX_SAVING_CARDS.filter((card) => card.phase === phase)
+      ),
+    })),
+    forecastCurve: [...forecastByMonth.entries()].map(([month, savings]) => ({
+      month,
+      savings,
+      forecast: savings * 1.2,
+    })),
+    topSuppliers: [...supplierSavings.entries()]
+      .map(([supplier, savings]) => ({ supplier, savings }))
+      .sort((left, right) => right.savings - left.savings)
+      .slice(0, 5),
+    savingsByRiskLevel: [...riskSavings.entries()].map(([level, savings]) => ({
+      level,
+      savings,
+    })),
+    savingsByQualificationStatus: [...qualificationSavings.entries()].map(
+      ([status, savings]) => ({
+        status,
+        savings,
+      })
+    ),
+    pendingApprovalQueue: UTOPIATRAX_PENDING_PHASE_REQUESTS.map(
+      (request, index) => {
+        const card = cardsByTitle.get(request.cardTitle);
+        if (!card) {
+          throw new Error(`Missing UtopiaTrax card for ${request.cardTitle}`);
+        }
+
+        const requiresFinance = request.requestedPhase !== "VALIDATED";
+
+        return {
+          requestId: `utopiatrax-request-${index}`,
+          savingCardId: createStableSeedId("card", card.title),
+          savingCardTitle: card.title,
+          currentPhase: phaseLabels[card.phase],
+          requestedPhase: phaseLabels[request.requestedPhase],
+          requestedByName: request.requestedByEmail.includes("+7")
+            ? "Can Kaya"
+            : "Aylin Demir",
+          requestedByRole: request.requestedByEmail.includes("+7")
+            ? "TACTICAL_BUYER"
+            : "GLOBAL_CATEGORY_LEADER",
+          createdAt: request.createdAt,
+          ageDays: 30 + index,
+          isOverdue: true,
+          pendingApproverCount: requiresFinance ? 1 : 2,
+          pendingApproverRoles: requiresFinance
+            ? ["FINANCIAL_CONTROLLER"]
+            : ["HEAD_OF_GLOBAL_PROCUREMENT", "FINANCIAL_CONTROLLER"],
+          savings: getUtopiaSavingsEUR(card),
+          financeLocked: card.financeLocked ?? false,
+        };
+      }
+    ),
+    financeLockedItems: UTOPIATRAX_SAVING_CARDS.filter(
+      (card) => card.financeLocked
+    ).map((card) => ({
+      savingCardId: createStableSeedId("card", card.title),
+      title: card.title,
+      phase: phaseLabels[card.phase],
+      buyerName: card.buyerName,
+      categoryName: card.categoryName,
+      dateLabel: "Impact start",
+      dateValue: parseUtopiaDate(card.impactStart).toISOString(),
+      ageDays: 14,
+      savings: getUtopiaSavingsEUR(card),
+      financeLocked: true,
+    })),
+    recentDecisions: UTOPIATRAX_SAVING_CARDS.filter((card) =>
+      ["ACHIEVED", "REALISED"].includes(card.phase)
+    )
+      .slice(0, 4)
+      .map((card, index) => ({
+        approvalId: `utopiatrax-decision-${index}`,
+        savingCardId: createStableSeedId("card", card.title),
+        savingCardTitle: card.title,
+        phase: phaseLabels[card.phase],
+        approverName: "Deniz Arslan",
+        approverRole: "FINANCIAL_CONTROLLER",
+        status: "APPROVED",
+        approved: true,
+        createdAt: parseUtopiaDate(card.impactStart).toISOString(),
+        comment: "Demo approval confirms finance-reviewed savings.",
+      })),
+  };
 }
 
 describe("command center client", () => {
@@ -307,5 +519,49 @@ describe("command center client", () => {
         categoryId: "category-9",
       }).toString()
     ).toBe("categoryId=category-9&buyerId=buyer-1");
+  });
+
+  it("renders UtopiaTrax executive queues and portfolio context from seed data", () => {
+    const data = buildUtopiaCommandCenterData();
+    const normalized = normalizeCommandCenterData(data);
+    const summary = getUtopiaTraxDatasetSummary();
+
+    expect(normalized.kpis.activeProjects).toBe(
+      summary.savingCardCount - summary.phaseCounts.CANCELLED
+    );
+    expect(normalized.kpis.pendingApprovals).toBe(
+      summary.expectedPendingOpenActions
+    );
+    expect(normalized.pendingApprovalQueue).toHaveLength(
+      UTOPIATRAX_PENDING_PHASE_REQUESTS.length
+    );
+    expect(normalized.financeLockedItems?.length).toBeGreaterThan(0);
+    expect(normalized.recentDecisions?.length).toBeGreaterThan(0);
+    expect(
+      normalized.pendingApprovalQueue?.map((item) => item.savingCardTitle)
+    ).toContain("Bio-based carrier pilot sourcing");
+    expect(
+      normalized.pendingApprovalQueue?.map((item) => item.savingCardTitle)
+    ).toContain("Antioxidant blend supplier switch");
+    expect(
+      normalized.pipelineByPhase.every((point) => point.savings > 0)
+    ).toBe(true);
+
+    const markup = renderToStaticMarkup(
+      React.createElement(CommandCenterClient, {
+        initialData: data,
+        filterOptions: buildUtopiaCommandCenterFilterOptions(),
+        readiness: null,
+      })
+    );
+
+    expect(markup).toContain("Savings Pipeline by Phase");
+    expect(markup).toContain("Pending approvals");
+    expect(markup).toContain("Finance Locked");
+    expect(markup).toContain("Recent decisions");
+    expect(markup).not.toContain("No live command-center data yet");
+    expect(markup).not.toContain(
+      "No pipeline savings are available for the current view."
+    );
   });
 });

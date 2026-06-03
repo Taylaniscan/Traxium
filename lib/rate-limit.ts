@@ -507,7 +507,7 @@ export async function consumeRateLimit(
       resetAt: result.resetAt,
       retryAfterSeconds,
     };
-  } catch (error) {
+  } catch {
     if (config.failureMode === "open") {
       return {
         allowed: true,
