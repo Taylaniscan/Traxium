@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import type { MembershipStatus, OrganizationRole } from "@prisma/client";
+import { cache } from "react";
 
 import {
   acceptOrganizationInvitation,
@@ -562,7 +563,7 @@ async function assertBillingAccess(
     return user;
   }
 
-  const accessState = await getOrganizationAccessState(
+  const accessState = await getCachedOrganizationAccessState(
     user.activeOrganization.organizationId
   );
 
@@ -582,7 +583,7 @@ async function assertBillingAccess(
   );
 }
 
-async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult> {
+const resolveAuthenticatedAppUser = cache(async (): Promise<AuthenticatedAppUserResult> => {
   const authUser = await getAuthenticatedSessionUser();
 
   if (!authUser) {
@@ -594,7 +595,11 @@ async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult
   }
 
   return resolveAuthenticatedAppUserFromAuthUser(authUser);
-}
+});
+
+const getCachedOrganizationAccessState = cache((organizationId: string) =>
+  getOrganizationAccessState(organizationId)
+);
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const resolved = await resolveAuthenticatedAppUser();
@@ -686,7 +691,7 @@ async function bootstrapResolvedAuthenticatedAppUser(
   }
 
   const sessionUser = mapSessionUser(user, activeMembership);
-  const accessState = await getOrganizationAccessState(
+  const accessState = await getCachedOrganizationAccessState(
     sessionUser.activeOrganization.organizationId
   );
 

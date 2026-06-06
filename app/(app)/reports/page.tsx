@@ -148,7 +148,7 @@ export default async function ReportsPage() {
     <div className="space-y-6">
       <SectionHeading
         title="Reports"
-        subtitle="Executive savings summary for finance leadership, plus workbook exports for deeper offline review."
+        subtitle="Executive savings review plus a controller-ready workbook with reconciled assumptions, workflow status, finance locks, and evidence coverage."
       />
       <ExecutiveSavingsSummary
         commandCenterData={commandCenterData}

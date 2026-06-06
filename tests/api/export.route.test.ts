@@ -8,15 +8,10 @@ const requireUserMock = vi.hoisted(() => vi.fn());
 const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const getSavingCardsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
-const mapSavingCardsForExportMock = vi.hoisted(() => vi.fn());
-const savingCardExportColumnsMock = vi.hoisted(() => [
-  "Saving Card Title",
-  "Phase",
-  "Savings EUR",
-  "Finance Locked",
-]);
+const buildControllerWorkbookModelMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
 const createRateLimitErrorResponseMock = vi.hoisted(() => vi.fn());
+const writeAuditEventMock = vi.hoisted(() => vi.fn());
 const RateLimitExceededErrorMock = vi.hoisted(
   () =>
     class RateLimitExceededError extends Error {
@@ -31,6 +26,11 @@ const aoaToSheetMock = vi.hoisted(() => vi.fn());
 const bookNewMock = vi.hoisted(() => vi.fn());
 const appendSheetMock = vi.hoisted(() => vi.fn());
 const writeMock = vi.hoisted(() => vi.fn());
+const prismaMock = vi.hoisted(() => ({
+  auditLog: {
+    create: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/auth", () => ({
   requireUser: requireUserMock,
@@ -40,8 +40,43 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/data", () => ({
   getSavingCards: getSavingCardsMock,
   getWorkspaceReadiness: getWorkspaceReadinessMock,
-  mapSavingCardsForExport: mapSavingCardsForExportMock,
-  savingCardExportColumns: savingCardExportColumnsMock,
+}));
+
+vi.mock("@/lib/export/controller-workbook", () => ({
+  controllerSavingCardColumns: [
+    "Saving Card Title",
+    "Phase",
+    "Savings EUR",
+    "Finance Lock Status",
+    "Evidence Count",
+    "Evidence Status",
+  ],
+  evidenceSummaryColumns: [
+    "Saving Card Title",
+    "Phase",
+    "Evidence Count",
+    "Evidence Status",
+    "Evidence Types",
+    "Last Evidence Upload Date",
+    "Finance Lock Status",
+  ],
+  importTemplateColumns: [
+    "Title",
+    "Phase",
+    "Buyer",
+    "Supplier",
+    "Material",
+    "Category",
+    "Plant",
+    "Business Unit",
+    "Baseline Price",
+    "New Price",
+    "Annual Volume",
+    "Currency",
+    "Start Date",
+    "End Date",
+  ],
+  buildControllerWorkbookModel: buildControllerWorkbookModelMock,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -50,12 +85,30 @@ vi.mock("@/lib/rate-limit", () => ({
   RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
+vi.mock("@/lib/audit", () => ({
+  auditEventTypes: {
+    CONTROLLER_WORKBOOK_EXPORTED: "controller_workbook.exported",
+  },
+  writeAuditEvent: writeAuditEventMock,
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: prismaMock,
+}));
+
 vi.mock("xlsx", () => ({
   utils: {
     json_to_sheet: jsonToSheetMock,
     aoa_to_sheet: aoaToSheetMock,
     book_new: bookNewMock,
     book_append_sheet: appendSheetMock,
+    encode_cell: ({ r, c }: { r: number; c: number }) =>
+      `${String.fromCharCode(65 + c)}${r + 1}`,
+    encode_range: () => "A1:Z1",
+    decode_range: () => ({
+      s: { r: 0, c: 0 },
+      e: { r: 0, c: 0 },
+    }),
   },
   write: writeMock,
 }));
@@ -78,56 +131,76 @@ describe("export route", () => {
           { status: error.status ?? 429 }
         )
     );
-    getSavingCardsMock.mockResolvedValue([
-      {
-        id: "card-1",
-        phase: "VALIDATED",
-        calculatedSavings: 100000,
-        financeLocked: true,
-      },
-      {
-        id: "card-2",
-        phase: "ACHIEVED",
-        calculatedSavings: 30000,
-        financeLocked: false,
-      },
-      {
-        id: "card-3",
-        phase: "CANCELLED",
-        calculatedSavings: 20000,
-        financeLocked: false,
-      },
-    ]);
+    getSavingCardsMock.mockResolvedValue([{ id: "card-1" }]);
     getWorkspaceReadinessMock.mockResolvedValue({
       workspace: {
         name: "Atlas Procurement",
         slug: "atlas-procurement",
       },
-      coverage: {
-        overallPercent: 100,
-        masterDataReadyCount: 5,
-        masterDataTotal: 5,
-        workflowReadyCount: 4,
-        workflowTotal: 4,
-      },
-      activity: {
-        lastPortfolioUpdateAt: new Date("2026-03-27T10:00:00.000Z"),
+    });
+    buildControllerWorkbookModelMock.mockReturnValue({
+      portfolioSummaryRows: [
+        ["Traxium Controller Review Workbook", "", ""],
+        ["Metric", "Value", "Review Note"],
+        ["Active Cards", 1, "Excludes canceled cards"],
+        ["Reconciliation Difference (EUR)", 0, "Expected to equal zero"],
+      ],
+      savingCardRows: [
+        {
+          "Saving Card Title": "Resin renegotiation",
+          Phase: "Finance Validated",
+          "Savings EUR": 100000,
+          "Finance Lock Status": "Locked",
+          "Evidence Count": 2,
+          "Evidence Status": "Evidence attached",
+        },
+      ],
+      dataDictionaryRows: [
+        ["Column / Term", "Definition", "Accepted Values / Review Note"],
+        [
+          "Savings Formula",
+          "(Baseline Price - New Price) × Annual Volume",
+          "",
+        ],
+      ],
+      importTemplateRows: [
+        {
+          Title: "Example initiative",
+          Phase: "Proposed",
+        },
+      ],
+      evidenceSummaryRows: [
+        {
+          "Saving Card Title": "Resin renegotiation",
+          Phase: "Finance Validated",
+          "Evidence Count": 2,
+          "Evidence Status": "Evidence attached",
+          "Evidence Types": "Supplier Quote",
+          "Last Evidence Upload Date": new Date("2026-03-20T10:00:00.000Z"),
+          "Finance Lock Status": "Locked",
+        },
+      ],
+      reconciliation: {
+        activeCardCount: 1,
+        activeSavings: 100000,
+        activeRowSavings: 100000,
+        difference: 0,
+        phaseCounts: {
+          IDEA: 0,
+          VALIDATED: 1,
+          REALISED: 0,
+          ACHIEVED: 0,
+          CANCELLED: 0,
+        },
+        evidenceCoveragePercent: 100,
+        financeLockedSavings: 100000,
       },
     });
-    mapSavingCardsForExportMock.mockReturnValue([
-      {
-        "Saving Card Title": "Resin renegotiation",
-        Phase: "Validated",
-        "Savings EUR": 100000,
-        "Finance Locked": "Yes",
-      },
-    ]);
-    jsonToSheetMock.mockReturnValue({});
-    aoaToSheetMock.mockReturnValue({});
-    bookNewMock.mockReturnValue({
-      Props: {},
-    });
+    jsonToSheetMock.mockImplementation(() => ({}));
+    aoaToSheetMock.mockImplementation(() => ({}));
+    bookNewMock.mockReturnValue({ Props: {} });
     writeMock.mockReturnValue(Buffer.from("xlsx-bytes"));
+    writeAuditEventMock.mockResolvedValue(undefined);
   });
 
   it("returns 402 for billing-blocked export requests", async () => {
@@ -158,7 +231,7 @@ describe("export route", () => {
     });
   });
 
-  it("builds an organization-scoped export workbook and enforces the export rate limit", async () => {
+  it("builds a tenant-scoped five-sheet controller workbook and audits the export", async () => {
     const response = await getExportRoute(
       new Request("http://localhost/api/export")
     );
@@ -174,108 +247,45 @@ describe("export route", () => {
       id: "user-1",
       organizationId: "org-1",
     });
+    expect(getWorkspaceReadinessMock).toHaveBeenCalledWith({
+      id: "user-1",
+      organizationId: "org-1",
+    });
+    expect(buildControllerWorkbookModelMock).toHaveBeenCalledWith({
+      cards: [{ id: "card-1" }],
+      generatedAt: expect.any(Date),
+      workspaceReadiness: {
+        workspace: {
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+        },
+      },
+    });
+    expect(appendSheetMock.mock.calls.map((call) => call[2])).toEqual([
+      "Portfolio Summary",
+      "Saving Cards",
+      "Data Dictionary",
+      "Import Template",
+      "Evidence Summary",
+    ]);
+    expect(writeAuditEventMock).toHaveBeenCalledWith(prismaMock, {
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      eventType: "controller_workbook.exported",
+      detail: "Controller-review workbook exported with 1 saving cards.",
+      payload: expect.objectContaining({
+        cardCount: 1,
+        activeCardCount: 1,
+        evidenceCoveragePercent: 100,
+        reconciliationDifference: 0,
+      }),
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe(
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     expect(response.headers.get("content-disposition")).toContain(
-      "traxium-atlas-procurement-savings-report-"
+      "traxium-atlas-procurement-controller-review-"
     );
-    expect(jsonToSheetMock).toHaveBeenCalledWith(
-      [
-        {
-          "Saving Card Title": "Resin renegotiation",
-          Phase: "Validated",
-          "Savings EUR": 100000,
-          "Finance Locked": "Yes",
-        },
-      ],
-      {
-        header: savingCardExportColumnsMock,
-      }
-    );
-    expect(aoaToSheetMock).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        ["Portfolio Scope", 3],
-        ["Active Cards", 2],
-        ["Active Savings (EUR)", 130000],
-        ["Realized Savings (EUR)", 0],
-        ["Achieved Savings (EUR)", 30000],
-        ["Finance Locked Cards", 1],
-        ["Finance Locked Savings (EUR)", 100000],
-        ["Validated Cards", 1],
-        ["Achieved Cards", 1],
-        ["Canceled Cards", 1],
-      ])
-    );
-    expect(appendSheetMock).toHaveBeenNthCalledWith(
-      1,
-      expect.any(Object),
-      expect.any(Object),
-      "Report Summary"
-    );
-    expect(appendSheetMock).toHaveBeenNthCalledWith(
-      2,
-      expect.any(Object),
-      expect.any(Object),
-      "Savings"
-    );
-  });
-
-  it("maps saving-card exports with controller-friendly labels and fallback values", async () => {
-    const { mapSavingCardsForExport } = await import(
-      "@/lib/saving-cards/queries"
-    );
-
-    expect(
-      mapSavingCardsForExport([
-        {
-          id: "card-1",
-          title: "Resin renegotiation",
-          savingType: "Commercial negotiation",
-          phase: "REALISED",
-          supplier: { name: "Atlas Chemicals" },
-          material: { name: "PET Resin" },
-          alternativeSupplier: null,
-          alternativeSupplierManualName: "Backup Supplier",
-          alternativeMaterial: null,
-          alternativeMaterialManualName: null,
-          savingDriver: null,
-          implementationComplexity: "Medium",
-          qualificationStatus: "Approved",
-          category: { name: "Packaging" },
-          buyer: { name: "Casey Buyer" },
-          businessUnit: { name: "Beverages" },
-          baselinePrice: 12,
-          newPrice: 10,
-          annualVolume: 1000,
-          currency: "EUR",
-          calculatedSavings: 2000,
-          calculatedSavingsUSD: 2200,
-          startDate: new Date("2026-01-01T00:00:00.000Z"),
-          endDate: new Date("2026-02-01T00:00:00.000Z"),
-          impactStartDate: new Date("2026-03-01T00:00:00.000Z"),
-          impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
-          financeLocked: true,
-        },
-      ] as Parameters<typeof mapSavingCardsForExport>[0])
-    ).toEqual([
-      expect.objectContaining({
-        "Card ID": "card-1",
-        "Saving Card Title": "Resin renegotiation",
-        Phase: "Realized",
-        "Saving Type": "Commercial negotiation",
-        Supplier: "Atlas Chemicals",
-        Material: "PET Resin",
-        "Alternative Supplier": "Backup Supplier",
-        "Alternative Material": "",
-        Category: "Packaging",
-        Buyer: "Casey Buyer",
-        "Business Unit": "Beverages",
-        "Savings EUR": 2000,
-        "Savings USD": 2200,
-        "Finance Locked": "Yes",
-      }),
-    ]);
   });
 });

@@ -1,12 +1,18 @@
 "use client";
 
+import type { EvidenceType } from "@prisma/client";
 import { useRef, useState } from "react";
-import { CloudUpload, FileText, FolderOpen, Trash2 } from "lucide-react";
+import { CloudUpload, FileText, LockKeyhole, Trash2 } from "lucide-react";
 import {
   ALLOWED_EVIDENCE_EXTENSIONS,
   MAX_EVIDENCE_FILE_SIZE,
+  evidenceTrustCopy,
+  evidenceTypeDescriptions,
+  evidenceTypeLabels,
+  evidenceTypes,
   formatEvidenceFileSize,
   isAllowedEvidenceFileName,
+  maxEvidenceFileSizeLabel,
 } from "@/lib/evidence-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +23,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 
 export type UploadedEvidenceFile = {
   id?: string;
@@ -24,6 +32,12 @@ export type UploadedEvidenceFile = {
   downloadUrl?: string;
   fileSize: number;
   fileType: string;
+  evidenceType?: EvidenceType;
+  uploadedAt?: string | Date;
+  uploadedBy?: {
+    name: string;
+    email?: string;
+  } | null;
   progress?: number;
   status?: "uploading" | "uploaded" | "error";
   error?: string;
@@ -42,13 +56,12 @@ export function EvidenceUploader({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [evidenceType, setEvidenceType] = useState<EvidenceType>("OTHER");
   const uploadedCount = files.filter((file) => file.status === "uploaded" || (!file.status && file.downloadUrl)).length;
   const errorCount = files.filter((file) => file.status === "error").length;
 
   return (
-    <>
-      <Card className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
+    <Card className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
         <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1">
@@ -57,7 +70,7 @@ export function EvidenceUploader({
               </p>
               <CardTitle>Evidence Upload</CardTitle>
               <CardDescription>
-                Upload quote, contract, invoice, and calculation evidence up to 25 MB each so finance can validate baseline, new price, volume, and realized impact.
+                Upload quote, contract, invoice, and calculation evidence up to {maxEvidenceFileSizeLabel} so finance can validate baseline, new price, volume, and realized impact.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -69,7 +82,7 @@ export function EvidenceUploader({
         </CardHeader>
 
         <CardContent className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4">
+          <div className="grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.6fr)_auto] lg:items-end">
             <div className="space-y-1">
               <p className="text-sm font-semibold text-[var(--foreground)]">
                 Record attachments
@@ -78,19 +91,29 @@ export function EvidenceUploader({
                 Allowed: {ALLOWED_EVIDENCE_EXTENSIONS.join(", ").toUpperCase()}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="evidence-type">Evidence type for this upload</Label>
+              <Select
+                id="evidence-type"
+                value={evidenceType}
+                onChange={(event) =>
+                  setEvidenceType(event.target.value as EvidenceType)
+                }
+              >
+                {evidenceTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {evidenceTypeLabels[type]}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {evidenceTypeDescriptions[evidenceType]}
+              </p>
+            </div>
+            <div className="flex items-center">
               <Button type="button" onClick={() => inputRef.current?.click()}>
                 <CloudUpload className="mr-2 h-4 w-4" />
                 Pick Files
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowDriveModal(true)}
-              >
-                <FolderOpen className="mr-2 h-4 w-4" />
-                Upload from Google Drive
               </Button>
             </div>
           </div>
@@ -109,6 +132,13 @@ export function EvidenceUploader({
                 </Badge>
               ))}
             </div>
+            <div className="mt-4 flex gap-3 rounded-xl border border-[var(--border)] bg-white/70 px-3 py-3">
+              <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-[var(--finance-lock)]" />
+              <div className="space-y-1 text-xs leading-5 text-[var(--muted-foreground)]">
+                <p>{evidenceTrustCopy.privateStorage}</p>
+                <p>{evidenceTrustCopy.financePurpose}</p>
+              </div>
+            </div>
           </div>
 
           <input
@@ -122,6 +152,7 @@ export function EvidenceUploader({
                   savingCardId,
                   event.target.files,
                   files,
+                  evidenceType,
                   onChange,
                   onError,
                 );
@@ -143,6 +174,7 @@ export function EvidenceUploader({
                 savingCardId,
                 event.dataTransfer.files,
                 files,
+                evidenceType,
                 onChange,
                 onError,
               );
@@ -159,7 +191,7 @@ export function EvidenceUploader({
               Supported: PDF, JPG, JPEG, PNG, XLS, XLSX, DOC, DOCX, PPT, PPTX
             </p>
             <p className="mt-2 text-xs text-[var(--muted-foreground)]">
-              Files are linked directly to this saving card and remain visible in the evidence register.
+              Files are linked directly to this saving card. {evidenceTrustCopy.privateStorage}
             </p>
           </div>
 
@@ -182,12 +214,21 @@ export function EvidenceUploader({
                       <Badge tone={getFileStatusTone(file)}>
                         {getFileStatusLabel(file)}
                       </Badge>
+                      {file.evidenceType ? (
+                        <Badge tone="slate">
+                          {evidenceTypeLabels[file.evidenceType]}
+                        </Badge>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
                       <span>{file.fileType}</span>
                       <span>{formatEvidenceFileSize(file.fileSize)}</span>
-                      <span>{file.downloadUrl ? "Linked to record" : "Awaiting upload completion"}</span>
+                      <span>
+                        {file.downloadUrl
+                          ? "Private file · Signed download"
+                          : "Awaiting upload completion"}
+                      </span>
                     </div>
 
                     {file.downloadUrl ? (
@@ -244,34 +285,13 @@ export function EvidenceUploader({
                   No evidence linked yet
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Upload quotes, contracts, invoices, and calculation workbooks so reviewers can validate the commercial case without leaving the record.
+                  Upload a supplier quote, price confirmation, contract or purchase order, invoice or actual proof, or calculation workbook. Evidence can be added after the card is saved.
                 </p>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
-
-      {showDriveModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold">Google Drive Upload</h3>
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Google Drive integration will be available in a future version.
-            </p>
-            <div className="mt-6 flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowDriveModal(false)}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
   );
 }
 
@@ -279,6 +299,7 @@ async function performUploads(
   savingCardId: string,
   fileList: FileList,
   existingFiles: UploadedEvidenceFile[],
+  evidenceType: EvidenceType,
   onChange: (files: UploadedEvidenceFile[]) => void,
   onError: (message: string | null) => void,
 ) {
@@ -301,6 +322,7 @@ async function performUploads(
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type || "application/octet-stream",
+      evidenceType,
       progress: 0,
       status: "uploading",
     };
@@ -309,12 +331,17 @@ async function performUploads(
     onChange(currentFiles);
 
     try {
-      const uploaded = await uploadSingleFile(savingCardId, file, (progress) => {
+      const uploaded = await uploadSingleFile(
+        savingCardId,
+        file,
+        evidenceType,
+        (progress) => {
         currentFiles = currentFiles.map((item) =>
           item.id === tempId ? { ...item, progress } : item,
         );
         onChange(currentFiles);
-      });
+        }
+      );
 
       currentFiles = currentFiles.map((item) =>
         item.id === tempId
@@ -347,11 +374,13 @@ async function performUploads(
 function uploadSingleFile(
   savingCardId: string,
   file: File,
+  evidenceType: EvidenceType,
   onProgress: (progress: number) => void,
 ): Promise<UploadedEvidenceFile> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append("savingCardId", savingCardId);
+    formData.append("evidenceType", evidenceType);
     formData.append("files", file);
 
     const xhr = new XMLHttpRequest();

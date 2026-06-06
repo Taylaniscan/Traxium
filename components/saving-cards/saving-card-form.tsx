@@ -22,7 +22,19 @@ import {
   phases,
   qualificationStatuses,
   roleLabels,
-  savingDrivers
+  savingDrivers,
+  savingTypeDescriptions,
+  savingTypeLabels,
+  savingTypes,
+  savingsBudgetImpactDescriptions,
+  savingsBudgetImpactLabels,
+  savingsBudgetImpacts,
+  savingsImpactRecurrenceDescriptions,
+  savingsImpactRecurrenceLabels,
+  savingsImpactRecurrences,
+  savingsImpactTypeDescriptions,
+  savingsImpactTypeLabels,
+  savingsImpactTypes
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
@@ -41,7 +53,10 @@ type Props = {
 type FormState = {
   title: string;
   description: string;
-  savingType: string;
+  savingType: (typeof savingTypes)[number];
+  impactType: (typeof savingsImpactTypes)[number];
+  impactRecurrence: (typeof savingsImpactRecurrences)[number];
+  budgetImpact: (typeof savingsBudgetImpacts)[number];
   phase: (typeof phases)[number];
   frequency: (typeof frequencies)[number];
   supplier: CreatableValue;
@@ -70,9 +85,9 @@ type FormState = {
 type WizardStepId = 1 | 2 | 3;
 
 const createModeSteps: Array<{ id: WizardStepId; title: string }> = [
-  { id: 1, title: "Basic Info" },
-  { id: 2, title: "Financial Assumptions" },
-  { id: 3, title: "Team & Timeline" },
+  { id: 1, title: "What are we saving on?" },
+  { id: 2, title: "What is the financial impact?" },
+  { id: 3, title: "What happens next?" },
 ];
 
 export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }: Props) {
@@ -92,6 +107,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       downloadUrl: `/api/evidence/${item.id}/download`,
       fileSize: item.fileSize,
       fileType: item.fileType,
+      evidenceType: item.evidenceType,
+      uploadedAt: item.uploadedAt,
+      uploadedBy: item.uploadedBy,
       status: "uploaded",
       progress: 100,
     })) ?? []
@@ -102,7 +120,10 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
   const [form, setForm] = useState<FormState>({
     title: card?.title ?? "",
     description: card?.description ?? "",
-    savingType: card?.savingType ?? "",
+    savingType: card?.savingType ?? "PRICE_REDUCTION",
+    impactType: card?.impactType ?? "HARD_SAVINGS",
+    impactRecurrence: card?.impactRecurrence ?? "RECURRING",
+    budgetImpact: card?.budgetImpact ?? "BUDGET_IMPACT",
     phase: card?.phase ?? "IDEA",
     frequency: card?.frequency ?? "RECURRING",
     supplier: existingValue(card?.supplierId, card?.supplier.name),
@@ -224,15 +245,12 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
     const requiredByStep: Record<WizardStepId, Array<{ label: string; value: string }>> = {
       1: [
-        { label: "Category", value: form.category.name },
-        { label: "Plant", value: form.plant.name },
-        { label: "Business Unit", value: form.businessUnit.name },
-        { label: "Buyer", value: form.buyer.name },
-      ],
-      2: [
         { label: "Current Supplier", value: form.supplier.name },
         { label: "Current Material", value: form.material.name },
+        { label: "Category", value: form.category.name },
+        { label: "Buyer", value: form.buyer.name },
       ],
+      2: [],
       3: [],
     };
 
@@ -290,6 +308,9 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       title: form.title,
       description: form.description,
       savingType: form.savingType,
+      impactType: form.impactType,
+      impactRecurrence: form.impactRecurrence,
+      budgetImpact: form.budgetImpact,
       phase: form.phase,
       supplier: toLookupPayload(form.supplier),
       material: toLookupPayload(form.material),
@@ -340,7 +361,15 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       return;
     }
 
-    router.push("/saving-cards");
+    const result = (await response.json().catch(() => null)) as {
+      id?: string;
+    } | null;
+    const createdCardHref =
+      mode === "create" && result?.id
+        ? `/saving-cards/${result.id}?created=1`
+        : "/saving-cards";
+
+    router.push(createdCardHref);
     router.refresh();
   }
 
@@ -360,7 +389,8 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
               {mode === "create" ? "Create Saving Card" : "Edit Saving Card"}
             </CardTitle>
             <CardDescription className="max-w-3xl text-[14px] leading-6">
-              Capture the sourcing case, assign ownership, and keep the commercial assumptions easy to review before workflow approval.
+              Create one real initiative first. You can add more master data,
+              evidence, and team approvals later.
             </CardDescription>
             <div className="flex flex-wrap gap-2 pt-2">
               <PhaseBadge phase={form.phase}>{phaseLabels[form.phase]}</PhaseBadge>
@@ -397,7 +427,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 1 ? (
               <>
-                <SectionBlock title="Record Definition" description="Start with the business narrative and governance posture of the initiative before filling in commercial detail.">
+                <SectionBlock title="What are we saving on?" description="Capture the initiative title, owner, supplier, material, and category first. Plants and business units can be quick reporting context, not setup work.">
                   <div className="grid gap-5 lg:grid-cols-2">
                     <Field label="Title">
                       <Input
@@ -408,27 +438,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       />
                     </Field>
                     <Field
-                      label="Saving Type"
-                      helper="Classify the case as hard savings, cost avoidance, supplier switch, material substitution, or another procurement value type."
-                    >
-                      <Input
-                        placeholder="Ex: Hard savings - supplier switch"
-                        list="saving-type-options"
-                        value={form.savingType}
-                        onChange={(event) => setForm({ ...form, savingType: event.target.value })}
-                        required
-                      />
-                      <datalist id="saving-type-options">
-                        <option value="Hard savings - price reduction" />
-                        <option value="Cost avoidance - inflation mitigation" />
-                        <option value="Supplier switch" />
-                        <option value="Material substitution" />
-                        <option value="Volume consolidation" />
-                      </datalist>
-                    </Field>
-                    <Field
                       label="Description"
-                      className="md:col-span-2"
                       helper="Required. Add a short business case so reviewers understand the initiative."
                     >
                       <Textarea
@@ -442,7 +452,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       label="Workflow Status"
                       helper={
                         isCreateMode
-                          ? "New cards start in Idea and move after workflow approval."
+                          ? "New cards start as Proposed and move after workflow approval."
                           : "Record edits preserve the current approved phase."
                       }
                     >
@@ -463,15 +473,8 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
-                <SectionBlock title="Ownership & Scope" description="Map the record to shared master data so ownership, reporting, and accountability are aligned from the outset. If a list is empty, create the first record inline and keep going.">
+                <SectionBlock title="Minimum context" description="Inline-create the records you need for this first card. A complete master-data upload can wait until after first value.">
                   <div className="grid gap-6 lg:grid-cols-2">
-                    <CreatableMasterDataField
-                      label="Category"
-                      items={referenceData.categories}
-                      value={form.category}
-                      onChange={(category) => setForm({ ...form, category })}
-                      helper={categoryHelper}
-                    />
                     <CreatableMasterDataField
                       label="Buyer"
                       items={referenceData.buyers}
@@ -480,66 +483,26 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       helper={buyerHelper}
                     />
                     <CreatableMasterDataField
-                      label="Business Unit"
-                      items={referenceData.businessUnits}
-                      value={form.businessUnit}
-                      onChange={(businessUnit) => setForm({ ...form, businessUnit })}
-                      helper={businessUnitHelper}
+                      label="Current Supplier"
+                      items={referenceData.suppliers}
+                      value={form.supplier}
+                      onChange={(supplier) => setForm({ ...form, supplier })}
+                      helper={supplierHelper}
                     />
                     <CreatableMasterDataField
-                      label="Plant"
-                      items={referenceData.plants}
-                      value={form.plant}
-                      onChange={(plant) => setForm({ ...form, plant })}
-                      helper={plantHelper}
+                      label="Current Material"
+                      items={referenceData.materials}
+                      value={form.material}
+                      onChange={(material) => setForm({ ...form, material })}
+                      helper={materialHelper}
                     />
-                  </div>
-                </SectionBlock>
-
-                <SectionBlock title="Governance Attributes" description="Capture the driver, delivery effort, and validation maturity that shape how the initiative is reviewed.">
-                  <div className="grid gap-5 lg:grid-cols-3">
-                    <Field label="Saving Driver" tooltip="Root cause of the saving initiative.">
-                      <Select value={form.savingDriver} onChange={(event) => setForm({ ...form, savingDriver: event.target.value })}>
-                        <option value="">Select saving driver</option>
-                        {savingDrivers.map((driver) => (
-                          <option key={driver} value={driver}>
-                            {driver}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field
-                      label="Implementation Complexity"
-                      tooltip="Estimated effort required to implement this saving."
-                    >
-                      <Select
-                        value={form.implementationComplexity}
-                        onChange={(event) => setForm({ ...form, implementationComplexity: event.target.value })}
-                      >
-                        <option value="">Select complexity</option>
-                        {implementationComplexities.map((complexity) => (
-                          <option key={complexity} value={complexity}>
-                            {complexity}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field
-                      label="Qualification Status"
-                      tooltip="Engineering or operational validation stage of the saving initiative."
-                    >
-                      <Select
-                        value={form.qualificationStatus}
-                        onChange={(event) => setForm({ ...form, qualificationStatus: event.target.value })}
-                      >
-                        <option value="">Select qualification status</option>
-                        {qualificationStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
+                    <CreatableMasterDataField
+                      label="Category"
+                      items={referenceData.categories}
+                      value={form.category}
+                      onChange={(category) => setForm({ ...form, category })}
+                      helper={categoryHelper}
+                    />
                   </div>
                 </SectionBlock>
               </>
@@ -547,7 +510,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 2 ? (
               <>
-                <SectionBlock title="Commercial Baseline" description="Define the baseline sourcing position first, then capture any alternative supplier or material scenario that supports the case. Missing suppliers or materials can be created inline without leaving this flow.">
+                <SectionBlock title="What is the financial impact?" description="Enter baseline price, new price, annual volume, and currency. The annual savings calculation updates before you save.">
                   <div className="space-y-6">
                     <label className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-4">
                       <div>
@@ -583,22 +546,8 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       </button>
                     </label>
 
-                    <div className="grid gap-6 lg:grid-cols-2">
-                      <CreatableMasterDataField
-                        label="Current Supplier"
-                        items={referenceData.suppliers}
-                        value={form.supplier}
-                        onChange={(supplier) => setForm({ ...form, supplier })}
-                        helper={supplierHelper}
-                      />
-                      <CreatableMasterDataField
-                        label="Current Material"
-                        items={referenceData.materials}
-                        value={form.material}
-                        onChange={(material) => setForm({ ...form, material })}
-                        helper={materialHelper}
-                      />
-                      {alternativeSourcingEnabled ? (
+                    {alternativeSourcingEnabled ? (
+                      <div className="grid gap-6 lg:grid-cols-2">
                         <CreatableMasterDataField
                           label="Alternative Supplier"
                           labelSuffix={<OptionalLabelText />}
@@ -607,8 +556,6 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           onChange={(alternativeSupplier) => setForm({ ...form, alternativeSupplier })}
                           helper={alternativeSupplierHelper}
                         />
-                      ) : null}
-                      {alternativeSourcingEnabled ? (
                         <CreatableMasterDataField
                           label="Alternative Material"
                           labelSuffix={<OptionalLabelText />}
@@ -617,17 +564,16 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           onChange={(alternativeMaterial) => setForm({ ...form, alternativeMaterial })}
                           helper={alternativeMaterialHelper}
                         />
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
 
-                    {(form.savingType.toLowerCase().includes("supplier") || form.savingType.toLowerCase().includes("material")) && (
+                    {(form.savingType === "SUPPLIER_SWITCH" || form.savingType === "SPECIFICATION_CHANGE") && (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
-                        {form.savingType.toLowerCase().includes("supplier")
+                        {form.savingType === "SUPPLIER_SWITCH"
                           ? "Alternative supplier is recommended for supplier change savings types."
                           : null}
-                        {form.savingType.toLowerCase().includes("supplier") && form.savingType.toLowerCase().includes("material") ? " " : null}
-                        {form.savingType.toLowerCase().includes("material")
-                          ? "Alternative material is recommended for material substitution savings types."
+                        {form.savingType === "SPECIFICATION_CHANGE"
+                          ? "Alternative material is recommended for specification change savings types."
                           : null}
                       </div>
                     )}
@@ -645,7 +591,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           </p>
                         </div>
                         <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-                          Baseline price, new price, annual volume, currency, FX rate, and value recognition dates are the core finance control points for this record.
+                          Baseline price, new price, annual volume, currency, FX rate, value recognition dates, and savings classification are the core finance control points for this record.
                         </p>
                       </div>
                     ) : null}
@@ -802,8 +748,11 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       <p className="text-sm font-semibold">
                         Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
                       </p>
+                      <p className="mt-1 text-sm">
+                        (Baseline price - New price) × Annual volume
+                      </p>
                       {isNegativeSavings ? (
-                        <p className="mt-1 text-sm">New price is higher than baseline; submit validation will reject this commercial case.</p>
+                        <p className="mt-1 text-sm">This is not a positive savings case. Check whether this is cost avoidance or another impact type.</p>
                       ) : null}
                     </div>
 
@@ -812,8 +761,67 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       <div className="grid gap-4 md:grid-cols-3">
                         <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
                         <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-                        <SummaryMetric label="Savings Formula" value="(Baseline - New) x Annual Volume" muted />
+                        <SummaryMetric label="Savings Formula" value="(Baseline price - New price) × Annual volume" muted />
                       </div>
+                    </div>
+                  </div>
+                </SectionBlock>
+
+                <SectionBlock
+                  title="Savings classification"
+                  description="Classification helps finance separate hard savings, cost avoidance, recurring impact, and budget impact."
+                >
+                  <div className="space-y-4">
+                    {financeLockActive ? (
+                      <div className="rounded-2xl border border-[rgba(71,84,103,0.22)] bg-[var(--finance-lock-surface)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
+                        Finance lock protects the validated savings classification. Remove the lock before changing these fields.
+                      </div>
+                    ) : null}
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <Field label="Savings Type" helper={savingTypeDescriptions[form.savingType]} emphasis="finance" locked={financeLockActive}>
+                        <Select
+                          value={form.savingType}
+                          onChange={(event) => setForm({ ...form, savingType: event.target.value as FormState["savingType"] })}
+                          disabled={financeLockActive}
+                        >
+                          {savingTypes.map((value) => (
+                            <option key={value} value={value}>{savingTypeLabels[value]}</option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Impact Type" helper={savingsImpactTypeDescriptions[form.impactType]} emphasis="finance" locked={financeLockActive}>
+                        <Select
+                          value={form.impactType}
+                          onChange={(event) => setForm({ ...form, impactType: event.target.value as FormState["impactType"] })}
+                          disabled={financeLockActive}
+                        >
+                          {savingsImpactTypes.map((value) => (
+                            <option key={value} value={value}>{savingsImpactTypeLabels[value]}</option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Impact Recurrence" helper={savingsImpactRecurrenceDescriptions[form.impactRecurrence]} emphasis="finance" locked={financeLockActive}>
+                        <Select
+                          value={form.impactRecurrence}
+                          onChange={(event) => setForm({ ...form, impactRecurrence: event.target.value as FormState["impactRecurrence"] })}
+                          disabled={financeLockActive}
+                        >
+                          {savingsImpactRecurrences.map((value) => (
+                            <option key={value} value={value}>{savingsImpactRecurrenceLabels[value]}</option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Budget Impact" helper={savingsBudgetImpactDescriptions[form.budgetImpact]} emphasis="finance" locked={financeLockActive}>
+                        <Select
+                          value={form.budgetImpact}
+                          onChange={(event) => setForm({ ...form, budgetImpact: event.target.value as FormState["budgetImpact"] })}
+                          disabled={financeLockActive}
+                        >
+                          {savingsBudgetImpacts.map((value) => (
+                            <option key={value} value={value}>{savingsBudgetImpactLabels[value]}</option>
+                          ))}
+                        </Select>
+                      </Field>
                     </div>
                   </div>
                 </SectionBlock>
@@ -822,8 +830,22 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
 
             {!isCreateMode || currentStep === 3 ? (
               <>
-                <SectionBlock title="Execution & Value Timing" description="Keep operational delivery dates separate from the dates used by finance to recognize value.">
+                <SectionBlock title="What happens next?" description="Add impact dates and the short business case. Create the card first. Then attach evidence and request finance validation.">
                   <div className="grid gap-5 lg:grid-cols-2">
+                    <CreatableMasterDataField
+                      label="Plant"
+                      items={referenceData.plants}
+                      value={form.plant}
+                      onChange={(plant) => setForm({ ...form, plant })}
+                      helper={plantHelper}
+                    />
+                    <CreatableMasterDataField
+                      label="Business Unit"
+                      items={referenceData.businessUnits}
+                      value={form.businessUnit}
+                      onChange={(businessUnit) => setForm({ ...form, businessUnit })}
+                      helper={businessUnitHelper}
+                    />
                     <SubsectionPanel title="Execution Timeline" description="When the initiative work starts and ends.">
                       <div className="grid gap-5">
                         <Field
@@ -889,6 +911,53 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </div>
                 </SectionBlock>
 
+                <SectionBlock title="Governance attributes" description="Optional context for later review. These improve triage but do not replace the first-card financial case.">
+                  <div className="grid gap-5 lg:grid-cols-3">
+                    <Field label="Saving Driver" tooltip="Root cause of the saving initiative.">
+                      <Select value={form.savingDriver} onChange={(event) => setForm({ ...form, savingDriver: event.target.value })}>
+                        <option value="">Select saving driver</option>
+                        {savingDrivers.map((driver) => (
+                          <option key={driver} value={driver}>
+                            {driver}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field
+                      label="Implementation Complexity"
+                      tooltip="Estimated effort required to implement this saving."
+                    >
+                      <Select
+                        value={form.implementationComplexity}
+                        onChange={(event) => setForm({ ...form, implementationComplexity: event.target.value })}
+                      >
+                        <option value="">Select complexity</option>
+                        {implementationComplexities.map((complexity) => (
+                          <option key={complexity} value={complexity}>
+                            {complexity}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field
+                      label="Qualification Status"
+                      tooltip="Engineering or operational validation stage of the saving initiative."
+                    >
+                      <Select
+                        value={form.qualificationStatus}
+                        onChange={(event) => setForm({ ...form, qualificationStatus: event.target.value })}
+                      >
+                        <option value="">Select qualification status</option>
+                        {qualificationStatuses.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                </SectionBlock>
+
                 <SectionBlock title="Stakeholder Coverage" description="Select the people who should see the record, provide evidence, or contribute to the approval journey.">
                   <Field
                     label="Stakeholders"
@@ -904,7 +973,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                   </Field>
                 </SectionBlock>
 
-                <SectionBlock title="Evidence Register" description="Keep quotes, contracts, invoices, and calculation workbooks with the record so finance validation can happen from one place.">
+                <SectionBlock title="Evidence after save" description="Create the card first. Then attach evidence and request finance validation.">
                   {card?.id ? (
                     <EvidenceUploader
                       savingCardId={card.id}
@@ -1012,8 +1081,15 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
             <SummaryGroup title="Calculation Summary">
               <InfoRow label="Calculated Savings (EUR)" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
               <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-              <InfoRow label="Formula" value="(Baseline - New) x Annual Volume" />
+              <InfoRow label="Formula" value="(Baseline price - New price) × Annual volume" />
               <InfoRow label="Frequency" value={form.frequency.replaceAll("_", " ")} />
+            </SummaryGroup>
+
+            <SummaryGroup title="Savings Classification">
+              <InfoRow label="Savings Type" value={savingTypeLabels[form.savingType]} />
+              <InfoRow label="Impact Type" value={savingsImpactTypeLabels[form.impactType]} />
+              <InfoRow label="Impact Recurrence" value={savingsImpactRecurrenceLabels[form.impactRecurrence]} />
+              <InfoRow label="Budget Impact" value={savingsBudgetImpactLabels[form.budgetImpact]} />
             </SummaryGroup>
 
             <SummaryGroup title="Ownership & Scope">
@@ -1047,7 +1123,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
               Finance-controlled fields:{" "}
               <span className="font-semibold text-[var(--foreground)]">
-                baseline price, new price, annual volume, currency, FX rate, and impact dates
+                baseline price, new price, annual volume, currency, FX rate, impact dates, and savings classification
               </span>
               .
             </div>

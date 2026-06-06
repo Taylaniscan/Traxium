@@ -2,6 +2,31 @@
 
 This log records proof for each approved readiness step. No implementation step should be marked complete unless its proof passes.
 
+## Gap 1 — Provider-flow validation
+
+- Current status: Provider script partial pass.
+- Automated coverage:
+  - Local route and library tests already cover invitation creation/acceptance, password recovery/reset, billing Checkout/Portal/recovery permissions, Stripe webhook processing/idempotency, evidence upload/download tenant scope, import/export tenant scope, and job runner behavior.
+  - The new master checklist is [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md); it must be exercised before paid-pilot provider proof is claimed.
+  - 2026-06-03 local command proof for this Gap 1 update: provider-flow docs/release tests passed, provider-adjacent API/worker tests passed, full `npm test` passed, and `npm run typecheck` passed.
+- Provider-script coverage:
+  - `npm run stripe:validate` checks Stripe runtime mode, SDK/catalog configuration, Product/Price status, webhook-secret presence, and blocks webhook delivery proof until Stripe CLI/dashboard evidence exists.
+  - `npm run stripe:validate -- --exercise-provider-flows` is guarded to test mode outside production and can create Checkout/Portal handoff objects without charging cards.
+  - `npm run supabase:validate` checks Supabase project/key alignment, Auth Admin reachability, private evidence bucket state, signed URL creation, and anon/public evidence denial where existing evidence is available.
+  - `npm run jobs:worker:healthcheck` verifies worker database reachability and registered handlers without processing jobs.
+  - 2026-06-03 local provider command proof: Stripe test-mode catalog validation passed with 5 passed, 0 failed, and 3 blocked checks; guarded Stripe exercise passed with 8 passed, 0 failed, and 2 blocked checks; Supabase validation passed with 8 passed, 0 failed, and 1 blocked redirect allow-list check; worker healthcheck passed with auth email, analytics, and observability handlers registered.
+  - `npm run providers:validate` was run locally and stopped at `npm run predeploy` because `APP_ENV=development`; this is expected for the convenience command, which is intended for preview or production deploy environments.
+- Manual preview status: Not started.
+- Manual production status: Not started.
+- Blockers:
+  - No current master proof entry records a complete preview provider-flow pass.
+  - No current master proof entry records a production smoke pass.
+  - Stripe webhook delivery and Supabase Auth redirect allow-list proof still require provider dashboard/CLI evidence.
+  - Invite email, password reset email, evidence upload/download, import/export, and worker processing still require controlled preview browser proof before paid-pilot signoff.
+- Next proof required:
+  - Run the exact command sequence from [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) in preview, record outputs with secrets redacted, then complete the manual preview checklist for controlled test users/workspaces.
+  - After preview passes, run only the safe production smoke checklist from [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) with controlled internal accounts and record the result here.
+
 ## 2026-06-01T20:59:13Z - Planning Audit
 
 - Step number: Pre-step planning audit
@@ -1749,6 +1774,587 @@ This log records proof for each approved readiness step. No implementation step 
 - Blockers:
   - No Step 37 engineering blocker remains.
   - Before using the ranges in a real buyer proposal, founder/sales should approve the USD 4,500-7,500 and USD 9,000-15,000 hypotheses and configure matching Stripe live Product/Price IDs for the chosen commercial package.
+
+## 2026-06-03T20:29:40Z - Gap 2 Billing Visibility And Live Discoverability
+
+- Step number: Gap 2 from readiness audit
+- Working tree state or commit: Branch `test/commercial-readiness`, HEAD `4a19304`; working tree retained existing readiness/doc/provider changes plus this billing visibility hardening.
+- Current status: Automated tests pass only.
+- Allowed status values:
+  - Not started
+  - Automated tests pass only
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Files inspected:
+  - `components/billing/billing-recovery-form.tsx`
+  - `components/billing/workspace-billing-settings-card.tsx`
+  - `components/billing/workspace-billing-summary.tsx`
+  - `app/(app)/admin/settings/page.tsx`
+  - `app/(app)/admin/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `app/billing/recover/route.ts`
+  - `app/billing-required/page.tsx`
+  - `app/api/billing/portal/route.ts`
+  - `app/api/billing/checkout/route.ts`
+  - `lib/billing/access.ts`
+  - `lib/billing/permissions.ts`
+  - `lib/billing/presentation.ts`
+  - `lib/auth.ts`
+  - `lib/organizations.ts`
+  - `components/layout/app-shell-client.tsx`
+  - `tests/components/workspace-billing-settings-card.test.ts`
+  - `tests/app/admin-pages.test.ts`
+  - `tests/app/settings-billing.page.test.ts`
+  - `tests/api/billing-recover.route.test.ts`
+  - `tests/components/app-shell-client.test.ts`
+  - `docs/readiness-proof-log.md`
+  - `docs/subscription-gating-and-billing-recovery.md`
+- Files changed:
+  - `components/billing/billing-recovery-form.tsx`
+  - `components/billing/workspace-billing-settings-card.tsx`
+  - `lib/billing/presentation.ts`
+  - `app/(app)/admin/settings/page.tsx`
+  - `app/settings/billing/page.tsx`
+  - `components/layout/app-shell-client.tsx`
+  - `tests/components/workspace-billing-settings-card.test.ts`
+  - `tests/app/admin-pages.test.ts`
+  - `tests/app/settings-billing.page.test.ts`
+  - `tests/components/app-shell-client.test.ts`
+  - `docs/readiness-proof-log.md`
+- Tests run:
+  - `npx vitest run tests/components/workspace-billing-settings-card.test.ts` - passed; 17 tests.
+  - `npx vitest run tests/app/admin-pages.test.ts` - passed; 11 tests.
+  - `npx vitest run tests/app/settings-billing.page.test.ts` - passed; 11 tests.
+  - `npx vitest run tests/api/billing-recover.route.test.ts` - passed; 16 tests.
+  - `npx vitest run tests/components/app-shell-client.test.ts` - passed; 5 tests.
+  - `npm run typecheck` - passed.
+- Pass/fail: Automated proof passes. Gap 2 is not marked complete because local/preview browser proof was not completed.
+- Root cause found:
+  - `/admin/settings` used the normal billing gate and had no degraded access-state fallback, so a billing-blocked or partially unavailable billing-state lookup could prevent the primary billing settings surface from rendering the card at all.
+  - The normal settings billing card always posted `intent=open_billing_portal`, even for workspace-trial/no-subscription/trial-expired states where the state-correct recovery path is Checkout. The server route could compensate, but the visible UI and hidden intent did not prove reliable state-specific behavior.
+  - Members who reached workspace settings were redirected instead of seeing the required billing guidance, even though the card component already supported read-only member guidance.
+- Proof:
+  - `BillingRecoveryForm` is now a native `method="post"` form with `action="/billing/recover"` and hidden `intent`; it no longer depends on client-side `fetch` to open billing.
+  - `WorkspaceBillingSettingsCard` always shows `Billing & subscription`, status/details, `View billing details`, and for Owner/Admin a primary `Manage billing` button.
+  - The settings card keeps the visible label `Manage billing` while using state-correct hidden intents: `open_billing_portal` for active/real-trialing/canceled/unknown, `resume_subscription` for workspace-trial/no-subscription/trial-expired/incomplete states, and `update_payment_method` for past-due/unpaid states.
+  - Missing Stripe configuration renders `Billing provider is not configured in this environment.` while keeping the Owner/Admin recovery form visible.
+  - Billing-state load failure renders `Billing status could not be verified.` while keeping Owner/Admin recovery visible.
+  - `/admin/settings` now allows billing-blocked Owner/Admin users through, catches billing-state load failure, renders the billing card in degraded mode, and shows members the guidance `Billing is managed by workspace owners and admins.` without workspace settings form or admin activity.
+  - `/settings/billing` catches bootstrap billing-state failure and falls back to the degraded billing card with `Manage billing`.
+  - The sidebar still has no Billing nav item; it now exposes `Workspace Settings` more explicitly through `/admin/settings`.
+  - Existing recovery-route tests continue to prove active/trialing subscriptions open Stripe Portal, missing/no-subscription/workspace-trial paths start Checkout/recovery, missing Stripe config returns controlled recovery redirects, and members get admin-required guidance.
+- Manual browser verification checklist:
+  1. Log in as Owner/Admin.
+  2. Confirm active organization name.
+  3. Open `/admin/settings`.
+  4. Screenshot Workspace Settings showing `Billing & subscription`.
+  5. Screenshot `Manage billing` visible.
+  6. Inspect element or network: form action is `/billing/recover`.
+  7. Open `/settings/billing`.
+  8. Screenshot Workspace billing showing `Manage billing`.
+  9. Confirm Billing is not in main sidebar.
+  10. Click `Manage billing` in preview.
+  11. Confirm redirect goes to Stripe Portal or Checkout depending on state.
+  12. Return to app.
+  13. Repeat as normal Member.
+  14. Screenshot member sees guidance and no `Manage billing`.
+  15. Record result as Local browser pass, Preview browser pass, or Production smoke pass.
+- Manual checks:
+  - Manual browser proof is required because this repo currently uses Vitest route/component tests rather than browser E2E.
+  - No local/preview/production authenticated browser proof was completed in this step.
+  - Attempted to connect the in-app browser for a local `/admin/settings` smoke, but this session reported no available browser backends.
+- Blockers:
+  - Provide a local seeded authenticated Owner/Admin and Member session, or an approved preview deployment with test credentials/session cookies, then execute the checklist above before moving status beyond Automated tests pass only.
+
+## 2026-06-05T07:56:22Z - Gap 5 Procurement Savings Classification
+
+- Step number: Gap 5 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing readiness, billing, provider, onboarding, and terminology changes. Gap 5 changes were applied without reverting unrelated work.
+- Current status: Local browser pass.
+- Allowed status values:
+  - Not started
+  - Automated tests pass only
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - `SavingCard.savingType` was a nullable free-text string that mixed commercial method and finance impact, so it could not support trusted validation, aggregation, locking, or controller-friendly exports.
+  - Existing `Frequency` represented value cadence (`ONE_TIME`, `RECURRING`, `MULTI_YEAR`) but did not cover temporary or unknown impact classification.
+  - Impact type and budget treatment had no canonical schema support.
+  - Procurement classification language existed in demo narratives and documentation, but not as a consistent product contract.
+- Data-model decision:
+  - Added required enum-backed `savingType`, `impactType`, `impactRecurrence`, and `budgetImpact` fields.
+  - Preserved the former free-text database column as nullable `legacySavingsMethod` rather than discarding existing customer data.
+  - Defaults are `PRICE_REDUCTION`, `HARD_SAVINGS`, `RECURRING`, and `BUDGET_IMPACT`.
+  - Migration: `20260605120000_add_savings_classification`.
+  - The migration does not alter the phase enum, approval requirements, or savings calculation semantics.
+- Files inspected:
+  - `prisma/schema.prisma`
+  - `lib/calculations.ts`
+  - `lib/constants.ts`
+  - `lib/validation.ts`
+  - `lib/saving-cards/shared.ts`
+  - `lib/saving-cards/mutations.ts`
+  - `lib/saving-cards/queries.ts`
+  - `lib/dashboard/data.ts`
+  - `lib/command-center/data.ts`
+  - `lib/workspace/readiness.ts`
+  - Saving-card form, detail, results, table, reports, import/export, API routes, UtopiaTrax seed/docs, paid-pilot docs, and the requested related tests.
+- Files changed:
+  - Schema/migration: `prisma/schema.prisma`, `prisma/migrations/20260605120000_add_savings_classification/migration.sql`
+  - Contract/data: `lib/constants.ts`, `lib/validation.ts`, `lib/permissions.ts`, `lib/types.ts`, `lib/first-value.ts`, `lib/saving-cards/mutations.ts`, `lib/saving-cards/queries.ts`
+  - API/import/export: `app/api/import/route.ts`, `app/api/export/route.ts`
+  - UI: `app/(app)/saving-cards/[id]/page.tsx`, saving-card form/detail/results/table/approval components, executive report and import/export components
+  - Demo/docs: `scripts/seed-utopiatrax-demo.ts`, `prisma/seed.ts`, `docs/procurement-savings-classification.md`, UtopiaTrax and paid-pilot docs, `README.md`
+  - Tests: schema, classification mapping, routes, form, portfolio data, import/export, reports, seed, dashboard, kanban, quota, and rate-limit fixtures.
+- Finance lock decision:
+  - Finance lock protects all four classification fields because finance validation depends on both the amount and the nature of the claimed benefit.
+  - Locked edits are disabled in the form and rejected by mutation logic with a controlled workflow error.
+- Import/export and reporting proof:
+  - Import accepts customer-facing classification headers and documented aliases, defaults omitted values, and returns row-level errors for invalid supplied values.
+  - Export includes customer-facing Savings Type, Impact Type, Impact Recurrence, and Budget Impact columns plus classification breakdown rows in the executive summary.
+  - Reports show savings by savings type, impact type, recurrence, and budget treatment.
+- UtopiaTrax proof:
+  - The seeded workspace contains 25 explicitly classified cards.
+  - Saving-type distribution is 8 Price Reduction, 4 Supplier Switch, 3 Rebate / Credit, 3 Specification Change, 2 Freight / Logistics, 2 Process / Tolling, 1 Payment Terms, 1 Cost Avoidance, and 1 Volume Consolidation.
+  - Impact data includes hard savings, cost avoidance, working-capital impact, and risk/continuity benefit; recurrence includes recurring, one-time, temporary, and unknown.
+- Tests run:
+  - Targeted Gap 5 suites: 127 passed, 0 failed.
+  - Coverage included schema/defaults/enums, classification mappings, saving-card API, form, portfolio data, import/export, reports, UtopiaTrax seed, first-value onboarding, workflow definition, dashboard, command center, and kanban.
+  - `npx prisma generate` - passed.
+  - `npx prisma migrate deploy` - passed.
+  - `npx prisma migrate status` - passed; database schema is up to date.
+  - `npm run db:validate` - passed.
+  - `npm run typecheck` - passed.
+  - `npm test` - 677 passed and 3 failed out of 680. The remaining failures are pre-existing/stale assertions outside Gap 5: two onboarding copy assertions expecting `Training and acceleration`, and one terminology scan that flags existing internal `realised` identifiers.
+- Workflow compatibility proof:
+  - Workflow-definition, saving-card route, kanban, dashboard, and first-value integration tests passed.
+  - No phase enum, transition rule, phase request, or approval path was changed; record edits continue to preserve the approved phase.
+- First-value proof:
+  - Classification appears after the core financial assumptions and has safe defaults.
+  - The first saving-card step remains title, description, and minimum master data; inline master-data creation remains available.
+  - The first-value onboarding integration suite passed.
+- Manual browser verification:
+  - `/saving-cards/new` - passed. The first step remains lightweight; the second step shows all four defaulted classification controls after financial assumptions.
+  - `/saving-cards/[id]` - passed. Detail, audit snapshot, and finance-control copy show customer-facing classification.
+  - `/saving-cards/[id]/edit` on a finance-locked card - passed. All four classification controls are disabled with the finance-lock explanation.
+  - `/reports` - passed. All four classification breakdowns render with the reseeded UtopiaTrax portfolio, and import/export copy describes the classification contract.
+  - `/dashboard` - passed. The populated UtopiaTrax portfolio renders normally.
+  - `/onboarding` - passed. The first-card path remains primary and reports 100% first-value readiness for the seeded workspace.
+  - UtopiaTrax demo workspace - passed locally with 25 cards and varied classification visible in the register and reports.
+  - Local navigation was slow and the development server logged transient Prisma `P2024` connection-pool timeouts against the one-connection database. Retried requests completed and the final requested screens rendered; no classification-specific browser failure was observed.
+- Blockers:
+  - No Gap 5 engineering blocker remains.
+  - Preview and production browser proof were not performed.
+  - The unrelated full-suite failures should be resolved separately before claiming a repository-wide green test run.
+
+## 2026-06-05T08:55:00Z - Gap 6 UtopiaTrax Demo Workspace Perfection
+
+- Step number: Gap 6 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing readiness, billing, provider, onboarding, terminology, and Gap 5 changes. Gap 6 work was applied without reverting unrelated changes.
+- Current status: Local browser pass.
+- Allowed status values:
+  - Not started
+  - Dataset tests pass only
+  - Demo health script pass
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - The static seed was already credible, but most proof stopped at exported dataset constants and did not validate the persisted organization graph or buyer-critical routes.
+  - No read-only database health command verified the seeded users, memberships, evidence, alternatives, workflow records, volume data, billing state, or showcase card.
+  - Route tests mostly used generic fixtures and did not consistently prove populated UtopiaTrax states.
+  - Evidence definitions were counted even when storage upload was unavailable, which could leave buyer-facing metadata that looked downloadable without provider proof.
+  - Browser validation exposed three runtime faults hidden by dataset tests: duplicate auth lookups competing with heavy routes, unnecessary detail reference-data fan-out, and the S-curve issuing one request per saving card.
+- Demo contract and persisted proof:
+  - Workspace: 1 `UtopiaTrax` organization with stable slug `utopiatrax`.
+  - Users: 4 known demo users with Owner/Admin/Member memberships and Procurement Lead, Finance Reviewer, Category Owner, and Buyer product roles.
+  - Categories: exactly 6 direct categories, all represented.
+  - Saving cards: 25 with phase mix 5 Proposed, 7 Finance Validated, 7 Implemented, 4 Captured, and 2 Canceled.
+  - Evidence: 21 private managed evidence records/files in the seeded database; the static contract contains at least 12 evidence definitions.
+  - Alternatives: 18 supplier/material alternative rows across 9 cards.
+  - Workflow: 42 phase-change requests, 59 approval records, 62 phase-history events, 5 pending requests, and 7 pending approval actions.
+  - Volume: 150 forecast rows and 24 actual rows across 14 cards.
+  - Finance controls: 5 finance-locked cards, restricted to Finance Validated phase.
+  - Cancellation: both canceled cards include cancellation reasons.
+  - Billing: UtopiaTrax has a trialing subscription/access record and normal demo routes are not redirected to billing-required.
+  - Showcase card: `PP Carrier dual-source negotiation`.
+- Files added:
+  - `docs/utopiatrax-demo-acceptance-contract.md`
+  - `docs/paid-pilot-demo-readiness.md`
+  - `scripts/utopiatrax-demo-contract.ts`
+  - `scripts/validate-utopiatrax-demo.ts`
+  - `tests/scripts/validate-utopiatrax-demo.test.ts`
+  - `tests/helpers/utopiatrax-demo-fixtures.ts`
+  - `app/api/volume/portfolio/route.ts`
+- Main files changed:
+  - `scripts/seed-utopiatrax-demo.ts`
+  - `tests/scripts/seed-utopiatrax-demo.test.ts`
+  - `package.json`
+  - `docs/demo-utopiatrax.md`
+  - UtopiaTrax route tests under `tests/app`
+  - `lib/auth.ts`
+  - `components/layout/app-shell.tsx`
+  - `app/(app)/layout.tsx`
+  - `lib/saving-cards/queries.ts`
+  - `app/(app)/saving-cards/[id]/page.tsx`
+  - `app/(app)/saving-cards/[id]/edit/page.tsx`
+  - `components/saving-cards/detail-workspace.tsx`
+  - `lib/prisma-url.ts`
+  - `.env.example`
+  - `lib/volume.ts`
+  - `components/timeline/volume-scurve.tsx`
+  - `tests/api/tenant-isolation-queries.test.ts`
+- Seed safety proof:
+  - A guarded reset completed only after `DEMO_SEED_CONFIRM=UtopiaTrax`.
+  - Reset refuses unknown users and known demo users with memberships in other workspaces.
+  - A second non-reset seed run produced the same counts and did not duplicate users, categories, cards, evidence, alternatives, workflow history, approvals, requests, or volume rows.
+  - The validator is read-only and tests assert that no mutation methods are called.
+  - The health command observed 8 unrelated workspaces and made no changes to them.
+  - No public seed endpoint or email delivery path was added.
+- Runtime reliability fixes discovered by browser proof:
+  - Request-scoped React caching now deduplicates authenticated-user and billing-access resolution across layout, shell, and page guards.
+  - The app shell receives the already bootstrapped user instead of performing another independent authentication lookup.
+  - Saving-card detail loads only supplier/material reference choices; full reference data remains available for create/edit forms.
+  - Supabase pooler URLs retain `connection_limit=1` by default but now receive a missing `pool_timeout=30`, allowing legitimate server-component work to queue without false empty-state fallbacks.
+  - The Volume S-Curve now uses one tenant-scoped portfolio endpoint and three database reads instead of one authenticated HTTP request per card.
+- Automated proof:
+  - Seed and pure-contract tests pass.
+  - Demo health validator tests pass for complete data, missing workspace, missing evidence, missing alternatives, missing billing, empty route-critical data, and read-only behavior.
+  - Requested route tests pass for Dashboard, Saving Cards, Kanban, Open Actions, Command Center, Timeline, Reports, Admin pages, and Billing settings.
+  - Supporting executive summary, command-center data, export, auth, onboarding, Prisma URL, saving-card data, and tenant-isolation tests pass.
+  - `npm run demo:utopiatrax:validate` passes against the reseeded database.
+  - `npm run typecheck` passes.
+- Local browser proof completed:
+  - `/dashboard` - populated totals, target, phase/category mix, forecast, and executive exceptions.
+  - `/saving-cards` - all 25 cards with mixed phases, owners, suppliers, categories, classifications, and 5 finance locks.
+  - `/kanban` - all five phase columns populated; pending requests remain in their approved phase.
+  - `/saving-cards/cmq0ngcuo004ufx833kvpirss` - showcase financial case, two evidence files, alternatives, classification, three approved requests, four approvals, and four phase-history events.
+  - Showcase evidence download route - private signed download completed and returned the synthetic demo document.
+  - `/open-actions?view=all` as Owner - five pending requests with seven derived pending approval actions in the seeded graph.
+  - `/open-actions` as Finance Reviewer - five requests assigned to Mert Dulger with approve/reject controls.
+  - `/command-center` - pending approvals, overdue work, finance locks, recent decisions, pipeline analytics, and risk/qualification context populated.
+  - `/timeline` - 25-card Gantt populated.
+  - `/timeline` Volume S-Curve - monthly forecast/actual and cumulative charts populated after the portfolio endpoint fix.
+  - `/reports` - executive totals, recent decisions, classification breakdowns, import controls, and workbook export link populated.
+  - `/admin/members` - all four demo members and role controls visible.
+  - `/admin/settings` - workspace identity, billing card, and non-empty recent activity visible.
+  - `/settings/billing` - subscription trial active through January 1, 2029; access allowed and no billing block.
+  - `/onboarding` - 100% first-value readiness with 25 cards, 4 buyers, 25 suppliers, 6 categories, and no first-value blockers.
+  - Owner and Finance Reviewer Supabase Auth logins were completed locally. Category Owner and Buyer login synchronization is seed/provider-validated but was not manually signed in during this pass.
+- Provider proof:
+  - Supabase Storage validator passed private bucket access, managed tenant path, signed URL generation, signed-object `HEAD 200`, and denied anonymous/public access. The showcase download also passed through the application route in the local browser.
+  - Supabase Auth login passed locally for Owner and Finance Reviewer. The seed synchronized all four known demo accounts.
+  - Stripe validator passed test-mode catalog/configuration checks. Stripe Checkout, Portal, webhook signature configuration, and webhook delivery were not provider-proven because the webhook secret/provider flow is unavailable.
+- Screenshots:
+  - No paid-pilot screenshot set was captured in this pass.
+  - The exact 17-shot checklist is documented in `docs/demo-utopiatrax.md` and `docs/paid-pilot-demo-readiness.md`.
+- Export proof:
+  - `/reports` exposes the controller workbook download and export route tests pass with UtopiaTrax classification/report content.
+  - The in-app browser does not support file downloads, so a workbook file was not captured during local browser proof.
+- Remaining blockers and next manual action:
+  - No Gap 6 local engineering blocker remains.
+  - Capture the documented paid-pilot screenshot set.
+  - Exercise Stripe Checkout/Portal and signed webhook delivery in an approved preview environment before claiming preview or production proof.
+  - Sign in once as Category Owner and Buyer if all-four-login manual proof is required for the sales environment.
+
+## 2026-06-05T12:55:16Z - Gap 7 Evidence Trust And Buyer-Facing Proof
+
+- Step number: Gap 7 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing Gap 5/6, onboarding, billing, provider, and terminology work. Gap 7 changes were applied without reverting unrelated changes.
+- Current status: Provider script partial pass.
+- Allowed status values:
+  - Not started
+  - Automated tests pass only
+  - Provider script partial pass
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - Evidence upload/download controls were already technically strong: authenticated access, tenant-scoped saving-card authorization, private managed paths, 60-second signed URLs, quota before storage, rate limiting, file policy, and upload/download audit writes.
+  - Buyer-facing proof was weak. Evidence had no procurement business type, list/detail/report/export surfaces did not consistently show coverage, private/signed behavior was not clearly explained, and legacy evidence audit writes were not organization-scoped for Admin Activity.
+  - UtopiaTrax counted evidence but used generic `.txt` attachments and the showcase card had only two files.
+  - Local tests cannot prove the Supabase dashboard redirect allow-list or replace preview/production provider validation.
+- Evidence model decision:
+  - Added `EvidenceType` and optional `sourceDate`/`notes` metadata to `SavingCardEvidence`.
+  - `evidenceType` defaults to `OTHER`; existing uploader behavior remains valid and metadata does not block old records.
+  - Migration `20260605160000_add_evidence_metadata` was generated and applied to the configured development database.
+  - Existing `uploadedById`, `fileSize`, `contentType`, storage bucket/path, and upload date fields were reused.
+- Product/UI proof:
+  - Uploader shows evidence examples, a batch evidence-type selector, the 25 MB policy, private-storage/signed-download copy, add-after-save guidance, and the audited-savings non-claim.
+  - Removed the nonfunctional Google Drive teaser.
+  - Saving-card detail shows evidence count/status, evidence type, uploader, upload date, file size/type, and `Private file · Signed download`.
+  - Saving-card table shows `Evidence attached`, `Evidence recommended`, or `Missing evidence` plus counts.
+  - Approval panel warns that finance validation without evidence reduces trust but does not block or alter the canonical workflow.
+  - Reports show active cards, cards with evidence, cards missing evidence, coverage percentage, and validated/implemented/captured gaps.
+  - Controller export includes Evidence Count, Evidence Status, Evidence Types, and Last Evidence Upload Date; the summary sheet includes coverage and finance-stage gaps.
+  - Export does not include signed URLs, storage paths, buckets, provider tokens, or credentials.
+  - Admin Activity now includes organization-scoped evidence upload/download events.
+- Security proof:
+  - Tenant access, participant access, managed bucket/path validation, path traversal rejection, bucket mismatch rejection, and foreign-tenant rejection tests pass.
+  - Download signing TTL remains 60 seconds.
+  - Upload quota is enforced before storage and evidence upload rate limiting remains active.
+  - Evidence upload/download audit events include organization, saving card, actor, target evidence, and sanitized file metadata.
+- UtopiaTrax proof:
+  - Guarded reset recreated only UtopiaTrax and reported 25 cards, 6 categories, 24 evidence records/files, 18 alternatives, 62 phase-history rows, 59 approvals, 42 phase-change requests, 7 pending actions, 150 forecast rows, and 24 actual rows.
+  - The seed now creates valid private PDF evidence instead of plain text attachments.
+  - Showcase card `PP Carrier dual-source negotiation` has five typed files: Supplier Quote, Negotiation Summary, Price Confirmation, Calculation Workbook, and Invoice / Actual Proof.
+  - `npm run demo:utopiatrax:validate` passed all static and persisted checks and observed 8 unrelated workspaces without mutation.
+- Trust artifacts:
+  - Added `docs/evidence-trust-contract.md`.
+  - Added `docs/trust-pack.md`.
+  - Updated the paid-pilot package, UtopiaTrax demo guide, and Supabase provider validation guide with evidence coverage, export redaction, provider caveats, and no-overclaim boundaries.
+- Automated proof:
+  - Gap 7 targeted suite passed: 13 files, 71 tests.
+  - Evidence/report follow-up suite passed: 4 files, 8 tests.
+  - Workflow, first-value, route, data, command-center, demo-validator, and provider-doc regression suite passed: 11 files, 67 tests.
+  - Audit/admin regression suite passed: 9 files, 76 tests.
+  - `npm run db:validate` passed.
+  - `npx prisma migrate status` reports the database schema is up to date.
+  - `npm run typecheck` passed after final edits.
+  - Full `npm test` was run: 708 of 711 tests passed. The remaining three failures are pre-existing unrelated readiness work: two onboarding copy expectations and the US terminology scanner flagging internal `realised` identifiers.
+- Provider proof:
+  - `npm run supabase:validate` completed with 8 passed, 0 failed, and 1 blocked check.
+  - Proven: project/key alignment, Auth Admin read reachability, private `evidence-private` bucket, managed evidence path, service-role 60-second signed URL with `HEAD 200`, anonymous sign denial, anonymous object denial, and unreadable public storage URL.
+  - Not proven: Supabase Auth redirect allow-list remains a dashboard/Management API check.
+  - Stripe evidence-provider proof is not applicable to storage; Stripe Checkout/Portal/webhook status remains tracked under the provider and Gap 6 logs.
+- Local browser proof completed:
+  - `/dashboard` loaded the populated UtopiaTrax portfolio.
+  - `/saving-cards` showed attached/recommended/missing evidence states and file counts.
+  - `/saving-cards/cmq0x02dq004ufxg341oorpmi` showed the five typed showcase files, uploader metadata, private/signed trust copy, and no public provider URL.
+  - The showcase signed-download app route returned HTTP 307 and wrote visible `Evidence: Downloaded` events.
+  - `/reports` showed 74% active-card evidence coverage, 17 cards with evidence, 6 missing, and 1 finance-stage gap.
+  - `/admin/settings` showed the evidence download audit events with actor and timestamp.
+  - `/saving-cards/new` remained a fast three-step flow and explicitly deferred evidence until after save.
+- Manual/browser proof not completed:
+  - No harmless test upload was performed through the browser.
+  - Finance Reviewer re-login and unrelated-workspace browser denial were not completed in this pass; automated tenant/participant tests cover those contracts.
+  - The exported workbook was not opened in-browser; export structure/redaction is automated-test proven.
+  - Supabase dashboard bucket and Auth redirect screenshots were not captured.
+  - No preview or production browser proof was performed.
+- Blockers and next manual action:
+  - Complete the remaining browser checklist in `docs/evidence-trust-contract.md` in an approved preview environment.
+  - Record Supabase dashboard proof for the Auth redirect allow-list and private bucket.
+  - Resolve the three unrelated full-suite failures before claiming a repository-wide green run.
+
+## 2026-06-05T13:30:43Z - Gap 8 Controller-Ready Import And Export
+
+- Step number: Gap 8 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing Gap 5-7, onboarding, billing, provider, and terminology work. Gap 8 changes were applied without reverting unrelated changes.
+- Current status: Local workbook proof.
+- Allowed status values:
+  - Not started
+  - Automated tests pass only
+  - Local workbook proof
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - Saving-card XLSX import validated the full workbook before starting its write loop, but each row was then created in a separate transaction. A persistence failure after earlier commits could therefore leave a partial import.
+  - Row failures were bundled into prose instead of consistently identifying row, field, invalid value, message, and suggested correction.
+  - The existing XLSX export contained only `Report Summary` and `Savings`. It lacked a data dictionary, import template, evidence summary, explicit row-to-summary reconciliation, and several controller-review fields.
+  - UtopiaTrax contained credible data, but prior proof stopped at mocked export construction rather than a real database-backed workbook that was generated, parsed, and rendered.
+- Import validation and atomicity:
+  - Saving-card import accepts XLSX. Buyer, supplier, material, and category master-data imports continue to accept CSV/XLSX.
+  - Required saving-card columns are checked before relation lookup.
+  - Every row is validated before persistence; any invalid row produces HTTP 422 and no call to the persistence layer.
+  - Validation errors include row number, field, invalid value, human-readable message, and suggested fix.
+  - Invalid numbers, dates, currencies, classifications, phases, duplicates, and unresolved required relation names are reported.
+  - Missing notes use a safe imported-card description; notes remain optional.
+  - All validated saving cards and the success audit record are committed in one Prisma transaction. Transaction failure tests prove no portfolio cache invalidation occurs after rollback.
+  - Operational imports create `Proposed` cards only. Later phases must use canonical phase-change approvals.
+  - Relation matching and creation remain scoped to the authenticated active organization.
+- Controller workbook proof:
+  - Required sheets: `Portfolio Summary`, `Saving Cards`, `Data Dictionary`, `Import Template`, and `Evidence Summary`.
+  - Summary includes active portfolio value, implemented/captured value, phase counts, classification summaries, category totals, buyer totals, finance-lock count/value, evidence coverage, finance-stage evidence gaps, last update, active-row total, and reconciliation difference.
+  - Saving-card rows include commercial assumptions, ownership and relation context, customer-facing workflow/classification labels, reporting-currency savings, finance locks, evidence metadata, pending approval, last phase change, cancellation reason, and business case.
+  - Canceled cards remain visible for governance but are excluded from active savings; the workbook states this basis.
+  - The data dictionary includes `(Baseline Price - New Price) × Annual Volume`, evidence/finance definitions, and explicit exclusions.
+  - The workbook does not contain signed URLs, storage paths, bucket names, tokens, provider IDs, or unrelated tenant data.
+- UtopiaTrax proof:
+  - `npm run demo:utopiatrax:validate` passed against the configured local database with 25 cards, exactly 6 represented categories, 24 private evidence records, 5 finance locks, mixed phases, 5 pending requests, 7 pending approvals, and 8 unrelated workspaces observed without mutation.
+  - `npm run demo:utopiatrax:export` produced `outputs/utopiatrax/traxium-utopiatrax-controller-review-2026-06-05.xlsx`.
+  - The export contains 25 saving-card rows, all six categories, evidence statuses/types, finance locks, classification summaries, and a 74% active-card evidence coverage result.
+  - Active workbook savings are EUR 1,035,254.40 and the reported reconciliation difference is EUR 0.00.
+- Workbook parse/render proof:
+  - The generated UtopiaTrax XLSX was independently opened with the spreadsheet artifact runtime.
+  - All five required sheets were parsed and rendered successfully.
+  - Parsed ranges were `A1:C78`, `A1:AH26`, `A1:C54`, `A1:U2`, and `A1:G26`.
+  - Formula/error scanning found no spreadsheet errors.
+- Automated proof:
+  - Requested Gap 8 suite passed: 8 files, 57 tests.
+  - Workflow, tenant, quota, rate-limit, RBAC, and saving-card mutation regression suite passed: 6 files, 40 tests.
+  - Buyer-doc and tenant follow-up suite passed: 3 files, 10 tests.
+  - Import/export audit and Admin Activity regression suite passed: 3 files, 16 tests.
+  - `npm run typecheck` passed.
+  - `git diff --check` passed.
+  - Full `npm test` was run: 717 of 720 tests passed. The remaining three failures are pre-existing unrelated readiness work: two onboarding-copy expectations and the US terminology scanner flagging internal `REALISED` identifiers.
+- Local browser proof:
+  - Logged in locally as the UtopiaTrax Procurement Lead and opened `/reports`.
+  - Confirmed live 25-card portfolio totals, phase and classification summaries, 74% evidence coverage, five finance locks, controller-review workbook copy, all five sheet names, required import fields, and all-or-nothing import explanation.
+  - The Codex in-app browser reports that downloads are unsupported, so the workbook was generated and opened through the read-only demo export command and spreadsheet runtime instead.
+- Manual proof not completed:
+  - No valid saving-card import was submitted through the browser because that would mutate the shared UtopiaTrax demo.
+  - No invalid three-error workbook was submitted through the browser.
+  - No preview or production import/export flow was exercised.
+  - No preview screenshots were captured.
+- Next manual action:
+  - In an approved disposable workspace, complete the 20-step checklist in `docs/controller-ready-import-export-contract.md`: download through `/reports`, reconcile with `/dashboard`, perform one valid import, perform one invalid multi-error import, verify zero writes on failure, export again, and record screenshots/workbook filename.
+
+## 2026-06-05T19:42:57Z - Gap 9 Public Paid-Pilot Lead Capture
+
+- Step number: Gap 9 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing Gap 5-8, onboarding, billing, provider, terminology, and demo work. Gap 9 changes were applied without reverting unrelated changes.
+- Current status: Local browser pass.
+- Allowed status values:
+  - Not started
+  - Automated tests pass only
+  - Local browser pass
+  - Preview browser pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - The public homepage explained the paid-pilot offer but only exposed `Sign in` and an authenticated `View product` path to `/dashboard`.
+  - There was no public pilot-request page, lead API, durable lead record, public-form validation, honeypot, duplicate handling, or rate limit.
+  - Existing job/email infrastructure supports authentication delivery, not sales-lead notifications.
+  - The prior conversion path therefore looked like a closed product rather than a founder-led B2B paid-pilot funnel.
+- Route and GTM changes:
+  - `/pilot` is the canonical public page with `Request paid pilot` as the primary CTA.
+  - `/request-demo` redirects to `/pilot`.
+  - `POST /api/pilot-leads` accepts public submissions without exposing authenticated product routes.
+  - The homepage primary CTA links to `/pilot`; the UtopiaTrax secondary CTA links to `/pilot#demo-preview`.
+  - Copy promises a guided fit review, current-tracker review, real saving-card setup, evidence/finance-validation review, and controller-ready export.
+  - Copy explicitly excludes instant access, free trial, ERP/MRP integration, accounting posting, guaranteed savings, SOC 2 claims, and 24/7 support.
+- Data model and privacy:
+  - Added `PilotLead` and `PilotLeadStatus` through migration `20260605190000_add_pilot_leads`.
+  - Lead records are platform sales records and have no organization, membership, billing, or user relation.
+  - Required fields are full name, work email, and company name. Optional qualification covers role, company size, industry, tracking method, reporting pain, tracker availability, timeline, and additional context.
+  - Raw IP addresses are not stored. Optional HMAC IP and user-agent hashes are written only when `PILOT_LEAD_HASH_SECRET` is configured.
+  - Recent duplicate submissions for the same normalized email and company return the normal success response without creating another row.
+- Abuse and error controls:
+  - `pilotLeadSubmission` applies a distributed, fail-closed IP limit of five requests per hour.
+  - A hidden `websiteUrl` honeypot returns the normal success response without storing a lead.
+  - Validation is strict and returns field-level errors without stack traces or database details.
+  - The route is documented in `docs/api-hardening-matrix.md`.
+- Lead handling decision:
+  - Valid leads are stored in PostgreSQL as `PilotLead` records with source `public_pilot_form` and status `NEW`.
+  - No user, organization, workspace, membership, trial, billing record, or Stripe subscription is created.
+  - Sales notification is not implemented. Existing async email jobs are authentication-specific, so operators must review `PilotLead` records through approved database operations until a dedicated internal notification destination exists.
+  - No workspace admin list was added because current Admin roles are tenant-scoped, not platform-sales roles; exposing global leads there would violate the authorization model.
+- Automated proof:
+  - Gap 9 plus hardening alignment suite passed: 10 files, 31 tests.
+  - Coverage includes page copy and fields, homepage links, validation, API persistence, duplicate suppression, honeypot behavior, rate-limit response, controlled storage failure, no account/workspace creation, schema/migration contract, rate-limit regression, API matrix alignment, and paid-pilot offer alignment.
+  - `npm run typecheck` passed.
+  - `npm run db:validate` passed.
+  - `npx prisma generate` passed.
+  - `npx prisma migrate status` reported 12 migrations and an up-to-date configured development database.
+  - `git diff --check` passed.
+  - Full `npm test` was run: 732 of 735 tests passed. The remaining three failures are unrelated pre-existing readiness work: two onboarding tests still expect `Training and acceleration`, and the US terminology scanner flags internal `realised` identifiers.
+- Local browser and database proof:
+  - Opened `/` while signed out and confirmed `Request paid pilot` links to `/pilot` and `See UtopiaTrax demo` links to `/pilot#demo-preview`.
+  - Clicked the homepage primary CTA and confirmed `/pilot` loaded.
+  - Submitted the empty form and confirmed field-level required errors.
+  - Submitted an invalid email and confirmed `Enter a valid work email.`
+  - Submitted one synthetic local-development lead and confirmed the approved success state.
+  - Submitted the same email/company again through the browser; the API returned normal success and reused the existing lead.
+  - Database proof found exactly one matching `PilotLead` with status `NEW` and source `public_pilot_form`.
+  - Database proof found zero matching users and zero matching organizations.
+  - Sent five honeypot requests from a controlled test IP; all returned HTTP 200 without creating leads. The sixth request returned HTTP 429 with the controlled rate-limit message.
+  - Confirmed `/request-demo` redirects to `/pilot`.
+  - No preview or production submission was performed.
+- Manual proof checklist:
+  - [x] Open homepage.
+  - [x] Confirm primary CTA says `Request paid pilot`.
+  - [x] Click CTA.
+  - [x] Confirm `/pilot` loads.
+  - [x] Submit empty form and confirm validation errors.
+  - [x] Submit invalid email and confirm validation error.
+  - [x] Submit valid synthetic test lead.
+  - [x] Confirm success message.
+  - [x] Confirm lead exists in the configured development database.
+  - [ ] Confirm notification job/email. Notification is intentionally not implemented.
+  - [x] Submit honeypot-filled requests and confirm no normal lead is created.
+  - [x] Submit repeated requests and confirm the public rate limit.
+  - [x] Confirm no user account or workspace was created.
+  - [x] Confirm form copy does not promise free trial, ERP sync, accounting posting, SOC 2, guaranteed savings, or 24/7 support.
+  - [ ] Confirm admin lead list. No admin list was added because no platform-sales role exists.
+- Blockers and next manual action:
+  - Complete one controlled preview submission and verify the `PilotLead` record in the preview database before claiming `Preview browser pass`.
+  - Choose and implement a dedicated internal sales-notification destination before claiming automatic lead notification.
+  - Do not expose a global lead list to tenant-scoped workspace admins without a separate platform authorization boundary.
+
+## 2026-06-05T20:05:03Z - Gap 10 Security, Trust, and Support Assets
+
+- Step number: Gap 10 from readiness audit
+- Working tree state or commit: Dirty working tree with pre-existing Gap 5-9, onboarding, billing, provider, terminology, and demo work. Gap 10 changes were applied without reverting unrelated changes.
+- Current status: Local buyer-review pass.
+- Allowed status values:
+  - Not started
+  - Documentation ready only
+  - Automated docs tests pass
+  - Local buyer-review pass
+  - Preview public page pass
+  - Production smoke pass
+  - Blocked
+- Root cause found:
+  - Tenant-isolation tests, API hardening documentation, evidence controls, audit events, provider validators, billing boundaries, and export controls already provided a credible technical foundation.
+  - The existing trust material was fragmented and too implementation-oriented for a CFO, procurement leader, or IT/security reviewer.
+  - There was no single buyer-facing explanation of stored data, payment-data boundaries, support expectations, offboarding, evidence-export limits, backup assumptions, provider-proof status, or paid-pilot exclusions.
+  - There was no public trust page, practical security-review checklist, or automated guard against accidental enterprise/compliance overclaims.
+- Trust and support assets:
+  - Expanded `docs/trust-pack.md` into the buyer-facing source of truth for workspace isolation, roles, evidence security, billing, import/export, auditability, provider proof, support, offboarding, backup limitations, exclusions, and buyer review.
+  - Added `docs/support-expectations.md` with business-hours, email-based paid-pilot support; best-effort same-business-day handling for critical access, billing, or evidence issues; and a one-business-day target for normal requests.
+  - Added `docs/data-export-offboarding.md` with controller-workbook scope, manual evidence/offboarding limitations, deletion-request handling, and explicit non-automation boundaries.
+  - Added `docs/backup-restore-statement.md` with provider-responsibility assumptions, manual restore limitations, no proven restore drill, and no formal paid-pilot RPO/RTO commitment.
+  - Added `docs/paid-pilot-security-review-checklist.md` for buyer users, roles, evidence, import/export, billing, support, provider proof, exclusions, and pilot go/no-go.
+  - Added public `/trust`, linked from the homepage and `/pilot`, with a valid `Request paid pilot` CTA to `/pilot`.
+- Claims matched to implementation:
+  - Traxium can state that application data is workspace-scoped through memberships and organization checks; evidence uses a private-bucket contract, managed namespaces, authenticated download routes, and short-lived signed links; uploads use file validation, quotas, and rate limits; key actions create audit events where implemented; Stripe manages payment details; and exports exclude private storage/provider internals.
+  - Traxium does not claim SOC 2, ISO 27001, HIPAA, SSO/SAML, SCIM, ERP/MRP integration, accounting posting, audited financial recognition, guaranteed savings, custom approval builders, vendor-risk scoring, contract lifecycle management, a spend-analytics suite, 24/7 support, or an enterprise SLA.
+  - Data deletion, complete evidence archive export, complete audit-history export, and restore execution remain manual or unproven paid-pilot processes and are described that way.
+- Provider-proof status:
+  - Provider commands were not rerun for Gap 10.
+  - Previously recorded Supabase validation is 8 passed, 0 failed, with the redirect allow-list still requiring manual dashboard proof.
+  - Previously recorded Stripe test-mode catalog and guarded Checkout/Portal object creation passed; webhook secret/delivery proof remains incomplete.
+  - Local route and contract tests are not represented as preview, production, or certification proof.
+- Automated proof:
+  - Targeted Gap 10 suite passed: 10 files, 17 tests.
+  - The suite covers trust-pack contents, support boundaries, offboarding limitations, backup/restore caveats, public trust-page copy and links, homepage and pilot-page links, buyer-package alignment, pricing alignment, and unsupported-claim detection.
+  - The no-overclaim scan passed across the trust assets, paid-pilot buyer documents, public homepage, `/trust`, `/pilot`, and README.
+  - `npm run typecheck` passed.
+  - `git diff --check` passed.
+  - A local Markdown-link check covered README and seven Gap 10/buyer documents with zero missing absolute local links.
+  - Full `npm test` was run: 740 of 743 tests passed. The remaining three failures are unrelated existing readiness issues: two onboarding tests still expect `Training and acceleration`, and the US terminology scanner flags internal `realised` identifiers.
+- Local browser proof:
+  - Opened `/trust` locally and confirmed the buyer-readable workspace, evidence, billing, import/export, audit/provider, support, offboarding, and exclusion sections.
+  - Confirmed `/trust` links to the valid `/pilot` conversion path.
+  - Opened `/` and confirmed the public navigation and buyer CTA link to `/trust`.
+  - Opened `/pilot` and confirmed trust links are present.
+  - Checked the page at a narrow local browser width; the content and calls to action remained readable.
+  - No preview or production page check was performed.
+- Manual proof checklist:
+  - [x] Open and review `docs/trust-pack.md`.
+  - [x] Confirm it answers CFO, procurement, and IT/security buyer questions.
+  - [x] Confirm it does not claim SOC 2, SSO/SAML, ERP integration, 24/7 support, audited savings, or guaranteed savings.
+  - [x] Review realistic support scope and response targets.
+  - [x] Review export, evidence, deletion, and offboarding limitations.
+  - [x] Review backup/restore assumptions and pilot-stage limitations.
+  - [x] Confirm no formal RPO/RTO commitment is made.
+  - [x] Open `/trust` locally.
+  - [x] Confirm the public page is buyer-readable.
+  - [x] Confirm its CTA resolves to `/pilot`.
+  - [x] Check updated local documentation links.
+  - [x] Record an honest readiness status.
+- Blockers and next manual action:
+  - Open `/trust` on preview, test all public links, and capture the buyer-review screenshots before claiming `Preview public page pass`.
+  - Complete and record the outstanding Supabase redirect allow-list check and Stripe webhook delivery proof separately.
+  - Establish and test a restore procedure before offering formal recovery objectives or broader commercial recovery commitments.
 
 ## Step Execution Template
 

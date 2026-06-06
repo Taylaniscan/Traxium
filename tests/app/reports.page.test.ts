@@ -1,5 +1,10 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxCommandCenterData,
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const ImportExportPanelMock = vi.hoisted(() => vi.fn(() => null));
 const ExecutiveSavingsSummaryMock = vi.hoisted(() => vi.fn(() => null));
@@ -72,9 +77,13 @@ describe("reports page", () => {
 
   it("passes executive summary data and readiness through to the reports surfaces", async () => {
     const page = await ReportsPage();
+    const headingElement = page.props.children[0];
     const summaryElement = page.props.children[1];
     const panelElement = page.props.children[2];
 
+    expect(headingElement.props.subtitle).toContain(
+      "controller-ready workbook"
+    );
     expect(summaryElement).toMatchObject({
       type: ExecutiveSavingsSummaryMock,
       props: {
@@ -90,6 +99,27 @@ describe("reports page", () => {
         readiness: null,
       },
     });
+  });
+
+  it("passes populated UtopiaTrax executive data and export readiness", async () => {
+    getCommandCenterDataMock.mockResolvedValue(
+      createUtopiaTraxCommandCenterData()
+    );
+    getDashboardDataMock.mockResolvedValue({
+      cards: createUtopiaTraxPortfolioCards(),
+      annualTarget: 1075000,
+    });
+    getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
+
+    const page = await ReportsPage();
+    const summaryElement = page.props.children[1];
+    const panelElement = page.props.children[2];
+
+    expect(summaryElement.props.commandCenterData.kpis.totalPipelineSavings).toBe(
+      1040000
+    );
+    expect(summaryElement.props.dashboardData.cards).toHaveLength(25);
+    expect(panelElement.props.readiness.counts.savingCards).toBe(25);
   });
 
   it("keeps the reports page render safe and captures executive-summary failures", async () => {

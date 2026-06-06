@@ -30,8 +30,8 @@ function createCommandCenterData(
         requestId: "req-1",
         savingCardId: "card-1",
         savingCardTitle: "Packaging renegotiation",
-        currentPhase: "Validated",
-        requestedPhase: "Realized",
+        currentPhase: "Finance Validated",
+        requestedPhase: "Implemented",
         requestedByName: "Alex Buyer",
         requestedByRole: "Buyer",
         createdAt: "2026-04-01T00:00:00.000Z",
@@ -47,7 +47,7 @@ function createCommandCenterData(
       {
         savingCardId: "card-2",
         title: "Copper hedge refresh",
-        phase: "Realized",
+        phase: "Implemented",
         buyerName: "Taylor Buyer",
         categoryName: "Metals",
         dateLabel: "Due date",
@@ -61,7 +61,7 @@ function createCommandCenterData(
       {
         savingCardId: "card-3",
         title: "Resin index adjustment",
-        phase: "Validated",
+        phase: "Finance Validated",
         buyerName: "Jordan Buyer",
         categoryName: "Chemicals",
         dateLabel: "Last updated",
@@ -76,7 +76,7 @@ function createCommandCenterData(
         approvalId: "approval-1",
         savingCardId: "card-4",
         savingCardTitle: "Freight lane consolidation",
-        phase: "Achieved",
+        phase: "Captured",
         approverName: "Morgan Finance",
         approverRole: "Finance Reviewer",
         status: "APPROVED",
@@ -94,7 +94,44 @@ function createDashboardData(
   overrides: Record<string, unknown> = {}
 ): DashboardData {
   return {
-    cards: [{ title: "Card 1" }, { title: "Card 2" }, { title: "Card 3" }],
+    cards: [
+      {
+        title: "Card 1",
+        phase: "VALIDATED",
+        savingType: "PRICE_REDUCTION",
+        impactType: "HARD_SAVINGS",
+        impactRecurrence: "RECURRING",
+        budgetImpact: "BUDGET_IMPACT",
+        calculatedSavings: 100000,
+        evidence: [
+          {
+            id: "evidence-1",
+            evidenceType: "SUPPLIER_QUOTE",
+            uploadedAt: new Date("2026-03-01T00:00:00.000Z"),
+          },
+        ],
+      },
+      {
+        title: "Card 2",
+        phase: "REALISED",
+        savingType: "SUPPLIER_SWITCH",
+        impactType: "COST_AVOIDANCE",
+        impactRecurrence: "TEMPORARY",
+        budgetImpact: "FORECAST_AVOIDANCE",
+        calculatedSavings: 50000,
+        evidence: [],
+      },
+      {
+        title: "Card 3",
+        phase: "ACHIEVED",
+        savingType: "REBATE_CREDIT",
+        impactType: "HARD_SAVINGS",
+        impactRecurrence: "ONE_TIME",
+        budgetImpact: "BUDGET_IMPACT",
+        calculatedSavings: 25000,
+        evidence: [],
+      },
+    ],
     annualTarget: 350000,
     ...overrides,
   } as unknown as DashboardData;
@@ -111,8 +148,8 @@ describe("executive savings summary", () => {
 
     expect(markup).toContain("Executive Savings Summary");
     expect(markup).toContain("Pipeline Savings");
-    expect(markup).toContain("Realized Savings");
-    expect(markup).toContain("Achieved Savings");
+    expect(markup).toContain("Implemented Savings");
+    expect(markup).toContain("Captured Savings");
     expect(markup).toContain("Forecast");
     expect(markup).toContain("Pending Approvals");
     expect(markup).toContain("Delayed Initiatives");
@@ -120,6 +157,17 @@ describe("executive savings summary", () => {
     expect(markup).toContain("Freight lane consolidation");
     expect(markup).toContain("Approved");
     expect(markup).toContain("€420k");
+    expect(markup).toContain("Savings by Savings Type");
+    expect(markup).toContain("Savings by Impact Type");
+    expect(markup).toContain("Recurring vs One-Time");
+    expect(markup).toContain("Budget Impact vs Forecast Avoidance");
+    expect(markup).toContain("Price Reduction");
+    expect(markup).toContain("Cost Avoidance");
+    expect(markup).toContain("Evidence Coverage");
+    expect(markup).toContain("Cards With Evidence");
+    expect(markup).toContain("Cards Missing Evidence");
+    expect(markup).toContain("Finance-Stage Gaps");
+    expect(markup).toContain("33%");
   });
 
   it("renders an explicit empty state when no executive data is available", () => {

@@ -6,6 +6,7 @@ import {
   Phase,
   PrismaClient,
   Role,
+  SavingType,
 } from "@prisma/client";
 import { calculateSavings } from "../lib/calculations";
 
@@ -129,6 +130,28 @@ type PlantKey = keyof typeof plantSeeds;
 type BusinessUnitKey = keyof typeof businessUnitSeeds;
 
 type IdLookup<T extends string> = Record<T, { id: string; name: string }>;
+
+function classifyLegacySavingType(value: string): SavingType {
+  const normalized = value.toLowerCase();
+
+  if (normalized.includes("supplier") || normalized.includes("sourcing")) {
+    return SavingType.SUPPLIER_SWITCH;
+  }
+  if (normalized.includes("specification") || normalized.includes("substitution")) {
+    return SavingType.SPECIFICATION_CHANGE;
+  }
+  if (normalized.includes("logistics") || normalized.includes("freight")) {
+    return SavingType.FREIGHT_LOGISTICS;
+  }
+  if (normalized.includes("consolidation")) {
+    return SavingType.VOLUME_CONSOLIDATION;
+  }
+  if (normalized.includes("risk") || normalized.includes("avoidance")) {
+    return SavingType.COST_AVOIDANCE;
+  }
+
+  return SavingType.PRICE_REDUCTION;
+}
 
 function getEvidenceStorageBucketName() {
   return process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_EVIDENCE_BUCKET;
@@ -1185,7 +1208,8 @@ async function main() {
         organizationId: organization.id,
         title: card.title,
         description: card.description,
-        savingType: card.savingType,
+        legacySavingsMethod: card.savingType,
+        savingType: classifyLegacySavingType(card.savingType),
         phase: card.phase,
         supplierId: suppliers[card.supplierKey].id,
         materialId: materials[card.materialKey].id,

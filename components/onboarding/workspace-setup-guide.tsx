@@ -453,7 +453,7 @@ function BusinessStructureStep({
 
   return (
     <StepShell
-      stepNumber={2}
+      stepNumber={3}
       title="Business structure and master data"
       description="Add enough procurement structure to create a credible first saving card. You do not need a perfect setup to begin."
       status={status}
@@ -483,7 +483,7 @@ function BusinessStructureStep({
           </div>
           {isMasterDataImportEntityKey(uploadFocusKey) ? (
             <MasterDataUploadStep
-              stepNumber={2}
+              stepNumber={3}
               entityKey={uploadFocusKey}
               status={uploadStatus}
               count={uploadFocusItem?.count ?? 0}
@@ -536,7 +536,7 @@ function TeamAndRolesStep({
 
   return (
     <StepShell
-      stepNumber={3}
+      stepNumber={5}
       title="Team coverage"
       description="Workspace access controls settings and billing. Business roles cover sourcing ownership, procurement approval, and finance review."
       status={status}
@@ -592,7 +592,7 @@ function FirstSavingCardStep({
 }) {
   return (
     <StepShell
-      stepNumber={4}
+      stepNumber={2}
       title="First saving card"
       description="First value comes from one complete savings card, not from perfect setup."
       status={status}
@@ -639,7 +639,7 @@ function EvidenceTrustStep({
 }) {
   return (
     <StepShell
-      stepNumber={5}
+      stepNumber={4}
       title="Evidence and finance trust"
       description="Finance trust improves when savings cards include evidence and approval history."
       status={status}
@@ -879,8 +879,8 @@ export function WorkspaceSetupGuide({
               </CardTitle>
               <CardDescription>
                 {getFirstName(userName)}, this wizard helps a new workspace move
-                from empty account to the first credible procurement savings
-                value with clear next steps.
+                from empty account to one credible procurement savings card
+                before setup cleanup.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -903,7 +903,7 @@ export function WorkspaceSetupGuide({
                         ? "Create one real saving card"
                         : model.businessStructureReady
                           ? "Open dashboard for first portfolio review"
-                          : "Complete the missing first-value master data"}
+                          : "Create another card or clean up setup later"}
                     </p>
                   </div>
                 </div>
@@ -920,11 +920,27 @@ export function WorkspaceSetupGuide({
                 data later. Use sample data only for demo/training; use real data
                 when preparing a pilot or customer workspace.
               </div>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/saving-cards/new" className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
+                  Create first saving card
+                </Link>
+                <Link href="/dashboard" className={LINK_BUTTON_CLASS_NAME}>
+                  Continue later
+                </Link>
+              </div>
             </CardContent>
           </Card>
 
-          <ReadinessSnapshot readiness={readiness} model={model} />
+          <FirstValueLaunchpad
+            viewerMembershipRole={viewerMembershipRole}
+            title="Create one real saving card first"
+            description="Start with one real savings initiative. You can complete master data later."
+            primaryActionLabel="Create first saving card"
+            reviewSetupLabel="Review readiness"
+          />
         </section>
+
+        <ReadinessSnapshot readiness={readiness} model={model} />
 
         {readinessError ? (
           <Card>
@@ -970,7 +986,17 @@ export function WorkspaceSetupGuide({
           </div>
         </StepShell>
 
+        <FirstSavingCardStep
+          savingCardCount={model.savingCardCount}
+          status={savingCardStatus}
+        />
+
         <BusinessStructureStep readiness={readiness} status={businessStatus} />
+
+        <EvidenceTrustStep
+          savingCardCount={model.savingCardCount}
+          status={evidenceStatus}
+        />
 
         <TeamAndRolesStep
           readiness={readiness}
@@ -978,25 +1004,7 @@ export function WorkspaceSetupGuide({
           viewerMembershipRole={viewerMembershipRole}
         />
 
-        <FirstSavingCardStep
-          savingCardCount={model.savingCardCount}
-          status={savingCardStatus}
-        />
-
-        <EvidenceTrustStep
-          savingCardCount={model.savingCardCount}
-          status={evidenceStatus}
-        />
-
         <ReportingStep model={model} status={reportingStatus} />
-
-        <FirstValueLaunchpad
-          viewerMembershipRole={viewerMembershipRole}
-          title="Training and acceleration"
-          description="Use sample data only for demo/training. Use real data when preparing a pilot or customer workspace."
-          primaryActionLabel="Create first saving card"
-          reviewSetupLabel="Review readiness"
-        />
 
         <FinishStep
           model={model}

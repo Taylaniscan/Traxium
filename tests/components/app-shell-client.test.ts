@@ -84,7 +84,7 @@ describe("app shell workspace account", () => {
     );
 
     expect(markup).toContain("href=\"/admin/settings\"");
-    expect(markup).toContain("Settings");
+    expect(markup).toContain("Workspace Settings");
   });
 
   it("renders an always-visible account card", () => {

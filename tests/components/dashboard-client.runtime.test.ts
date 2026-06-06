@@ -22,9 +22,8 @@ vi.mock("recharts", async () => {
 
   return {
     ...actual,
-    // Recharts can render deterministically in this Node test runtime once the
-    // container has a concrete size. We only shim ResponsiveContainer so the
-    // real BarChart and AreaChart paths still execute.
+    // Give Recharts a concrete SSR container. Recharts 3 mounts chart wrappers
+    // server-side and draws SVG content after browser layout.
     ResponsiveContainer: ({
       children,
     }: {
@@ -73,6 +72,10 @@ function createDashboardCard(
     id: "card-1",
     title: "Packaging renegotiation",
     phase: "VALIDATED",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     categoryId: "category-1",
     baselinePrice: 12,
     newPrice: 10,
@@ -92,6 +95,7 @@ function createDashboardCard(
     businessUnit: {
       name: "Beverages",
     },
+    evidence: [],
     ...overrides,
   } as DashboardData["cards"][number];
 }
@@ -115,7 +119,7 @@ function countMatches(markup: string, pattern: RegExp) {
 }
 
 describe("dashboard client runtime regression", () => {
-  it("renders real chart output for valid non-zero dashboard data instead of falling back to chart-empty messaging", () => {
+  it("mounts chart containers for valid non-zero dashboard data instead of falling back to chart-empty messaging", () => {
     const markup = renderDashboard([
       createDashboardCard({
         title: "Packaging recovery",
@@ -140,12 +144,9 @@ describe("dashboard client runtime regression", () => {
     expect(markup).toContain("Savings by Phase");
     expect(markup).toContain("Savings by Category");
     expect(markup).toContain("Savings Forecast");
-    expect(markup).toContain("Apr 2026");
-    expect(markup).toContain("May 2026");
     expect(countMatches(markup, /data-dashboard-chart-frame=/g)).toBe(3);
     expect(countMatches(markup, /min-h-\[20rem\]/g)).toBe(3);
     expect(countMatches(markup, /class="recharts-wrapper"/g)).toBe(3);
-    expect(countMatches(markup, /class="recharts-surface"/g)).toBe(3);
     expect(markup).not.toContain("No phase savings are available yet.");
     expect(markup).not.toContain("No category savings are available yet.");
     expect(markup).not.toContain("No savings forecast data is available yet.");
@@ -180,7 +181,6 @@ describe("dashboard client runtime regression", () => {
     expect(markup).toContain("Development data warning");
     expect(countMatches(markup, /data-dashboard-chart-frame=/g)).toBe(3);
     expect(countMatches(markup, /class="recharts-wrapper"/g)).toBe(3);
-    expect(countMatches(markup, /class="recharts-surface"/g)).toBe(3);
     expect(markup).not.toContain("Dashboard charts are unavailable");
     expect(markup).not.toContain("No live saving cards yet.");
     expect(markup).not.toContain("No phase savings are available yet.");

@@ -146,6 +146,9 @@ describe("release safety consistency", () => {
     const environmentSetup = readProjectFile("docs/environment-setup.md");
     const releaseChecklist = readProjectFile("docs/release-checklist.md");
     const deploymentStrategy = readProjectFile("docs/deployment-strategy.md");
+    const providerFlowValidation = readProjectFile(
+      "docs/provider-flow-validation.md"
+    );
     const billingAccessGuide = readProjectFile(
       "docs/subscription-gating-and-billing-recovery.md"
     );
@@ -153,6 +156,9 @@ describe("release safety consistency", () => {
     const operationsRunbook = readProjectFile("docs/operations-runbook.md");
     const smokeTests = readProjectFile("docs/post-release-smoke-tests.md");
     const runtimeBaseline = readProjectFile("docs/runtime-baseline.md");
+    const packageJson = JSON.parse(readProjectFile("package.json")) as {
+      scripts?: Record<string, string>;
+    };
 
     expect(nextConfig).not.toMatch(/\benv\s*:/u);
     expect(nextConfig).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
@@ -173,6 +179,13 @@ describe("release safety consistency", () => {
     expect(releaseChecklist).toContain("npm run db:validate");
     expect(releaseChecklist).toContain("npm run test");
     expect(releaseChecklist).toContain("npm run build");
+    expect(releaseChecklist).toContain("provider-flow-validation.md");
+    expect(releaseChecklist).toContain("readiness-proof-log.md");
+    expect(releaseChecklist).toContain("npm run providers:validate");
+    expect(releaseChecklist).toContain("npm run stripe:validate");
+    expect(releaseChecklist).toContain("npm run supabase:validate");
+    expect(releaseChecklist).toContain("npm run jobs:worker:healthcheck");
+    expect(releaseChecklist).toContain("Do not claim provider proof");
     expect(releaseChecklist).toContain("STRIPE_SECRET_KEY");
     expect(releaseChecklist).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
     expect(releaseChecklist).toContain(
@@ -192,6 +205,8 @@ describe("release safety consistency", () => {
       "subscription-gating-and-billing-recovery.md"
     );
     expect(deploymentStrategy).toContain("npm run predeploy");
+    expect(deploymentStrategy).toContain("provider-flow-validation.md");
+    expect(deploymentStrategy).toContain("npm run providers:validate");
     expect(deploymentStrategy).toContain("npm run release:verify");
     expect(deploymentStrategy).toContain("npm run release:migrate");
     expect(deploymentStrategy).toContain("prisma migrate deploy");
@@ -237,6 +252,23 @@ describe("release safety consistency", () => {
     expect(smokeTests).toContain("/billing-required");
     expect(smokeTests).toContain("/api/auth/bootstrap");
     expect(smokeTests).toContain("/settings/billing");
+    expect(smokeTests).toContain("provider-flow-validation.md");
+    expect(smokeTests).toContain("Production smoke provider proof");
+    expect(providerFlowValidation).toContain("Provider Flow Matrix");
+    expect(providerFlowValidation).toContain("Proof Log Template");
+    expect(providerFlowValidation).toContain("Hard Blockers");
+    expect(providerFlowValidation).toContain("Do not claim pass unless proof exists");
+    expect(providerFlowValidation).not.toContain("TODO");
+    expect(providerFlowValidation).not.toContain("TBD");
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run stripe:validate"
+    );
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run supabase:validate"
+    );
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run jobs:worker:healthcheck"
+    );
     expect(runtimeBaseline).toContain("Verified Automated Coverage");
     expect(runtimeBaseline).toContain("Pending Manual Verification");
     expect(runtimeBaseline).toContain("Saving-card create");

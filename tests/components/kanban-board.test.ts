@@ -90,7 +90,10 @@ function createSavingCard(
   return {
     id: "card-1",
     title: "Packaging renegotiation",
-    savingType: "COST_REDUCTION",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "IDEA",
     supplierId: "supplier-1",
     materialId: "material-1",
@@ -268,10 +271,10 @@ describe("kanban board", () => {
       })
     );
 
-    expect(markup).toContain("Idea");
-    expect(markup).toContain("Validated");
-    expect(markup).toContain("Realized");
-    expect(markup).toContain("Achieved");
+    expect(markup).toContain("Proposed");
+    expect(markup).toContain("Finance Validated");
+    expect(markup).toContain("Implemented");
+    expect(markup).toContain("Captured");
     expect(markup).toContain("Canceled");
   });
 
@@ -427,7 +430,7 @@ describe("kanban board", () => {
       type: "blocked",
       nextColumns: snapshot,
       message:
-        "Packaging renegotiation remains in Idea while approval is pending for Validated. Wait for that request to finish before moving it again.",
+        "Packaging renegotiation remains in Proposed while approval is pending for Finance Validated. Wait for that request to finish before moving it again.",
     });
   });
 
@@ -445,7 +448,7 @@ describe("kanban board", () => {
       type: "blocked",
       nextColumns: snapshot,
       message:
-        "Cannot move from Idea to Achieved. You can only request Validated or Canceled.",
+        "Cannot move from Proposed to Captured. You can only request Finance Validated or Canceled.",
     });
   });
 
@@ -531,8 +534,8 @@ describe("kanban board", () => {
     );
 
     expect(markup).toContain("Pending approval");
-    expect(markup).toContain("Pending move to Validated.");
-    expect(markup).toContain("Card remains in Idea until approval completes.");
+    expect(markup).toContain("Pending move to Finance Validated.");
+    expect(markup).toContain("Card remains in Proposed until approval completes.");
   });
 
   it("renders a visible error state when kanban data loading fails", () => {

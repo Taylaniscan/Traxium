@@ -41,7 +41,12 @@ describe("paid pilot offer and pricing", () => {
     expect(offer).toContain("Do not publish seat, card, upload, API, or metered-usage limits");
     expect(offer).toContain("Stripe Product and base Price IDs");
     expect(offer).toContain("Metered Stripe Price IDs are optional");
-    expect(offer).toContain("Keep the public homepage CTA as `Sign in` and `View product`");
+    expect(offer).toContain(
+      "Use `Request paid pilot` as the public homepage CTA"
+    );
+    expect(offer).toContain(
+      "route qualified buyers to `/pilot`"
+    );
     expect(offer).not.toContain("TODO");
     expect(offer).not.toContain("TBD");
 

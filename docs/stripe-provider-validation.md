@@ -2,6 +2,8 @@
 
 This document records the Step 32 validation contract for Stripe Billing. The app uses Stripe Billing APIs with subscription-mode Checkout Sessions for initial setup and the Stripe Customer Portal for self-service recovery.
 
+For release signoff, use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master Gap 1 checklist. This Stripe-specific document remains the detailed reference for catalog, Checkout, Portal, webhook, and billing recovery provider proof.
+
 ## Provider Validation Commands
 
 Run the read-only provider check with the configured local or preview Stripe test-mode env:
@@ -85,7 +87,7 @@ These prove app-side behavior, state mapping, route permissions, webhook process
 
 ## Manual Stripe Proof Still Required
 
-Before calling Step 32 fully provider-proven, record:
+Before calling Stripe fully provider-proven in the master proof log, record:
 
 1. `STRIPE_WEBHOOK_SECRET` configured for the preview/local webhook endpoint.
 2. Stripe CLI or Dashboard delivery of `checkout.session.completed` to `/api/billing/webhook`.

@@ -118,7 +118,10 @@ function createValidSavingCardPayload(overrides?: Partial<Record<string, unknown
   return {
     title: "Resin renegotiation",
     description: "Renegotiate the resin packaging contract for margin improvement.",
-    savingType: "Cost reduction",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: Phase.IDEA,
     supplier: { name: "Supplier A" },
     material: { name: "PET Resin" },
@@ -343,6 +346,10 @@ describe("saving card API routes", () => {
         expect.objectContaining({
           title: "Resin renegotiation",
           buyer: { name: "Strategic Buyer" },
+          savingType: "PRICE_REDUCTION",
+          impactType: "HARD_SAVINGS",
+          impactRecurrence: "RECURRING",
+          budgetImpact: "BUDGET_IMPACT",
         }),
         "user-1",
         "org-1"
@@ -353,6 +360,46 @@ describe("saving card API routes", () => {
         title: "Resin renegotiation",
         buyer: { id: "buyer-1", name: "Strategic Buyer" },
       });
+    });
+
+    it("applies safe classification defaults when create omits classification", async () => {
+      createSavingCardMock.mockResolvedValueOnce({ id: "card-defaults" });
+      const {
+        savingType: _savingType,
+        impactType: _impactType,
+        impactRecurrence: _impactRecurrence,
+        budgetImpact: _budgetImpact,
+        ...payload
+      } = createValidSavingCardPayload();
+
+      const response = await postSavingCardsRoute(
+        createJsonRequest("http://localhost/api/saving-cards", "POST", payload)
+      );
+
+      expect(response.status).toBe(201);
+      expect(createSavingCardMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          savingType: "PRICE_REDUCTION",
+          impactType: "HARD_SAVINGS",
+          impactRecurrence: "RECURRING",
+          budgetImpact: "BUDGET_IMPACT",
+        }),
+        "user-1",
+        "org-1"
+      );
+    });
+
+    it("rejects invalid classification values", async () => {
+      const response = await postSavingCardsRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards",
+          "POST",
+          createValidSavingCardPayload({ impactType: "AUDITED_SAVINGS" })
+        )
+      );
+
+      expect(response.status).toBe(422);
+      expect(createSavingCardMock).not.toHaveBeenCalled();
     });
 
     it("returns workflow conflicts from the create flow", async () => {
@@ -434,6 +481,63 @@ describe("saving card API routes", () => {
       await expect(response.json()).resolves.toEqual({
         error:
           "Direct phase updates are disabled. Use /api/phase-change-request to request workflow approval.",
+      });
+    });
+
+    it("accepts classification changes through the edit route", async () => {
+      getSavingCardMock.mockResolvedValueOnce({ id: "card-1" });
+      updateSavingCardMock.mockResolvedValueOnce({ id: "card-1" });
+
+      const response = await putSavingCardRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1",
+          "PUT",
+          createValidSavingCardPayload({
+            savingType: "REBATE_CREDIT",
+            impactType: "CASH_FLOW_IMPROVEMENT",
+            impactRecurrence: "ONE_TIME",
+            budgetImpact: "NON_BUDGET_OPERATIONAL_BENEFIT",
+          })
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+
+      expect(response.status).toBe(200);
+      expect(updateSavingCardMock).toHaveBeenCalledWith(
+        "card-1",
+        expect.objectContaining({
+          savingType: "REBATE_CREDIT",
+          impactType: "CASH_FLOW_IMPROVEMENT",
+          impactRecurrence: "ONE_TIME",
+          budgetImpact: "NON_BUDGET_OPERATIONAL_BENEFIT",
+        }),
+        "user-1",
+        "org-1"
+      );
+    });
+
+    it("returns a conflict when finance lock blocks classification changes", async () => {
+      getSavingCardMock.mockResolvedValueOnce({ id: "card-1", financeLocked: true });
+      updateSavingCardMock.mockRejectedValueOnce(
+        new WorkflowErrorMock(
+          "Finance-locked savings cannot change savings classification. Remove the finance lock before changing savings type, impact type, recurrence, or budget impact.",
+          409
+        )
+      );
+
+      const response = await putSavingCardRoute(
+        createJsonRequest(
+          "http://localhost/api/saving-cards/card-1",
+          "PUT",
+          createValidSavingCardPayload({ impactType: "COST_AVOIDANCE" })
+        ),
+        { params: Promise.resolve({ id: "card-1" }) }
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Finance-locked savings cannot change savings classification. Remove the finance lock before changing savings type, impact type, recurrence, or budget impact.",
       });
     });
 

@@ -112,6 +112,12 @@ export const rateLimitPolicies = {
     windowMs: 15 * 60 * 1000,
     failureMode: "closed",
   },
+  pilotLeadSubmission: {
+    scope: "ip",
+    maxRequests: 5,
+    windowMs: 60 * 60 * 1000,
+    failureMode: "closed",
+  },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export type RateLimitPolicyKey = keyof typeof rateLimitPolicies;
@@ -457,6 +463,8 @@ function buildRateLimitMessage(policy: RateLimitPolicyKey) {
       return "Too many administrative change attempts. Please wait before trying again.";
     case "dataExport":
       return "Too many export attempts. Please wait before starting another export.";
+    case "pilotLeadSubmission":
+      return "Too many pilot requests. Please wait before trying again.";
   }
 }
 
@@ -464,6 +472,7 @@ function buildRateLimitBackendUnavailableMessage(policy: RateLimitPolicyKey) {
   switch (policy) {
     case "forgotPassword":
     case "resetPassword":
+    case "pilotLeadSubmission":
       return "Rate limit protection is temporarily unavailable. Please retry shortly.";
     default:
       return "Request throttling is temporarily unavailable. Please retry shortly.";

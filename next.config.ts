@@ -151,6 +151,7 @@ export function buildSecurityHeaders() {
 }
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   experimental: {
     devtoolSegmentExplorer: false,
   },

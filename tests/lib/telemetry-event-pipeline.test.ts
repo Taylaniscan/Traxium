@@ -59,6 +59,11 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabasePublicClient: createSupabasePublicClientMock,
 }));
 
+vi.mock("@/lib/supabase/service", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock,
+  createSupabasePublicClient: createSupabasePublicClientMock,
+}));
+
 import { createInitialWorkspaceOnboarding } from "@/lib/auth";
 import {
   acceptOrganizationInvitation,

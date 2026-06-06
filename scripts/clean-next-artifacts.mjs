@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const nextBuildPath = path.join(process.cwd(), ".next");
+const nextBuildPath = path.join(
+  process.cwd(),
+  process.env.NEXT_DIST_DIR?.trim() || ".next"
+);
 const tsBuildInfoPath = path.join(process.cwd(), "tsconfig.tsbuildinfo");
 
 for (const targetPath of [nextBuildPath, tsBuildInfoPath]) {

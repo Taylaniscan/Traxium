@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
   ApprovalStatus,
   Currency,
+  EvidenceType,
   ForecastSource,
   Frequency,
   MembershipStatus,
@@ -11,6 +12,10 @@ import {
   Prisma,
   PrismaClient,
   Role,
+  SavingType,
+  SavingsBudgetImpact,
+  SavingsImpactRecurrence,
+  SavingsImpactType,
   SubscriptionStatus,
 } from "@prisma/client";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -18,9 +23,16 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { calculateSavings } from "../lib/calculations";
 import { auditEventTypes } from "../lib/audit";
 import { invalidatePortfolioSurfaceCaches } from "../lib/workspace/portfolio-surface-cache";
+import {
+  getUtopiaTraxResetSafetyViolations,
+  UTOPIATRAX_DEMO_NAME,
+  UTOPIATRAX_DEMO_SLUG,
+  UTOPIATRAX_SHOWCASE_CARD_TITLE,
+  validateUtopiaTraxStaticContract,
+} from "./utopiatrax-demo-contract";
 
-const DEMO_WORKSPACE_NAME = "UtopiaTrax";
-const DEMO_WORKSPACE_SLUG = "utopiatrax";
+const DEMO_WORKSPACE_NAME = UTOPIATRAX_DEMO_NAME;
+const DEMO_WORKSPACE_SLUG = UTOPIATRAX_DEMO_SLUG;
 const DEMO_PASSWORD = "Traxium123!";
 const DEMO_STORAGE_BUCKET = "evidence-private";
 const DEMO_BILLING_CUSTOMER_ID = "cus_demo_utopiatrax";
@@ -32,6 +44,7 @@ const SUPABASE_OPERATION_TIMEOUT_MS = 5_000;
 let storageUploadFailureSeen = false;
 
 export const UTOPIATRAX_DEMO_TRIAL_END = DEMO_TRIAL_END;
+export { UTOPIATRAX_SHOWCASE_CARD_TITLE };
 
 type DemoUserSeed = {
   email: string;
@@ -60,6 +73,7 @@ type EvidenceSeed = {
   fileName: string;
   label: string;
   content: string;
+  evidenceType: EvidenceType;
 };
 
 type AlternativeScenarioSeed = {
@@ -98,7 +112,11 @@ export type UtopiaTraxSavingCardSeed = {
   impactStart: string;
   impactEnd: string;
   narrative: string;
-  savingType: string;
+  legacySavingsMethod: string;
+  savingType: SavingType;
+  impactType: SavingsImpactType;
+  impactRecurrence: SavingsImpactRecurrence;
+  budgetImpact: SavingsBudgetImpact;
   savingDriver: string;
   implementationComplexity: string;
   qualificationStatus: string;
@@ -108,6 +126,11 @@ export type UtopiaTraxSavingCardSeed = {
   alternative?: AlternativeScenarioSeed;
   volumeProfile?: VolumeProfile;
 };
+
+type UtopiaTraxSavingCardBaseSeed = Omit<
+  UtopiaTraxSavingCardSeed,
+  "savingType" | "impactType" | "impactRecurrence" | "budgetImpact"
+>;
 
 type IdName = {
   id: string;
@@ -135,6 +158,10 @@ export type UtopiaTraxDatasetSummary = {
   pendingPhaseRequestCount: number;
   expectedPendingOpenActions: number;
   phaseCounts: Record<Phase, number>;
+  savingTypeCounts: Record<SavingType, number>;
+  impactTypeCounts: Record<SavingsImpactType, number>;
+  recurrenceCounts: Record<SavingsImpactRecurrence, number>;
+  budgetImpactCounts: Record<SavingsBudgetImpact, number>;
   categoriesRepresented: string[];
   financeLockedViolations: string[];
   unknownCategoryCards: string[];
@@ -299,17 +326,59 @@ const UTOPIATRAX_BUSINESS_UNITS: readonly NamedSeed[] = [
 
 function evidence(fileName: string, label: string, content: string): EvidenceSeed {
   return {
-    fileName,
+    fileName: fileName.replace(/\.txt$/iu, ".pdf"),
     label,
     content,
+    evidenceType: inferEvidenceType(label),
   };
+}
+
+function inferEvidenceType(label: string): EvidenceType {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("supplier quote") || normalized.includes("bid")) {
+    return EvidenceType.SUPPLIER_QUOTE;
+  }
+  if (normalized.includes("price confirmation")) {
+    return EvidenceType.PRICE_CONFIRMATION;
+  }
+  if (normalized.includes("contract") || normalized.includes("purchase order")) {
+    return EvidenceType.CONTRACT_OR_PO;
+  }
+  if (
+    normalized.includes("invoice") ||
+    normalized.includes("actual") ||
+    normalized.includes("implementation proof")
+  ) {
+    return EvidenceType.INVOICE_OR_ACTUAL;
+  }
+  if (normalized.includes("calculation") || normalized.includes("workbook")) {
+    return EvidenceType.CALCULATION_WORKBOOK;
+  }
+  if (normalized.includes("technical approval")) {
+    return EvidenceType.TECHNICAL_APPROVAL;
+  }
+  if (normalized.includes("customer approval")) {
+    return EvidenceType.CUSTOMER_APPROVAL;
+  }
+  if (normalized.includes("rebate")) {
+    return EvidenceType.REBATE_AGREEMENT;
+  }
+  if (normalized.includes("tolling") || normalized.includes("rate card")) {
+    return EvidenceType.TOLLING_RATE_CARD;
+  }
+  if (normalized.includes("negotiation")) {
+    return EvidenceType.NEGOTIATION_SUMMARY;
+  }
+
+  return EvidenceType.OTHER;
 }
 
 function alternative(input: AlternativeScenarioSeed): AlternativeScenarioSeed {
   return input;
 }
 
-export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
+const UTOPIATRAX_SAVING_CARD_BASE: readonly UtopiaTraxSavingCardBaseSeed[] = [
   {
     title: "PP Carrier dual-source negotiation",
     categoryName: "Polymer Carriers",
@@ -327,7 +396,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-01-01",
     impactEnd: "2026-12-31",
     narrative: "Annual contract renegotiation with second-source benchmark.",
-    savingType: "Commercial negotiation",
+    legacySavingsMethod: "Commercial negotiation",
     savingDriver: "Dual sourcing",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -341,6 +410,21 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
         "pp-carrier-negotiation-summary.txt",
         "Negotiation summary",
         "Procurement summary showing final annual price, volume commitment, and finance-reviewed baseline."
+      ),
+      evidence(
+        "pp-carrier-price-confirmation.txt",
+        "Supplier price confirmation",
+        "Borealis confirmed the implemented EUR 1.31 per kilogram price and annual volume commitment."
+      ),
+      evidence(
+        "pp-carrier-calculation-workbook.txt",
+        "Calculation workbook",
+        "Finance bridge showing baseline price, implemented price, annual volume, and captured savings."
+      ),
+      evidence(
+        "pp-carrier-implementation-proof.txt",
+        "Implementation proof",
+        "First implemented purchase receipt confirms the negotiated carrier price is active."
       ),
     ],
     alternative: alternative({
@@ -378,7 +462,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-02-01",
     impactEnd: "2026-12-31",
     narrative: "Formula adjustment enabled equivalent performance at lower carrier cost.",
-    savingType: "Specification optimization",
+    legacySavingsMethod: "Specification optimization",
     savingDriver: "Formula redesign",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -423,7 +507,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-03-01",
     impactEnd: "2026-12-31",
     narrative: "Index-linked contract reset validated by finance.",
-    savingType: "Index reset",
+    legacySavingsMethod: "Index reset",
     savingDriver: "Contract indexation",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -453,7 +537,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-07-01",
     impactEnd: "2026-12-31",
     narrative: "Sustainability-led alternative carrier pilot.",
-    savingType: "Alternative material",
+    legacySavingsMethod: "Alternative material",
     savingDriver: "Sustainability sourcing",
     implementationComplexity: "High",
     qualificationStatus: "Lab Testing",
@@ -475,7 +559,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-04-01",
     impactEnd: "2026-12-31",
     narrative: "Canceled after inconsistent MFI results.",
-    savingType: "Localization",
+    legacySavingsMethod: "Localization",
     savingDriver: "Regional sourcing",
     implementationComplexity: "High",
     qualificationStatus: "Rejected",
@@ -504,7 +588,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-01-01",
     impactEnd: "2026-12-31",
     narrative: "Volume aggregation improved rebate tier.",
-    savingType: "Rebate agreement",
+    legacySavingsMethod: "Rebate agreement",
     savingDriver: "Volume aggregation",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -539,7 +623,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-02-15",
     impactEnd: "2026-12-31",
     narrative: "Competitive RFQ secured improved pigment pricing.",
-    savingType: "Competitive RFQ",
+    legacySavingsMethod: "Competitive RFQ",
     savingDriver: "Supplier benchmark",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -584,7 +668,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-04-01",
     impactEnd: "2026-12-31",
     narrative: "Site consolidation and freight-inclusive pricing.",
-    savingType: "Supplier consolidation",
+    legacySavingsMethod: "Supplier consolidation",
     savingDriver: "Landed cost reduction",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -614,7 +698,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-08-01",
     impactEnd: "2026-12-31",
     narrative: "Alternative white pigment under lab review.",
-    savingType: "Alternative material",
+    legacySavingsMethod: "Alternative material",
     savingDriver: "Pigment substitution",
     implementationComplexity: "High",
     qualificationStatus: "Lab Testing",
@@ -636,7 +720,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-05-01",
     impactEnd: "2026-12-31",
     narrative: "Emergency buffer reduced after supplier lead-time stabilization.",
-    savingType: "Inventory policy",
+    legacySavingsMethod: "Inventory policy",
     savingDriver: "Working capital and unit cost",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -666,7 +750,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-03-01",
     impactEnd: "2026-12-31",
     narrative: "Dual-award model reduced incumbent dependency.",
-    savingType: "Dual award",
+    legacySavingsMethod: "Dual award",
     savingDriver: "Supply risk reduction",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -711,7 +795,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-04-01",
     impactEnd: "2026-12-31",
     narrative: "MOQ and payment term renegotiation lowered effective purchase price.",
-    savingType: "MOQ renegotiation",
+    legacySavingsMethod: "MOQ renegotiation",
     savingDriver: "Commercial terms",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -734,7 +818,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-01-15",
     impactEnd: "2026-12-31",
     narrative: "Regional sourcing reduced cost and lead time.",
-    savingType: "Regional sourcing",
+    legacySavingsMethod: "Regional sourcing",
     savingDriver: "Landed cost reduction",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -763,7 +847,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-09-01",
     impactEnd: "2026-12-31",
     narrative: "Batch-size optimization under technical feasibility review.",
-    savingType: "Batch optimization",
+    legacySavingsMethod: "Batch optimization",
     savingDriver: "Production efficiency",
     implementationComplexity: "Medium",
     qualificationStatus: "Not Started",
@@ -785,7 +869,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-06-01",
     impactEnd: "2026-12-31",
     narrative: "Canceled due to failed shade approval.",
-    savingType: "Reformulation",
+    legacySavingsMethod: "Reformulation",
     savingDriver: "Material substitution",
     implementationComplexity: "High",
     qualificationStatus: "Rejected",
@@ -815,7 +899,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-02-01",
     impactEnd: "2026-12-31",
     narrative: "Competitive rebid reduced stabilizer package cost.",
-    savingType: "Competitive rebid",
+    legacySavingsMethod: "Competitive rebid",
     savingDriver: "RFQ",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -861,7 +945,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-05-01",
     impactEnd: "2026-12-31",
     narrative: "Supplier switch validated after equivalent performance testing.",
-    savingType: "Supplier switch",
+    legacySavingsMethod: "Supplier switch",
     savingDriver: "Alternative supplier",
     implementationComplexity: "High",
     qualificationStatus: "Approved",
@@ -906,7 +990,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-01-01",
     impactEnd: "2026-12-31",
     narrative: "Internal specification redesign reduced additive cost.",
-    savingType: "Specification redesign",
+    legacySavingsMethod: "Specification redesign",
     savingDriver: "Internal specification",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -935,7 +1019,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-08-01",
     impactEnd: "2026-12-31",
     narrative: "Proposed index-linked contract under negotiation.",
-    savingType: "Indexed contract",
+    legacySavingsMethod: "Indexed contract",
     savingDriver: "Contracting",
     implementationComplexity: "Low",
     qualificationStatus: "Not Started",
@@ -957,7 +1041,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-03-01",
     impactEnd: "2026-12-31",
     narrative: "Annual agreement reduced exposure to spot buys.",
-    savingType: "Annual agreement",
+    legacySavingsMethod: "Annual agreement",
     savingDriver: "Spot buy avoidance",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -987,7 +1071,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-02-01",
     impactEnd: "2026-12-31",
     narrative: "Harmonized octabin spec across plants.",
-    savingType: "Specification harmonization",
+    legacySavingsMethod: "Specification harmonization",
     savingDriver: "Packaging standardization",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -1033,7 +1117,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-05-01",
     impactEnd: "2026-12-31",
     narrative: "Regional bag sourcing reduced landed cost.",
-    savingType: "Regional sourcing",
+    legacySavingsMethod: "Regional sourcing",
     savingDriver: "Landed cost reduction",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -1078,7 +1162,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-09-01",
     impactEnd: "2026-12-31",
     narrative: "Lower-gauge stretch film pilot for pallet stability.",
-    savingType: "Specification optimization",
+    legacySavingsMethod: "Specification optimization",
     savingDriver: "Material usage reduction",
     implementationComplexity: "Medium",
     qualificationStatus: "Not Started",
@@ -1101,7 +1185,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-03-01",
     impactEnd: "2026-12-31",
     narrative: "Consolidated tolling rate card across projects.",
-    savingType: "Tolling rate card",
+    legacySavingsMethod: "Tolling rate card",
     savingDriver: "Subcontracting leverage",
     implementationComplexity: "Medium",
     qualificationStatus: "Approved",
@@ -1146,7 +1230,7 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     impactStart: "2026-06-01",
     impactEnd: "2026-12-31",
     narrative: "Bundled lab-service agreement for recurring color approvals.",
-    savingType: "Service bundle",
+    legacySavingsMethod: "Service bundle",
     savingDriver: "Service contracting",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
@@ -1159,6 +1243,171 @@ export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] = [
     ],
   },
 ] as const;
+
+const UTOPIATRAX_CLASSIFICATION_BY_TITLE: Record<
+  string,
+  Pick<
+    UtopiaTraxSavingCardSeed,
+    "savingType" | "impactType" | "impactRecurrence" | "budgetImpact"
+  >
+> = {
+  "PP Carrier dual-source negotiation": {
+    savingType: SavingType.SUPPLIER_SWITCH,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "LDPE carrier formula optimization": {
+    savingType: SavingType.SPECIFICATION_CHANGE,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "PET carrier quarterly index reset": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Bio-based carrier pilot sourcing": {
+    savingType: SavingType.COST_AVOIDANCE,
+    impactType: SavingsImpactType.RISK_CONTINUITY_BENEFIT,
+    impactRecurrence: SavingsImpactRecurrence.TEMPORARY,
+    budgetImpact: SavingsBudgetImpact.FORECAST_AVOIDANCE,
+  },
+  "Recycled PP carrier localization": {
+    savingType: SavingType.FREIGHT_LOGISTICS,
+    impactType: SavingsImpactType.RISK_CONTINUITY_BENEFIT,
+    impactRecurrence: SavingsImpactRecurrence.UNKNOWN,
+    budgetImpact: SavingsBudgetImpact.NON_BUDGET_OPERATIONAL_BENEFIT,
+  },
+  "TiO2 chloride grade rebate": {
+    savingType: SavingType.REBATE_CREDIT,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "TiO2 rutile supplier benchmark": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Calcium carbonate filler consolidation": {
+    savingType: SavingType.VOLUME_CONSOLIDATION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Zinc sulfide white pigment alternative": {
+    savingType: SavingType.SUPPLIER_SWITCH,
+    impactType: SavingsImpactType.COST_AVOIDANCE,
+    impactRecurrence: SavingsImpactRecurrence.UNKNOWN,
+    budgetImpact: SavingsBudgetImpact.FORECAST_AVOIDANCE,
+  },
+  "TiO2 emergency stock optimization": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.WORKING_CAPITAL_IMPACT,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.NON_BUDGET_OPERATIONAL_BENEFIT,
+  },
+  "Phthalocyanine blue dual award": {
+    savingType: SavingType.REBATE_CREDIT,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.ONE_TIME,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Quinacridone red MOQ renegotiation": {
+    savingType: SavingType.PAYMENT_TERMS,
+    impactType: SavingsImpactType.WORKING_CAPITAL_IMPACT,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.NON_BUDGET_OPERATIONAL_BENEFIT,
+  },
+  "Diarylide yellow regional sourcing": {
+    savingType: SavingType.SUPPLIER_SWITCH,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Solvent dye red batch-size optimization": {
+    savingType: SavingType.PROCESS_TOLLING,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "High-performance green pigment reformulation": {
+    savingType: SavingType.SPECIFICATION_CHANGE,
+    impactType: SavingsImpactType.RISK_CONTINUITY_BENEFIT,
+    impactRecurrence: SavingsImpactRecurrence.UNKNOWN,
+    budgetImpact: SavingsBudgetImpact.NON_BUDGET_OPERATIONAL_BENEFIT,
+  },
+  "UV stabilizer package rebid": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Antioxidant blend supplier switch": {
+    savingType: SavingType.SUPPLIER_SWITCH,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Processing aid masterbatch redesign": {
+    savingType: SavingType.SPECIFICATION_CHANGE,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Slip additive indexed contract": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.COST_AVOIDANCE,
+    impactRecurrence: SavingsImpactRecurrence.TEMPORARY,
+    budgetImpact: SavingsBudgetImpact.FORECAST_AVOIDANCE,
+  },
+  "PET chain extender annual agreement": {
+    savingType: SavingType.REBATE_CREDIT,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Octabin specification harmonization": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "25kg bag regional sourcing": {
+    savingType: SavingType.FREIGHT_LOGISTICS,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Stretch film gauge reduction": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Twin-screw compounding tolling rate card": {
+    savingType: SavingType.PROCESS_TOLLING,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+  "Color matching lab service bundle": {
+    savingType: SavingType.PRICE_REDUCTION,
+    impactType: SavingsImpactType.HARD_SAVINGS,
+    impactRecurrence: SavingsImpactRecurrence.RECURRING,
+    budgetImpact: SavingsBudgetImpact.BUDGET_IMPACT,
+  },
+};
+
+export const UTOPIATRAX_SAVING_CARDS: readonly UtopiaTraxSavingCardSeed[] =
+  UTOPIATRAX_SAVING_CARD_BASE.map((card) => ({
+    ...card,
+    ...UTOPIATRAX_CLASSIFICATION_BY_TITLE[card.title],
+  }));
 
 export const UTOPIATRAX_PENDING_PHASE_REQUESTS: ReadonlyArray<{
   cardTitle: string;
@@ -1326,9 +1575,25 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
   const categoriesRepresented = new Set<string>();
   const financeLockedViolations: string[] = [];
   const unknownCategoryCards: string[] = [];
+  const savingTypeCounts = Object.fromEntries(
+    Object.values(SavingType).map((value) => [value, 0])
+  ) as Record<SavingType, number>;
+  const impactTypeCounts = Object.fromEntries(
+    Object.values(SavingsImpactType).map((value) => [value, 0])
+  ) as Record<SavingsImpactType, number>;
+  const recurrenceCounts = Object.fromEntries(
+    Object.values(SavingsImpactRecurrence).map((value) => [value, 0])
+  ) as Record<SavingsImpactRecurrence, number>;
+  const budgetImpactCounts = Object.fromEntries(
+    Object.values(SavingsBudgetImpact).map((value) => [value, 0])
+  ) as Record<SavingsBudgetImpact, number>;
 
   for (const card of UTOPIATRAX_SAVING_CARDS) {
     phaseCounts[card.phase] += 1;
+    savingTypeCounts[card.savingType] += 1;
+    impactTypeCounts[card.impactType] += 1;
+    recurrenceCounts[card.impactRecurrence] += 1;
+    budgetImpactCounts[card.budgetImpact] += 1;
     categoriesRepresented.add(card.categoryName);
 
     if (!categoryNames.has(card.categoryName)) {
@@ -1356,6 +1621,10 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
     pendingPhaseRequestCount: UTOPIATRAX_PENDING_PHASE_REQUESTS.length,
     expectedPendingOpenActions: getUtopiaTraxExpectedPendingOpenActionCount(),
     phaseCounts,
+    savingTypeCounts,
+    impactTypeCounts,
+    recurrenceCounts,
+    budgetImpactCounts,
     categoriesRepresented: [...categoriesRepresented].sort(),
     financeLockedViolations,
     unknownCategoryCards,
@@ -1370,7 +1639,13 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
 
 export function validateUtopiaTraxDemoDataset() {
   const summary = getUtopiaTraxDatasetSummary();
-  const errors: string[] = [];
+  const errors = validateUtopiaTraxStaticContract({
+    users: UTOPIATRAX_DEMO_USERS,
+    categories: UTOPIATRAX_DIRECT_CATEGORIES,
+    cards: UTOPIATRAX_SAVING_CARDS,
+    pendingPhaseRequestCount: UTOPIATRAX_PENDING_PHASE_REQUESTS.length,
+    expectedPendingOpenActions: getUtopiaTraxExpectedPendingOpenActionCount(),
+  });
 
   if (summary.savingCardCount !== 25) {
     errors.push(`Expected 25 saving cards, found ${summary.savingCardCount}.`);
@@ -1387,24 +1662,24 @@ export function validateUtopiaTraxDemoDataset() {
   }
 
   if (summary.phaseCounts[Phase.IDEA] !== 5) {
-    errors.push(`Expected 5 idea cards, found ${summary.phaseCounts[Phase.IDEA]}.`);
+    errors.push(`Expected 5 proposed cards, found ${summary.phaseCounts[Phase.IDEA]}.`);
   }
 
   if (summary.phaseCounts[Phase.VALIDATED] !== 7) {
     errors.push(
-      `Expected 7 validated cards, found ${summary.phaseCounts[Phase.VALIDATED]}.`
+      `Expected 7 finance validated cards, found ${summary.phaseCounts[Phase.VALIDATED]}.`
     );
   }
 
   if (summary.phaseCounts[Phase.REALISED] !== 7) {
     errors.push(
-      `Expected 7 realized cards, found ${summary.phaseCounts[Phase.REALISED]}.`
+      `Expected 7 implemented cards, found ${summary.phaseCounts[Phase.REALISED]}.`
     );
   }
 
   if (summary.phaseCounts[Phase.ACHIEVED] !== 4) {
     errors.push(
-      `Expected 4 achieved cards, found ${summary.phaseCounts[Phase.ACHIEVED]}.`
+      `Expected 4 captured cards, found ${summary.phaseCounts[Phase.ACHIEVED]}.`
     );
   }
 
@@ -1430,7 +1705,7 @@ export function validateUtopiaTraxDemoDataset() {
 
   if (summary.financeLockedViolations.length) {
     errors.push(
-      `Finance lock is only allowed on Validated cards. Violations: ${summary.financeLockedViolations.join(", ")}.`
+      `Finance lock is only allowed on Finance Validated cards. Violations: ${summary.financeLockedViolations.join(", ")}.`
     );
   }
 
@@ -1448,7 +1723,7 @@ export function validateUtopiaTraxDemoDataset() {
     errors.push(`Duplicate category names: ${summary.duplicateCategoryNames.join(", ")}.`);
   }
 
-  return errors;
+  return [...new Set(errors)];
 }
 
 function assertDemoSeedEnvironment() {
@@ -1474,24 +1749,38 @@ async function resetUtopiaTraxDemoWorkspace(prisma: PrismaClient) {
   }
 
   const demoEmails = new Set(UTOPIATRAX_DEMO_USERS.map((user) => normalizeEmail(user.email)));
-  const nonDemoUsers = await prisma.user.findMany({
+  const workspaceUsers = await prisma.user.findMany({
     where: {
       organizationId: organization.id,
-      NOT: {
-        email: {
-          in: [...demoEmails],
-          mode: "insensitive",
-        },
-      },
     },
     select: {
       email: true,
+      memberships: {
+        select: {
+          organizationId: true,
+        },
+      },
     },
   });
+  const resetSafety = getUtopiaTraxResetSafetyViolations(
+    organization.id,
+    workspaceUsers.map((user) => ({
+      email: user.email,
+      membershipOrganizationIds: user.memberships.map(
+        (membership) => membership.organizationId
+      ),
+    }))
+  );
 
-  if (nonDemoUsers.length) {
+  if (resetSafety.unexpectedEmails.length) {
     throw new Error(
-      `Reset aborted because ${DEMO_WORKSPACE_NAME} has non-demo users: ${nonDemoUsers.map((user) => user.email).join(", ")}.`
+      `Reset aborted because ${DEMO_WORKSPACE_NAME} has non-demo users: ${resetSafety.unexpectedEmails.join(", ")}.`
+    );
+  }
+
+  if (resetSafety.externalMembershipEmails.length) {
+    throw new Error(
+      `Reset aborted because demo users have memberships outside ${DEMO_WORKSPACE_NAME}: ${resetSafety.externalMembershipEmails.join(", ")}.`
     );
   }
 
@@ -2102,11 +2391,12 @@ async function uploadEvidenceObject(input: {
     return false;
   }
 
+  const fileBody = createDemoEvidencePdf(input.content);
   const { error } = await withTimeout(
     input.supabase.storage
       .from(DEMO_STORAGE_BUCKET)
-      .upload(input.storagePath, Buffer.from(input.content, "utf8"), {
-        contentType: "text/plain; charset=utf-8",
+      .upload(input.storagePath, fileBody, {
+        contentType: "application/pdf",
         upsert: true,
       }),
     SUPABASE_OPERATION_TIMEOUT_MS,
@@ -2125,12 +2415,68 @@ async function uploadEvidenceObject(input: {
   return true;
 }
 
+function createDemoEvidencePdf(content: string) {
+  const lines = content
+    .split(/\r?\n/u)
+    .flatMap((line) => {
+      const normalized = line.replace(/[^\x20-\x7E]/gu, "").trimEnd();
+      if (!normalized) return [""];
+
+      const chunks: string[] = [];
+      for (let index = 0; index < normalized.length; index += 88) {
+        chunks.push(normalized.slice(index, index + 88));
+      }
+      return chunks;
+    })
+    .slice(0, 46);
+  const stream = [
+    "BT",
+    "/F1 10 Tf",
+    "50 750 Td",
+    "14 TL",
+    ...lines.flatMap((line, index) => [
+      `(${line.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)")}) Tj`,
+      ...(index < lines.length - 1 ? ["T*"] : []),
+    ]),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(stream, "ascii")} >>\nstream\n${stream}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "ascii"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf, "ascii");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  pdf += `startxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(pdf, "ascii");
+}
+
 function buildEvidenceStoragePath(
   organizationId: string,
   savingCardId: string,
   fileName: string
 ) {
   return `organizations/${organizationId}/saving-cards/${savingCardId}/evidence/${fileName}`;
+}
+
+export function shouldPersistUtopiaTraxEvidenceRecord(uploaded: boolean) {
+  return uploaded;
 }
 
 function resolveProjectDates(card: UtopiaTraxSavingCardSeed) {
@@ -2320,7 +2666,11 @@ async function upsertSavingCardShell(input: {
     organizationId,
     title: card.title,
     description: card.narrative,
+    legacySavingsMethod: card.legacySavingsMethod,
     savingType: card.savingType,
+    impactType: card.impactType,
+    impactRecurrence: card.impactRecurrence,
+    budgetImpact: card.budgetImpact,
     phase: card.phase,
     supplierId: lookups.suppliers[card.supplierName].id,
     materialId: lookups.materials[card.materialName].id,
@@ -2609,23 +2959,25 @@ async function seedSavingCardRelations(input: {
       savingCardId,
       item.fileName
     );
+    const evidenceDocument = [
+      `${DEMO_WORKSPACE_NAME} demo evidence`,
+      `Saving card: ${card.title}`,
+      `Document: ${item.label}`,
+      "",
+      item.content,
+      "",
+      "Synthetic demonstration evidence. No customer or production data is included.",
+      "Prepared for a controlled finance-validation walkthrough in the UtopiaTrax workspace.",
+    ].join("\n");
     const uploaded = await uploadEvidenceObject({
       supabase,
       storageEnabled,
       storagePath,
-      content: [
-        `${DEMO_WORKSPACE_NAME} demo evidence`,
-        `Saving card: ${card.title}`,
-        `Document: ${item.label}`,
-        "",
-        item.content,
-        "",
-        "This is a private demo placeholder file created by scripts/seed-utopiatrax-demo.ts.",
-      ].join("\n"),
+      content: evidenceDocument,
       warnings,
     });
 
-    if (!uploaded) {
+    if (!shouldPersistUtopiaTraxEvidenceRecord(uploaded)) {
       continue;
     }
 
@@ -2633,10 +2985,11 @@ async function seedSavingCardRelations(input: {
       data: {
         savingCardId,
         fileName: item.fileName,
+        evidenceType: item.evidenceType,
         storageBucket: DEMO_STORAGE_BUCKET,
         storagePath,
-        fileSize: Buffer.byteLength(item.content, "utf8"),
-        fileType: "text/plain",
+        fileSize: createDemoEvidencePdf(evidenceDocument).length,
+        fileType: "application/pdf",
         uploadedById: buyerUser.id,
         uploadedAt: addDays(resolveProjectDates(card).startDate, 25),
       },

@@ -39,7 +39,7 @@ export function VolumeSCurve({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
 
     async function load() {
       if (!cards.length) {
@@ -52,29 +52,24 @@ export function VolumeSCurve({
       setError(null);
 
       try {
-        const responses = await Promise.allSettled(
-          cards.map((card) =>
-            fetch(`/api/saving-cards/${card.id}/volume`, {
-              cache: "no-store",
-            }).then(async (response) => {
-              const result = await response.json().catch(() => null);
+        const params = new URLSearchParams();
+        cards.forEach((card) => params.append("cardId", card.id));
+        const response = await fetch(`/api/volume/portfolio?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const result = (await response.json().catch(() => null)) as
+          | { timelines?: VolumeTimelineResult[]; error?: string }
+          | null;
 
-              if (!response.ok) {
-                throw new Error(result?.error ?? "Volume timeline could not be loaded.");
-              }
+        if (!response.ok) {
+          throw new Error(result?.error ?? "Volume timeline could not be loaded.");
+        }
 
-              return result as VolumeTimelineResult;
-            })
-          )
-        );
-
-        if (cancelled) {
+        if (canceled) {
           return;
         }
 
-        const successful = responses
-          .filter((result): result is PromiseFulfilledResult<VolumeTimelineResult> => result.status === "fulfilled")
-          .map((result) => result.value);
+        const successful = result?.timelines ?? [];
 
         const monthlyMap = new Map<
           string,
@@ -128,7 +123,7 @@ export function VolumeSCurve({
 
         setRows(nextRows);
       } catch (loadError) {
-        if (!cancelled) {
+        if (!canceled) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -137,7 +132,7 @@ export function VolumeSCurve({
           setRows([]);
         }
       } finally {
-        if (!cancelled) {
+        if (!canceled) {
           setLoading(false);
         }
       }
@@ -146,7 +141,7 @@ export function VolumeSCurve({
     void load();
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [cards]);
 
@@ -206,7 +201,11 @@ export function VolumeSCurve({
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 640, height: 320 }}
+          >
             <AreaChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
               <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
@@ -251,7 +250,11 @@ export function VolumeSCurve({
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 640, height: 320 }}
+          >
             <ComposedChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
               <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />

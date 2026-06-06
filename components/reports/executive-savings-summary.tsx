@@ -9,8 +9,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { CommandCenterData, DashboardData } from "@/lib/types";
+import {
+  savingTypeLabels,
+  savingsBudgetImpactLabels,
+  savingsImpactRecurrenceLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { ReactNode } from "react";
+import { isFinanceEvidenceReviewPhase } from "@/lib/evidence";
 
 type ExecutiveSavingsSummaryProps = {
   commandCenterData: CommandCenterData;
@@ -73,7 +80,7 @@ export function ExecutiveSavingsSummary({
       ? forecastSavings - annualTarget
       : forecastSavings - achievedSavings;
   const forecastComparisonLabel =
-    annualTarget > 0 ? "annual target" : "achieved value";
+    annualTarget > 0 ? "annual target" : "captured value";
   const noticeMessages = [commandCenterError, dashboardError].filter(
     (message): message is string => Boolean(message)
   );
@@ -87,6 +94,51 @@ export function ExecutiveSavingsSummary({
     financeLockedCount > 0 ||
     recentDecisions.length > 0 ||
     portfolioScope > 0;
+  const classificationBreakdowns = [
+    {
+      title: "Savings by Savings Type",
+      rows: buildClassificationBreakdown(
+        dashboardData.cards,
+        (card) => savingTypeLabels[card.savingType] ?? "Unknown"
+      ),
+    },
+    {
+      title: "Savings by Impact Type",
+      rows: buildClassificationBreakdown(
+        dashboardData.cards,
+        (card) => savingsImpactTypeLabels[card.impactType] ?? "Unknown"
+      ),
+    },
+    {
+      title: "Recurring vs One-Time",
+      rows: buildClassificationBreakdown(
+        dashboardData.cards,
+        (card) => savingsImpactRecurrenceLabels[card.impactRecurrence] ?? "Unknown"
+      ),
+    },
+    {
+      title: "Budget Impact vs Forecast Avoidance",
+      rows: buildClassificationBreakdown(
+        dashboardData.cards,
+        (card) => savingsBudgetImpactLabels[card.budgetImpact] ?? "Unknown"
+      ),
+    },
+  ];
+  const activeEvidenceCards = dashboardData.cards.filter(
+    (card) => card.phase !== "CANCELLED"
+  );
+  const cardsWithEvidence = activeEvidenceCards.filter(
+    (card) => (card.evidence?.length ?? 0) > 0
+  );
+  const cardsMissingEvidence = activeEvidenceCards.length - cardsWithEvidence.length;
+  const financeReviewCardsMissingEvidence = activeEvidenceCards.filter(
+    (card) =>
+      isFinanceEvidenceReviewPhase(card.phase) &&
+      (card.evidence?.length ?? 0) === 0
+  ).length;
+  const evidenceCoveragePercent = activeEvidenceCards.length
+    ? (cardsWithEvidence.length / activeEvidenceCards.length) * 100
+    : 0;
 
   if (!hasMeaningfulData) {
     return (
@@ -102,7 +154,7 @@ export function ExecutiveSavingsSummary({
             <CardTitle>No executive savings data is available yet</CardTitle>
             <CardDescription>
               Create the first saving cards or load sample data to populate the
-              executive summary with pipeline, achieved value, approvals, and
+              executive summary with pipeline, captured value, approvals, and
               recent decisions.
             </CardDescription>
           </CardHeader>
@@ -161,12 +213,12 @@ export function ExecutiveSavingsSummary({
               detail={`${formatPlainNumber(portfolioScope)} initiatives currently in scope`}
             />
             <ExecutiveMetric
-              label="Realized Savings"
+              label="Implemented Savings"
               value={formatCurrency(realisedSavings, "EUR")}
-              detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into realized or achieved delivery`}
+              detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into implemented or captured delivery`}
             />
             <ExecutiveMetric
-              label="Achieved Savings"
+              label="Captured Savings"
               value={formatCurrency(achievedSavings, "EUR")}
               detail={`${formatPercent(achievedCoverage)} of pipeline is fully locked in`}
             />
@@ -211,12 +263,74 @@ export function ExecutiveSavingsSummary({
               detail={
                 annualTarget > 0
                   ? "Forecast compared with the current annual target"
-                  : "Forecast compared with achieved value"
+                  : "Forecast compared with captured value"
               }
             />
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <CardTitle>Evidence Coverage</CardTitle>
+              <CardDescription>
+                Portfolio proof coverage without exposing private files, signed
+                URLs, or storage paths.
+              </CardDescription>
+            </div>
+            <Badge tone={financeReviewCardsMissingEvidence ? "amber" : "emerald"}>
+              {formatPercent(evidenceCoveragePercent)} covered
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4">
+          <SignalMetric
+            label="Active Cards"
+            value={formatPlainNumber(activeEvidenceCards.length)}
+            detail="Non-canceled initiatives in the current portfolio."
+          />
+          <SignalMetric
+            label="Cards With Evidence"
+            value={formatPlainNumber(cardsWithEvidence.length)}
+            detail="At least one private evidence file is attached."
+          />
+          <SignalMetric
+            label="Cards Missing Evidence"
+            value={formatPlainNumber(cardsMissingEvidence)}
+            detail="Review coverage before finance validation or capture."
+          />
+          <SignalMetric
+            label="Finance-Stage Gaps"
+            value={formatPlainNumber(financeReviewCardsMissingEvidence)}
+            detail="Validated, implemented, or captured cards without evidence."
+          />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {classificationBreakdowns.map((breakdown) => (
+          <Card key={breakdown.title}>
+            <CardHeader>
+              <CardTitle>{breakdown.title}</CardTitle>
+              <CardDescription>Current portfolio value by finance classification.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {breakdown.rows.length ? breakdown.rows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-[var(--muted-foreground)]">{row.label}</span>
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {formatCurrency(row.savings, "EUR")}
+                  </span>
+                </div>
+              )) : (
+                <p className="text-sm text-[var(--muted-foreground)]">No classified savings yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
@@ -235,7 +349,7 @@ export function ExecutiveSavingsSummary({
             </OutlookLine>
             <OutlookLine>
               {formatPercent(deliveryCoverage)} of pipeline value has already
-              progressed into realized or achieved delivery.
+              progressed into implemented or captured delivery.
             </OutlookLine>
             <OutlookLine>
               {formatPlainNumber(pendingApprovals)} approvals are still pending
@@ -252,7 +366,7 @@ export function ExecutiveSavingsSummary({
               <OutlookLine>
                 Forecast stands at {formatCurrency(forecastSavings, "EUR")} and
                 is {formatSignedCurrency(forecastSavings - achievedSavings)}{" "}
-                against achieved value.
+                against captured value.
               </OutlookLine>
             )}
             <div className="flex flex-wrap gap-4 pt-2 text-sm text-[var(--muted-foreground)]">
@@ -319,6 +433,22 @@ export function ExecutiveSavingsSummary({
       </div>
     </div>
   );
+}
+
+function buildClassificationBreakdown(
+  cards: DashboardData["cards"],
+  getLabel: (card: DashboardData["cards"][number]) => string
+) {
+  const totals = new Map<string, number>();
+
+  for (const card of cards) {
+    const label = getLabel(card);
+    totals.set(label, (totals.get(label) ?? 0) + normalizeMetricValue(card.calculatedSavings));
+  }
+
+  return [...totals.entries()]
+    .map(([label, savings]) => ({ label, savings }))
+    .sort((left, right) => right.savings - left.savings);
 }
 
 function ExecutiveSummaryNotice({

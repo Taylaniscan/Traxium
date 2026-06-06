@@ -60,6 +60,10 @@ function createDashboardCard(
     id: "card-1",
     title: "Packaging renegotiation",
     phase: "VALIDATED",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     categoryId: "category-1",
     baselinePrice: 12,
     newPrice: 10,
@@ -79,6 +83,7 @@ function createDashboardCard(
     businessUnit: {
       name: "Beverages",
     },
+    evidence: [],
     ...overrides,
   } as DashboardData["cards"][number];
 }
@@ -125,6 +130,11 @@ function createUtopiaDashboardCards(): DashboardData["cards"] {
       businessUnit: {
         name: card.businessUnitName,
       },
+      evidence: card.evidence.map((item, index) => ({
+        id: `${card.title}-evidence-${index}`,
+        evidenceType: item.evidenceType,
+        uploadedAt: new Date("2026-03-01T00:00:00.000Z"),
+      })),
     } as DashboardData["cards"][number];
   });
 }

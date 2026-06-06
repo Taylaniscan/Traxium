@@ -18,10 +18,17 @@ type SavingCardImportResult = {
   status: "valid" | "failed";
   title: string;
   message: string;
+  errors?: Array<{
+    field: string;
+    invalidValue: string;
+    message: string;
+    suggestedFix: string;
+  }>;
 };
 type SavingCardImportResponse = {
   importType: "saving_cards";
   error: string;
+  missingColumns?: string[];
   summary: {
     total: number;
     valid: number;
@@ -255,9 +262,9 @@ export function ImportExportPanel({
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Executive Workbook Export</CardTitle>
+            <CardTitle>Controller-Review Workbook</CardTitle>
             <CardDescription>
-              Download a structured workbook with a report summary sheet and the current saving-card register for this workspace.
+              Export a controller-review workbook with portfolio summary, saving-card assumptions, phase counts, finance locks, evidence coverage, a data dictionary, and an import template.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -279,10 +286,13 @@ export function ImportExportPanel({
               />
             </div>
             <div className="rounded-2xl bg-[var(--muted)]/60 p-4 text-sm text-[var(--muted-foreground)]">
-              The workbook filename uses the workspace slug and export date. The summary sheet records portfolio scope, active savings, realized and achieved value, finance locks, phase counts, setup completeness, and workflow coverage at export time.
+              The workbook contains Portfolio Summary, Saving Cards, Data Dictionary, Import Template, and Evidence Summary sheets. Totals reconcile to the exported saving-card rows. Private URLs, storage paths, tokens, and provider IDs are never exported.
             </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              This is a controller-review export. It does not provide ERP sync, accounting posting, audited recognition, or a custom BI feed.
+            </p>
             <a href="/api/export" className={buttonVariants()}>
-              Download Workbook
+              Export Controller-Review Workbook
             </a>
           </CardContent>
         </Card>
@@ -291,7 +301,7 @@ export function ImportExportPanel({
           <CardHeader>
             <CardTitle>Controlled Workbook Import</CardTitle>
             <CardDescription>
-              Upload `.xlsx` workbooks aligned to saving-card columns for bulk creation inside the current workspace.
+              Start from an existing Excel tracker. Traxium accepts `.xlsx` saving-card workbooks and validates every row before creating cards in the current workspace.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -313,21 +323,26 @@ export function ImportExportPanel({
               />
             </div>
             <div className="space-y-2 rounded-2xl bg-[var(--muted)]/60 p-4 text-sm text-[var(--muted-foreground)]">
-              <p>Use Excel workbooks with aligned saving-card columns and one row per initiative.</p>
               <p>
-                Missing shared setup such as buyers, suppliers, materials, categories, plants, or business units can reduce reporting consistency after import.
+                Required fields: Title, Supplier, Material, Category, Plant, Business Unit, Buyer, Baseline Price, New Price, Annual Volume, Currency, Start Date, and End Date.
               </p>
               <p>
-                Saving-card workbook imports validate all rows before writing. If any row fails, no saving cards are created and row errors appear below so you can fix the workbook and retry.
+                Buyer, supplier, material, category, plant, and business-unit names are matched inside this workspace or created safely when they do not exist.
               </p>
               <p>
-                Exports are controller review workbooks. New saving-card imports should use the operational import columns so required fields such as plant, dates, and financial assumptions are present.
+                Traxium validates all rows before importing. If any row fails, no cards are created. Valid workbooks are committed in one database transaction.
+              </p>
+              <p>
+                Imported cards start as Proposed so normal phase-change approvals remain intact. Classification columns are optional and use finance-safe defaults when omitted.
               </p>
             </div>
             <form action={handleImport} className="space-y-4">
-              <input type="file" name="file" accept=".xlsx,.xls" required />
+              <input type="file" name="file" accept=".xlsx" required />
               <Button type="submit">Import Workbook</Button>
             </form>
+            <a href="/api/export" className={buttonVariants({ variant: "secondary" })}>
+              Download Workbook With Import Template
+            </a>
             {savingCardMessage ? (
               <p
                 className={cn(
@@ -342,6 +357,9 @@ export function ImportExportPanel({
             ) : null}
             {savingCardResult ? (
               <div className="space-y-3 rounded-2xl border border-[var(--border)] bg-white/80 p-4">
+                <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                  No saving cards were imported. Correct every listed issue and retry the complete workbook.
+                </p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <OperationsMetric
                     label="Rows Checked"
@@ -372,6 +390,41 @@ export function ImportExportPanel({
                       <p className="mt-1 text-[var(--muted-foreground)]">
                         {item.message}
                       </p>
+                      {item.errors?.length ? (
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                                <th className="px-2 py-2 font-medium">Field</th>
+                                <th className="px-2 py-2 font-medium">Invalid value</th>
+                                <th className="px-2 py-2 font-medium">Issue</th>
+                                <th className="px-2 py-2 font-medium">Suggested fix</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.errors.map((error, errorIndex) => (
+                                <tr
+                                  key={`${item.row}-${error.field}-${errorIndex}`}
+                                  className="border-b border-[var(--border)]/70 align-top"
+                                >
+                                  <td className="px-2 py-2 font-medium text-[var(--foreground)]">
+                                    {error.field}
+                                  </td>
+                                  <td className="px-2 py-2 font-mono text-[var(--muted-foreground)]">
+                                    {error.invalidValue || "(blank)"}
+                                  </td>
+                                  <td className="px-2 py-2 text-[var(--muted-foreground)]">
+                                    {error.message}
+                                  </td>
+                                  <td className="px-2 py-2 text-[var(--muted-foreground)]">
+                                    {error.suggestedFix}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

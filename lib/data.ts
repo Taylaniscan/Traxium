@@ -16,6 +16,7 @@ export {
   getNotificationsForUser,
   getReferenceData,
   getSavingCard,
+  getSavingCardDetailReferenceData,
   getSavingCards,
   mapSavingCardsForExport,
   savingCardExportColumns,

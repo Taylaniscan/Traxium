@@ -56,7 +56,14 @@ describe("home page", () => {
     expect(markup).toContain(">5</p>");
     expect(markup).toContain("No SSO/SAML, ERP connector");
     expect(markup).toContain("href=\"/login\"");
-    expect(markup).toContain("href=\"/dashboard\"");
+    expect(markup).toContain("Trust &amp; security");
+    expect(markup).toContain("href=\"/trust\"");
+    expect(markup).toContain("Request paid pilot");
+    expect(markup).toContain("href=\"/pilot\"");
+    expect(markup).toContain("See UtopiaTrax demo");
+    expect(markup).toContain("href=\"/pilot#demo-preview\"");
+    expect(markup).not.toContain("Start free trial");
+    expect(markup).not.toContain("href=\"/dashboard\"");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 

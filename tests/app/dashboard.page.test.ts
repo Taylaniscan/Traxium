@@ -1,6 +1,10 @@
 import React from "react";
 import { OrganizationRole, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const DashboardClientMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -67,6 +71,24 @@ describe("dashboard page", () => {
         },
       },
     });
+  });
+
+  it("passes a populated UtopiaTrax portfolio without an empty dashboard payload", async () => {
+    const cards = createUtopiaTraxPortfolioCards();
+    const readiness = createUtopiaTraxReadiness();
+    getDashboardDataMock.mockResolvedValue({
+      cards,
+      annualTarget: 1075000,
+    });
+    getWorkspaceReadinessMock.mockResolvedValue(readiness);
+
+    const page = await DashboardPage();
+    const dashboardClientElement = page.props.children[1];
+
+    expect(dashboardClientElement.props.data.cards).toHaveLength(25);
+    expect(dashboardClientElement.props.data.annualTarget).toBe(1075000);
+    expect(dashboardClientElement.props.readiness).toEqual(readiness);
+    expect(dashboardClientElement.props.loadState.dataError).toBeNull();
   });
 
   it("surfaces dashboard data failures as a user-visible client load state instead of silently masking them", async () => {

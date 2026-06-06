@@ -1,4 +1,5 @@
-import { Prisma } from "@prisma/client";
+import { Phase, Prisma } from "@prisma/client";
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { calculateSavings } from "@/lib/calculations";
 import { prisma } from "@/lib/prisma";
 import {
@@ -35,6 +36,102 @@ function buildSavingCardPath(savingCardId: string) {
   return `/saving-cards/${savingCardId}`;
 }
 
+const SAVING_CARD_CREATE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const;
+
+const SAVING_CARD_IMPORT_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 120_000,
+} as const;
+
+function assertInitialSavingCardPhase(phase: Phase) {
+  if (!isInitialWorkflowPhase(phase)) {
+    throw new WorkflowError(
+      `New saving cards must start in ${INITIAL_WORKFLOW_PHASE} phase.`,
+      409
+    );
+  }
+}
+
+async function createSavingCardRecord(
+  tx: Prisma.TransactionClient,
+  payload: ReturnType<typeof buildSavingCardPayload>,
+  actorId: string,
+  organizationId: string
+) {
+  const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
+
+  return tx.savingCard.create({
+    data: {
+      organizationId,
+      title: payload.title,
+      description: payload.description,
+      savingType: payload.savingType,
+      impactType: payload.impactType,
+      impactRecurrence: payload.impactRecurrence,
+      budgetImpact: payload.budgetImpact,
+      phase: INITIAL_WORKFLOW_PHASE,
+      supplierId: resolved.supplierId,
+      materialId: resolved.materialId,
+      alternativeSupplierId: resolved.alternativeSupplierId,
+      alternativeSupplierManualName: resolved.alternativeSupplierId
+        ? null
+        : normalizeOptionalName(payload.alternativeSupplier?.name),
+      alternativeMaterialId: resolved.alternativeMaterialId,
+      alternativeMaterialManualName: resolved.alternativeMaterialId
+        ? null
+        : normalizeOptionalName(payload.alternativeMaterial?.name),
+      categoryId: resolved.categoryId,
+      plantId: resolved.plantId,
+      businessUnitId: resolved.businessUnitId,
+      buyerId: resolved.buyerId,
+      baselinePrice: payload.baselinePrice,
+      newPrice: payload.newPrice,
+      annualVolume: payload.annualVolume,
+      currency: payload.currency,
+      fxRate: payload.fxRate,
+      calculatedSavings: payload.calculatedSavings,
+      calculatedSavingsUSD: payload.calculatedSavingsUSD,
+      frequency: payload.frequency,
+      savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
+      implementationComplexity: normalizeOptionalName(
+        payload.implementationComplexity || undefined
+      ),
+      qualificationStatus: normalizeOptionalName(
+        payload.qualificationStatus || undefined
+      ),
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      impactStartDate: payload.impactStartDate,
+      impactEndDate: payload.impactEndDate,
+      financeLocked: false,
+      cancellationReason: null,
+      stakeholders: {
+        create: (payload.stakeholderIds ?? []).map((userId) => ({
+          userId,
+        })),
+      },
+      phaseHistory: {
+        create: {
+          fromPhase: null,
+          toPhase: INITIAL_WORKFLOW_PHASE,
+          changedById: actorId,
+        },
+      },
+      auditLogs: {
+        create: {
+          userId: actorId,
+          action: "saving_card.created",
+          detail: `Saving card created in ${INITIAL_WORKFLOW_PHASE} phase`,
+        },
+      },
+    },
+    include: savingCardDetailInclude,
+  });
+}
+
 export async function createSavingCard(
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
@@ -46,81 +143,12 @@ export async function createSavingCard(
   const { organizationId } = resolveTenantScope(context);
   const payload = buildSavingCardPayload(input);
 
-  if (!isInitialWorkflowPhase(payload.phase)) {
-    throw new WorkflowError(
-      `New saving cards must start in ${INITIAL_WORKFLOW_PHASE} phase.`,
-      409
-    );
-  }
+  assertInitialSavingCardPhase(payload.phase);
 
-  const card = await prisma.$transaction(async (tx) => {
-    const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
-
-    return tx.savingCard.create({
-      data: {
-        organizationId,
-        title: payload.title,
-        description: payload.description,
-        savingType: payload.savingType,
-        phase: INITIAL_WORKFLOW_PHASE,
-        supplierId: resolved.supplierId,
-        materialId: resolved.materialId,
-        alternativeSupplierId: resolved.alternativeSupplierId,
-        alternativeSupplierManualName: resolved.alternativeSupplierId
-          ? null
-          : normalizeOptionalName(payload.alternativeSupplier?.name),
-        alternativeMaterialId: resolved.alternativeMaterialId,
-        alternativeMaterialManualName: resolved.alternativeMaterialId
-          ? null
-          : normalizeOptionalName(payload.alternativeMaterial?.name),
-        categoryId: resolved.categoryId,
-        plantId: resolved.plantId,
-        businessUnitId: resolved.businessUnitId,
-        buyerId: resolved.buyerId,
-        baselinePrice: payload.baselinePrice,
-        newPrice: payload.newPrice,
-        annualVolume: payload.annualVolume,
-        currency: payload.currency,
-        fxRate: payload.fxRate,
-        calculatedSavings: payload.calculatedSavings,
-        calculatedSavingsUSD: payload.calculatedSavingsUSD,
-        frequency: payload.frequency,
-        savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
-        implementationComplexity: normalizeOptionalName(
-          payload.implementationComplexity || undefined
-        ),
-        qualificationStatus: normalizeOptionalName(
-          payload.qualificationStatus || undefined
-        ),
-        startDate: payload.startDate,
-        endDate: payload.endDate,
-        impactStartDate: payload.impactStartDate,
-        impactEndDate: payload.impactEndDate,
-        financeLocked: false,
-        cancellationReason: null,
-        stakeholders: {
-          create: (payload.stakeholderIds ?? []).map((userId) => ({
-            userId,
-          })),
-        },
-        phaseHistory: {
-          create: {
-            fromPhase: null,
-            toPhase: INITIAL_WORKFLOW_PHASE,
-            changedById: actorId,
-          },
-        },
-        auditLogs: {
-          create: {
-            userId: actorId,
-            action: "saving_card.created",
-            detail: `Saving card created in ${INITIAL_WORKFLOW_PHASE} phase`,
-          },
-        },
-      },
-      include: savingCardDetailInclude,
-    });
-  });
+  const card = await prisma.$transaction(
+    (tx) => createSavingCardRecord(tx, payload, actorId, organizationId),
+    SAVING_CARD_CREATE_TRANSACTION_OPTIONS
+  );
 
   if (!options?.skipViewInvalidation) {
     invalidatePortfolioSurfaceCaches(organizationId);
@@ -157,6 +185,21 @@ export async function updateSavingCard(
       );
     }
 
+    if (
+      existing.financeLocked &&
+      (
+        existing.savingType !== payload.savingType ||
+        existing.impactType !== payload.impactType ||
+        existing.impactRecurrence !== payload.impactRecurrence ||
+        existing.budgetImpact !== payload.budgetImpact
+      )
+    ) {
+      throw new WorkflowError(
+        "Finance-locked savings cannot change savings classification. Remove the finance lock before changing savings type, impact type, recurrence, or budget impact.",
+        409
+      );
+    }
+
     const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
 
     const nextCard = await tx.savingCard.update({
@@ -164,7 +207,14 @@ export async function updateSavingCard(
       data: {
         title: payload.title,
         description: payload.description,
-        savingType: payload.savingType,
+        savingType: existing.financeLocked ? existing.savingType : payload.savingType,
+        impactType: existing.financeLocked ? existing.impactType : payload.impactType,
+        impactRecurrence: existing.financeLocked
+          ? existing.impactRecurrence
+          : payload.impactRecurrence,
+        budgetImpact: existing.financeLocked
+          ? existing.budgetImpact
+          : payload.budgetImpact,
         phase: existing.phase,
         supplierId: resolved.supplierId,
         materialId: resolved.materialId,
@@ -782,12 +832,30 @@ export async function importSavingCards(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
+  const payloads = rows.map((row) => buildSavingCardPayload(row));
 
-  for (const row of rows) {
-    await createSavingCard(row, actorId, organizationId, {
-      skipViewInvalidation: true,
-    });
-  }
+  payloads.forEach((payload) => assertInitialSavingCardPhase(payload.phase));
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const payload of payloads) {
+        await createSavingCardRecord(tx, payload, actorId, organizationId);
+      }
+
+      await writeAuditEvent(tx, {
+        organizationId,
+        actorUserId: actorId,
+        eventType: auditEventTypes.SAVING_CARDS_IMPORTED,
+        detail: `${payloads.length} saving card${payloads.length === 1 ? "" : "s"} imported in one transaction.`,
+        payload: {
+          importedCount: payloads.length,
+          phase: INITIAL_WORKFLOW_PHASE,
+          atomic: true,
+        },
+      });
+    },
+    SAVING_CARD_IMPORT_TRANSACTION_OPTIONS
+  );
 
   invalidatePortfolioSurfaceCaches(organizationId);
 }

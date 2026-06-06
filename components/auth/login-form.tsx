@@ -87,7 +87,7 @@ export function LoginForm() {
         <CardHeader>
           <CardTitle>Sign in to Traxium</CardTitle>
           <CardDescription>
-            Procurement savings governance from idea to realized value.
+            Procurement savings governance from proposed initiative to captured value.
           </CardDescription>
         </CardHeader>
 

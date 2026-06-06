@@ -2,6 +2,7 @@ import { Role } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import {
   createEvidenceSignedUrl,
@@ -101,12 +102,15 @@ export async function GET(
       60,
     );
 
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        savingCardId: evidence.savingCardId,
-        action: "evidence.downloaded",
-        detail: `Evidence downloaded: ${evidence.fileName}`,
+    await writeAuditEvent(prisma, {
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      savingCardId: evidence.savingCardId,
+      targetEntityId: evidence.id,
+      eventType: auditEventTypes.EVIDENCE_DOWNLOADED,
+      detail: `Evidence downloaded: ${evidence.fileName}`,
+      payload: {
+        fileName: evidence.fileName,
       },
     });
 

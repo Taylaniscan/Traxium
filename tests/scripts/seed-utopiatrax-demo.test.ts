@@ -1,6 +1,23 @@
-import { Currency, Phase } from "@prisma/client";
+import {
+  Currency,
+  EvidenceType,
+  Frequency,
+  Phase,
+  SavingType,
+  SavingsBudgetImpact,
+  SavingsImpactRecurrence,
+  SavingsImpactType,
+} from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
+import { calculateSavings } from "@/lib/calculations";
+import { buildControllerWorkbookModel } from "@/lib/export/controller-workbook";
+import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
+import {
+  getUnexpectedUtopiaTraxWorkspaceUsers,
+  getUtopiaTraxResetSafetyViolations,
+  UTOPIATRAX_SHOWCASE_CARD_TITLE,
+} from "@/scripts/utopiatrax-demo-contract";
 import {
   getUtopiaTraxExpectedPendingOpenActionCount,
   getUtopiaTraxDatasetSummary,
@@ -9,8 +26,10 @@ import {
   UTOPIATRAX_DIRECT_CATEGORIES,
   UTOPIATRAX_PENDING_PHASE_REQUESTS,
   UTOPIATRAX_SAVING_CARDS,
+  shouldPersistUtopiaTraxEvidenceRecord,
   validateUtopiaTraxDemoDataset,
 } from "@/scripts/seed-utopiatrax-demo";
+import { createUtopiaTraxReadiness } from "../helpers/utopiatrax-demo-fixtures";
 
 describe("UtopiaTrax demo seed dataset", () => {
   it("defines the required manufacturing demo portfolio shape", () => {
@@ -48,9 +67,50 @@ describe("UtopiaTrax demo seed dataset", () => {
     const currencies = new Set(UTOPIATRAX_SAVING_CARDS.map((card) => card.currency));
 
     expect(summary.evidenceCount).toBeGreaterThanOrEqual(12);
+    expect(
+      UTOPIATRAX_SAVING_CARDS.filter((card) => card.evidence.length > 0).length
+    ).toBeGreaterThanOrEqual(12);
+    expect(
+      UTOPIATRAX_SAVING_CARDS.flatMap((card) => card.evidence).every(
+        (item) => item.fileName.endsWith(".pdf")
+      )
+    ).toBe(true);
     expect(summary.alternativeCount).toBeGreaterThanOrEqual(8);
     expect(currencies.has(Currency.EUR)).toBe(true);
     expect(currencies.has(Currency.USD)).toBe(true);
+    expect(shouldPersistUtopiaTraxEvidenceRecord(false)).toBe(false);
+    expect(shouldPersistUtopiaTraxEvidenceRecord(true)).toBe(true);
+  });
+
+  it("classifies every card with a realistic controller-reporting mix", () => {
+    const summary = getUtopiaTraxDatasetSummary();
+
+    expect(
+      UTOPIATRAX_SAVING_CARDS.every(
+        (card) =>
+          card.savingType &&
+          card.impactType &&
+          card.impactRecurrence &&
+          card.budgetImpact
+      )
+    ).toBe(true);
+    expect(summary.savingTypeCounts[SavingType.PRICE_REDUCTION]).toBeGreaterThanOrEqual(8);
+    expect(summary.savingTypeCounts[SavingType.SUPPLIER_SWITCH]).toBeGreaterThanOrEqual(4);
+    expect(summary.savingTypeCounts[SavingType.REBATE_CREDIT]).toBeGreaterThanOrEqual(3);
+    expect(summary.savingTypeCounts[SavingType.SPECIFICATION_CHANGE]).toBeGreaterThanOrEqual(3);
+    expect(summary.savingTypeCounts[SavingType.FREIGHT_LOGISTICS]).toBeGreaterThanOrEqual(2);
+    expect(summary.savingTypeCounts[SavingType.PROCESS_TOLLING]).toBeGreaterThanOrEqual(2);
+    expect(summary.savingTypeCounts[SavingType.PAYMENT_TERMS]).toBeGreaterThanOrEqual(1);
+    expect(summary.savingTypeCounts[SavingType.COST_AVOIDANCE]).toBeGreaterThanOrEqual(1);
+    expect(summary.impactTypeCounts[SavingsImpactType.HARD_SAVINGS]).toBeGreaterThan(0);
+    expect(summary.impactTypeCounts[SavingsImpactType.COST_AVOIDANCE]).toBeGreaterThan(0);
+    expect(summary.recurrenceCounts[SavingsImpactRecurrence.RECURRING]).toBeGreaterThan(0);
+    expect(
+      summary.recurrenceCounts[SavingsImpactRecurrence.ONE_TIME] +
+        summary.recurrenceCounts[SavingsImpactRecurrence.TEMPORARY]
+    ).toBeGreaterThan(0);
+    expect(summary.budgetImpactCounts[SavingsBudgetImpact.BUDGET_IMPACT]).toBeGreaterThan(0);
+    expect(summary.budgetImpactCounts[SavingsBudgetImpact.FORECAST_AVOIDANCE]).toBeGreaterThan(0);
   });
 
   it("includes volume rows, pending actions, and trial billing inputs for demo surfaces", () => {
@@ -81,6 +141,63 @@ describe("UtopiaTrax demo seed dataset", () => {
     expect(new Set(keys.savingCardTitles).size).toBe(keys.savingCardTitles.length);
   });
 
+  it("keeps reset safety bounded to the four known demo users", () => {
+    expect(
+      getUnexpectedUtopiaTraxWorkspaceUsers([
+        "taylaniscan+4@gmail.com",
+        "TAYLANISCAN+5@GMAIL.COM",
+        "taylaniscan+6@gmail.com",
+        "taylaniscan+7@gmail.com",
+      ])
+    ).toEqual([]);
+    expect(
+      getUnexpectedUtopiaTraxWorkspaceUsers([
+        "taylaniscan+4@gmail.com",
+        "real.customer@example.com",
+      ])
+    ).toEqual(["real.customer@example.com"]);
+
+    expect(
+      getUtopiaTraxResetSafetyViolations("org-utopiatrax", [
+        {
+          email: "taylaniscan+4@gmail.com",
+          membershipOrganizationIds: ["org-utopiatrax"],
+        },
+        {
+          email: "taylaniscan+5@gmail.com",
+          membershipOrganizationIds: ["org-utopiatrax", "org-customer"],
+        },
+      ])
+    ).toEqual({
+      unexpectedEmails: [],
+      externalMembershipEmails: ["taylaniscan+5@gmail.com"],
+    });
+  });
+
+  it("defines one complete showcase card for the buyer walkthrough", () => {
+    const showcase = UTOPIATRAX_SAVING_CARDS.find(
+      (card) => card.title === UTOPIATRAX_SHOWCASE_CARD_TITLE
+    );
+
+    expect(showcase).toMatchObject({
+      title: "PP Carrier dual-source negotiation",
+      phase: Phase.ACHIEVED,
+      volumeProfile: "on-track",
+    });
+    expect(showcase?.financeLocked).toBeFalsy();
+    expect(showcase?.evidence).toHaveLength(5);
+    expect(new Set(showcase?.evidence.map((item) => item.evidenceType))).toEqual(
+      new Set([
+        EvidenceType.SUPPLIER_QUOTE,
+        EvidenceType.NEGOTIATION_SUMMARY,
+        EvidenceType.PRICE_CONFIRMATION,
+        EvidenceType.CALCULATION_WORKBOOK,
+        EvidenceType.INVOICE_OR_ACTUAL,
+      ])
+    );
+    expect(showcase?.alternative).toBeTruthy();
+  });
+
   it("produces non-empty reporting-style aggregates from the pure dataset", () => {
     const activeSavings = UTOPIATRAX_SAVING_CARDS.filter(
       (card) => card.phase !== Phase.CANCELLED
@@ -105,5 +222,119 @@ describe("UtopiaTrax demo seed dataset", () => {
     expect(activeSavings).toBeGreaterThan(0);
     expect(savingsByCategory.size).toBe(UTOPIATRAX_DIRECT_CATEGORIES.length);
     expect([...savingsByCategory.values()].every((value) => value > 0)).toBe(true);
+  });
+
+  it("produces a reconciled, non-empty controller workbook model for all six categories", () => {
+    const cards = UTOPIATRAX_SAVING_CARDS.map((card, index) => {
+      const totals = calculateSavings({
+        baselinePrice: card.baselinePrice,
+        newPrice: card.newPrice,
+        annualVolume: card.annualVolume,
+        currency: card.currency,
+        fxRate: card.currency === Currency.USD ? 0.92 : 1.087,
+      });
+
+      return {
+        id: `card-${index + 1}`,
+        title: card.title,
+        description: card.narrative,
+        savingType: card.savingType,
+        impactType: card.impactType,
+        impactRecurrence: card.impactRecurrence,
+        budgetImpact: card.budgetImpact,
+        phase: card.phase,
+        supplierId: `supplier-${index + 1}`,
+        materialId: `material-${index + 1}`,
+        categoryId: `category-${card.categoryName}`,
+        plantId: `plant-${card.plantName}`,
+        businessUnitId: `business-unit-${card.businessUnitName}`,
+        buyerId: `buyer-${card.buyerName}`,
+        alternativeSupplierManualName: card.alternativeSupplierName ?? null,
+        alternativeMaterialManualName: card.alternative?.materialName ?? null,
+        baselinePrice: card.baselinePrice,
+        newPrice: card.newPrice,
+        annualVolume: card.annualVolume,
+        volumeUnit: "kg",
+        currency: card.currency,
+        calculatedSavings: totals.savingsEUR,
+        calculatedSavingsUSD: totals.savingsUSD,
+        frequency: Frequency.RECURRING,
+        savingDriver: card.savingDriver,
+        implementationComplexity: card.implementationComplexity,
+        qualificationStatus: card.qualificationStatus,
+        startDate: new Date(card.impactStart),
+        endDate: new Date(card.impactEnd),
+        impactStartDate: new Date(card.impactStart),
+        impactEndDate: new Date(card.impactEnd),
+        financeLocked: Boolean(card.financeLocked),
+        cancellationReason: card.cancellationReason ?? null,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-05T00:00:00.000Z"),
+        evidence: card.evidence.map((item, evidenceIndex) => ({
+          id: `evidence-${index + 1}-${evidenceIndex + 1}`,
+          evidenceType: item.evidenceType,
+          uploadedAt: new Date(
+            Date.UTC(2026, 2, Math.min(evidenceIndex + 1, 28))
+          ),
+        })),
+        supplier: {
+          id: `supplier-${index + 1}`,
+          name: card.supplierName,
+        },
+        material: {
+          id: `material-${index + 1}`,
+          name: card.materialName,
+        },
+        alternativeSupplier: null,
+        alternativeMaterial: null,
+        category: {
+          id: `category-${card.categoryName}`,
+          name: card.categoryName,
+        },
+        buyer: {
+          id: `buyer-${card.buyerName}`,
+          name: card.buyerName,
+        },
+        plant: {
+          id: `plant-${card.plantName}`,
+          name: card.plantName,
+        },
+        businessUnit: {
+          id: `business-unit-${card.businessUnitName}`,
+          name: card.businessUnitName,
+        },
+        phaseChangeRequests: [],
+        phaseHistory: [
+          {
+            toPhase: card.phase,
+            createdAt: new Date("2026-03-01T00:00:00.000Z"),
+          },
+        ],
+      };
+    }) as SavingCardPortfolio[];
+    const model = buildControllerWorkbookModel({
+      cards,
+      generatedAt: new Date("2026-06-05T12:00:00.000Z"),
+      workspaceReadiness:
+        createUtopiaTraxReadiness() as unknown as WorkspaceReadiness,
+    });
+
+    expect(model.savingCardRows).toHaveLength(25);
+    expect(model.portfolioSummaryRows.length).toBeGreaterThan(20);
+    expect(model.dataDictionaryRows.length).toBeGreaterThan(30);
+    expect(model.importTemplateRows).toHaveLength(1);
+    expect(model.evidenceSummaryRows).toHaveLength(25);
+    expect(
+      new Set(model.savingCardRows.map((row) => row.Category)).size
+    ).toBe(6);
+    expect(
+      model.savingCardRows.some((row) => Number(row["Evidence Count"]) > 0)
+    ).toBe(true);
+    expect(
+      model.savingCardRows.some(
+        (row) => row["Finance Lock Status"] === "Locked"
+      )
+    ).toBe(true);
+    expect(model.reconciliation.difference).toBe(0);
   });
 });

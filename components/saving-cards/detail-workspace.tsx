@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, FileStack, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileStack, LockKeyhole, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
 import { ApprovalPanel } from "@/components/saving-cards/approval-panel";
 import { CreatableMasterDataField, type CreatableValue } from "@/components/saving-cards/creatable-master-data-field";
 import { ResultsTab } from "@/components/saving-cards/results-tab";
@@ -14,13 +14,29 @@ import { Label } from "@/components/ui/label";
 import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { currencies, phaseLabels, roleLabels } from "@/lib/constants";
-import { formatEvidenceFileSize } from "@/lib/evidence-config";
+import {
+  currencies,
+  formatPhaseReferencesForDisplay,
+  phaseLabels,
+  roleLabels,
+  savingTypeLabels,
+  savingsBudgetImpactLabels,
+  savingsImpactRecurrenceLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
+import {
+  evidenceTrustCopy,
+  evidenceTypeLabels,
+  formatEvidenceFileSize,
+} from "@/lib/evidence-config";
+import { getEvidenceStatus } from "@/lib/evidence";
 import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { SavingCardWithRelations } from "@/lib/types";
 
-type ReferenceData = Awaited<ReturnType<typeof import("@/lib/data").getReferenceData>>;
+type ReferenceData = Awaited<
+  ReturnType<typeof import("@/lib/data").getSavingCardDetailReferenceData>
+>;
 
 type SupplierForm = {
   supplier: CreatableValue;
@@ -258,7 +274,10 @@ export function SavingCardDetailWorkspace({
             </p>
           </div>
 
-          <div className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur">
+          <div
+            id="workflow"
+            className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur"
+          >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
@@ -371,7 +390,8 @@ export function SavingCardDetailWorkspace({
 
                 <DetailSection title="Business Context">
                   <Metric label="Phase" value={phaseLabels[card.phase]} />
-                  <Metric label="Saving Type" value={card.savingType} />
+                  <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
+                  <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
                   <Metric label="Business Unit" value={card.businessUnit.name} />
                   <Metric label="Plant" value={card.plant.name} />
                 </DetailSection>
@@ -388,6 +408,8 @@ export function SavingCardDetailWorkspace({
               <Metric label="Saving Driver" value={card.savingDriver ?? "Not set"} />
               <Metric label="Implementation Complexity" value={card.implementationComplexity ?? "Not set"} />
               <Metric label="Qualification Status" value={card.qualificationStatus ?? "Not set"} />
+              <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+              <Metric label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
               <Metric label="Buyer" value={card.buyer.name} />
               <Metric label="Category" value={card.category.name} />
               <Metric label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
@@ -404,8 +426,9 @@ export function SavingCardDetailWorkspace({
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/65 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
-              Finance validation compares the saving type, frequency, baseline price, new price, annual volume,
-              currency, FX rate, and impact window against supporting evidence and forecast-versus-actual results.
+              Finance validation compares savings type, impact type, recurrence, budget impact, baseline price,
+              new price, annual volume, currency, FX rate, and impact window against supporting evidence and
+              forecast-versus-actual results.
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -414,6 +437,10 @@ export function SavingCardDetailWorkspace({
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
               <Metric label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
               <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(card.calculatedSavingsUSD), "USD")} />
+              <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
+              <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
+              <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+              <Metric label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
               <Metric label="FX Rate" value={card.fxRate.toString()} />
               <Metric
                 label="Alternative Scenario"
@@ -502,7 +529,10 @@ export function SavingCardDetailWorkspace({
 
 {activeTab === "evidence" ? (
   <Card className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
-    <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
+    <CardHeader
+      id="evidence"
+      className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65"
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
@@ -514,7 +544,18 @@ export function SavingCardDetailWorkspace({
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge tone={card.evidence.length ? "emerald" : "slate"}>
+          <Badge
+            tone={
+              card.evidence.length
+                ? "emerald"
+                : card.phase === "IDEA"
+                  ? "amber"
+                  : "rose"
+            }
+          >
+            {getEvidenceStatus(card.phase, card.evidence.length)}
+          </Badge>
+          <Badge tone="slate">
             {card.evidence.length} file{card.evidence.length === 1 ? "" : "s"}
           </Badge>
           {card.evidence.length ? (
@@ -525,8 +566,15 @@ export function SavingCardDetailWorkspace({
     </CardHeader>
 
     <CardContent className="space-y-3">
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
-        Finance validation uses the quote or supplier bid for the new price, the contract or purchase order for the baseline, invoices or actual proof for realized value, and calculation workbooks for the savings bridge.
+      <div className="flex gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
+        <LockKeyhole className="mt-1 h-4 w-4 shrink-0 text-[var(--finance-lock)]" />
+        <div>
+          <p>
+            Finance validation uses the quote or supplier bid for the new price, the contract or purchase order for the baseline, invoices or actual proof for captured value, and calculation workbooks for the savings bridge.
+          </p>
+          <p className="mt-2">{evidenceTrustCopy.privateStorage}</p>
+          <p className="mt-2">{evidenceTrustCopy.financePurpose}</p>
+        </div>
       </div>
 
       {card.evidence.length ? (
@@ -545,11 +593,18 @@ export function SavingCardDetailWorkspace({
                   {item.fileName}
                 </p>
                 <Badge tone="emerald">On record</Badge>
+                <Badge tone="slate">
+                  {evidenceTypeLabels[item.evidenceType]}
+                </Badge>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
                 <span>{item.fileType}</span>
                 <span>{formatEvidenceFileSize(item.fileSize)}</span>
                 <span>Uploaded {formatDate(item.uploadedAt)}</span>
+                <span>
+                  By {item.uploadedBy?.name ?? "Workspace user"}
+                </span>
+                <span>Private file · Signed download</span>
               </div>
             </div>
 
@@ -560,7 +615,7 @@ export function SavingCardDetailWorkspace({
                 rel="noreferrer"
                 className="inline-flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-elevated)]"
               >
-                Open file
+                Signed download
               </a>
             </div>
           </div>
@@ -571,7 +626,7 @@ export function SavingCardDetailWorkspace({
             No evidence uploaded yet
           </p>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Upload quote, contract, invoice, and calculation evidence to make the commercial case and audit trail complete.
+            Add a supplier quote, price confirmation, contract or purchase order, invoice or actual proof, or calculation workbook before finance validation. Proposed cards can be saved without evidence.
           </p>
         </div>
       )}
@@ -588,6 +643,10 @@ export function SavingCardDetailWorkspace({
           annualVolume={card.annualVolume}
           volumeUnit={card.volumeUnit}
           currency={card.currency}
+          savingType={card.savingType}
+          impactType={card.impactType}
+          impactRecurrence={card.impactRecurrence}
+          budgetImpact={card.budgetImpact}
         />
       ) : null}
 
@@ -1008,6 +1067,13 @@ function RecordSummaryRail({
           <RailRow label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
         </RailSection>
 
+        <RailSection title="Savings Classification">
+          <RailRow label="Savings Type" value={savingTypeLabels[card.savingType]} />
+          <RailRow label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
+          <RailRow label="Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+          <RailRow label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
+        </RailSection>
+
         <RailSection title="Ownership & Scope">
           <RailRow label="Buyer" value={card.buyer.name} />
           <RailRow label="Category" value={card.category.name} />
@@ -1078,7 +1144,9 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
                 key={request.id}
                 title={`${phaseLabels[request.currentPhase]} to ${phaseLabels[request.requestedPhase]}`}
                 subtitle={`Requested by ${request.requestedBy.name} on ${formatDate(request.createdAt)}`}
-                detail={request.comment ?? "No request comment provided."}
+                detail={formatPhaseReferencesForDisplay(
+                  request.comment ?? "No request comment provided."
+                )}
                 badge={
                   <Badge tone={getApprovalTone(request.approvalStatus)}>
                     {request.approvalStatus.toLowerCase()}
@@ -1098,7 +1166,9 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
                 key={approval.id}
                 title={`${phaseLabels[approval.phase]} · ${approval.approver.name}`}
                 subtitle={approval.status.toLowerCase()}
-                detail={approval.comment ?? "No comment"}
+                detail={formatPhaseReferencesForDisplay(
+                  approval.comment ?? "No comment"
+                )}
                 badge={<Badge tone={getApprovalTone(approval.status)}>{approval.status.toLowerCase()}</Badge>}
               />
             ))

@@ -304,12 +304,28 @@ function getRecommendedActionSummary(
 export function getRecommendedBillingRecoveryIntent(
   accessState: OrganizationAccessStateResult
 ): BillingRecoveryIntent {
+  const stripeSubscriptionId =
+    accessState.stripeSubscriptionId?.trim().toLowerCase() ?? "";
+  const isPlaceholderTrialingSubscription =
+    accessState.reasonCode === "trialing" &&
+    accessState.plan === null &&
+    (stripeSubscriptionId.startsWith("sub_demo") ||
+      stripeSubscriptionId.startsWith("sub_fake") ||
+      stripeSubscriptionId.startsWith("sub_local") ||
+      stripeSubscriptionId.startsWith("sub_preview") ||
+      stripeSubscriptionId.startsWith("sub_sample"));
+
   switch (accessState.reasonCode) {
+    case "workspace_trial":
     case "trial_expired":
     case "incomplete":
     case "incomplete_expired":
     case "no_subscription":
       return "resume_subscription";
+    case "trialing":
+      return isPlaceholderTrialingSubscription
+        ? "resume_subscription"
+        : "open_billing_portal";
     case "past_due_grace_period":
     case "past_due_blocked":
     case "unpaid":

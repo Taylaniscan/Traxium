@@ -60,6 +60,10 @@ const LOCKED_FINANCE_FIELDS = new Set([
   "calculatedSavingsUSD",
   "impactStartDate",
   "impactEndDate",
+  "savingType",
+  "impactType",
+  "impactRecurrence",
+  "budgetImpact",
 ]);
 
 export function getPermissionsForRole(role: Role): readonly AppPermission[] {

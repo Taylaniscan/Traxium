@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import type { SessionUser } from "@/lib/auth";
 import { getPendingApprovals, getWorkspaceReadiness } from "@/lib/data";
 import { getNotificationFeedForUser } from "@/lib/notifications";
 import { captureException } from "@/lib/observability";
@@ -16,8 +16,13 @@ function buildWorkspaceSummary(readiness: WorkspaceReadiness | null) {
   };
 }
 
-export async function AppShell({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+export async function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user: SessionUser;
+}) {
   const [notificationFeedResult, pendingApprovalsResult, readinessResult] =
     await Promise.allSettled([
       getNotificationFeedForUser(user.id, user.organizationId),

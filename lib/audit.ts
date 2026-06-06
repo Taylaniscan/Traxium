@@ -15,6 +15,11 @@ export const auditEventTypes = {
   PHASE_CHANGE_APPROVED: "phase_change.approved",
   PHASE_CHANGE_REJECTED: "phase_change.rejected",
   PHASE_CHANGE_COMPLETED: "phase_change.completed",
+  EVIDENCE_UPLOADED: "evidence.uploaded",
+  EVIDENCE_DOWNLOADED: "evidence.downloaded",
+  SAVING_CARDS_IMPORTED: "saving_cards.imported",
+  SAVING_CARDS_IMPORT_FAILED: "saving_cards.import_failed",
+  CONTROLLER_WORKBOOK_EXPORTED: "controller_workbook.exported",
 } as const;
 
 export type AuditEventType =
@@ -106,6 +111,7 @@ export type OrganizationAuditEvent = {
 export type WriteAuditEventInput = {
   organizationId: string;
   actorUserId?: string | null;
+  savingCardId?: string | null;
   targetUserId?: string | null;
   targetEntityId?: string | null;
   eventType: AuditEventType;
@@ -284,6 +290,7 @@ export async function writeAuditEvent(
       organizationId,
       userId: input.actorUserId ?? null,
       actorUserId: input.actorUserId ?? null,
+      ...(input.savingCardId ? { savingCardId: input.savingCardId } : {}),
       targetUserId: input.targetUserId ?? null,
       targetEntityId: input.targetEntityId ?? null,
       eventType: input.eventType,

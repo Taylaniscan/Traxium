@@ -1,5 +1,8 @@
 import { buildOrganizationUserWhere } from "@/lib/organizations";
-import { phaseLabels } from "@/lib/constants";
+import {
+  controllerSavingCardColumns,
+  mapSavingCardsForControllerExport,
+} from "@/lib/export/controller-workbook";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
 import {
@@ -12,7 +15,7 @@ import { savingCardDetailInclude } from "@/lib/saving-cards/shared";
 export async function getReferenceData(context: TenantContextSource) {
   const scope = resolveTenantScope(context);
   const [users, buyers, suppliers, materials, categories, plants, businessUnits, fxRates] =
-    await Promise.all([
+    await prisma.$transaction([
       prisma.user.findMany({
         where: buildOrganizationUserWhere(scope),
         orderBy: { name: "asc" },
@@ -55,6 +58,23 @@ export async function getReferenceData(context: TenantContextSource) {
     plants,
     businessUnits,
     fxRates,
+  };
+}
+
+export async function getSavingCardDetailReferenceData(context: TenantContextSource) {
+  const scope = resolveTenantScope(context);
+  const suppliers = await prisma.supplier.findMany({
+    where: buildTenantScopeWhere(scope),
+    orderBy: { name: "asc" },
+  });
+  const materials = await prisma.material.findMany({
+    where: buildTenantScopeWhere(scope),
+    orderBy: { name: "asc" },
+  });
+
+  return {
+    suppliers,
+    materials,
   };
 }
 
@@ -114,62 +134,8 @@ export async function getNotificationsForUser(userId: string) {
   });
 }
 
-export const savingCardExportColumns = [
-  "Card ID",
-  "Saving Card Title",
-  "Phase",
-  "Saving Type",
-  "Supplier",
-  "Material",
-  "Alternative Supplier",
-  "Alternative Material",
-  "Category",
-  "Buyer",
-  "Business Unit",
-  "Saving Driver",
-  "Implementation Complexity",
-  "Qualification Status",
-  "Baseline Price",
-  "New Price",
-  "Annual Volume",
-  "Currency",
-  "Savings EUR",
-  "Savings USD",
-  "Start Date",
-  "End Date",
-  "Impact Start Date",
-  "Impact End Date",
-  "Finance Locked",
-] as const;
+export const savingCardExportColumns = controllerSavingCardColumns;
 
 export function mapSavingCardsForExport(cards: SavingCardPortfolio[]) {
-  return cards.map((card) => ({
-    "Card ID": card.id,
-    "Saving Card Title": card.title,
-    Phase: phaseLabels[card.phase] ?? card.phase,
-    "Saving Type": card.savingType,
-    Supplier: card.supplier?.name ?? "",
-    Material: card.material?.name ?? "",
-    "Alternative Supplier":
-      card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "",
-    "Alternative Material":
-      card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "",
-    Category: card.category?.name ?? "",
-    Buyer: card.buyer?.name ?? "",
-    "Business Unit": card.businessUnit?.name ?? "",
-    "Saving Driver": card.savingDriver ?? "",
-    "Implementation Complexity": card.implementationComplexity ?? "",
-    "Qualification Status": card.qualificationStatus ?? "",
-    "Baseline Price": card.baselinePrice,
-    "New Price": card.newPrice,
-    "Annual Volume": card.annualVolume,
-    Currency: card.currency,
-    "Savings EUR": card.calculatedSavings,
-    "Savings USD": card.calculatedSavingsUSD,
-    "Start Date": card.startDate,
-    "End Date": card.endDate,
-    "Impact Start Date": card.impactStartDate,
-    "Impact End Date": card.impactEndDate,
-    "Finance Locked": card.financeLocked ? "Yes" : "No",
-  }));
+  return mapSavingCardsForControllerExport(cards);
 }

@@ -13,6 +13,7 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   savingCard: {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
   },
   materialConsumptionForecast: {
     findMany: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   deleteActual,
+  getPortfolioVolumeTimelines,
   getVolumeTimeline,
   importFromCsv,
   normalizePeriod,
@@ -67,6 +69,81 @@ describe("tenant isolation queries", () => {
     });
     expect(mockPrisma.materialConsumptionForecast.findMany).not.toHaveBeenCalled();
     expect(mockPrisma.materialConsumptionActual.findMany).not.toHaveBeenCalled();
+  });
+
+  it("loads portfolio volume data with three tenant-scoped queries", async () => {
+    const firstCard = createScopedSavingCard();
+    const secondCard = createScopedSavingCard({
+      id: "card-2",
+      materialId: "material-2",
+      supplierId: "supplier-2",
+      baselinePrice: 6,
+      newPrice: 5,
+    });
+    const period = DEFAULT_TENANT_PERIOD;
+
+    mockPrisma.savingCard.findMany.mockResolvedValueOnce([firstCard, secondCard]);
+    mockPrisma.materialConsumptionForecast.findMany.mockResolvedValueOnce([
+      {
+        savingCardId: "card-1",
+        period,
+        forecastQty: 120,
+        unit: "kg",
+        source: ForecastSource.MANUAL_ENTRY,
+      },
+      {
+        savingCardId: "card-2",
+        period,
+        forecastQty: 80,
+        unit: "kg",
+        source: ForecastSource.MANUAL_ENTRY,
+      },
+    ]);
+    mockPrisma.materialConsumptionActual.findMany.mockResolvedValueOnce([
+      {
+        savingCardId: "card-1",
+        period,
+        actualQty: 100,
+        unit: "kg",
+        source: ForecastSource.ERP_CSV_UPLOAD,
+      },
+    ]);
+
+    const timelines = await getPortfolioVolumeTimelines(
+      ["card-1", "card-2", "card-1"],
+      DEFAULT_ORGANIZATION_ID
+    );
+
+    expect(timelines).toHaveLength(2);
+    expect(timelines[0].timeline[0]).toMatchObject({
+      forecastSaving: 240,
+      actualSaving: 200,
+      isConfirmed: true,
+    });
+    expect(timelines[1].timeline[0]).toMatchObject({
+      forecastSaving: 80,
+      actualSaving: 0,
+      isConfirmed: false,
+    });
+    expect(mockPrisma.savingCard.findMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["card-1", "card-2"],
+        },
+        organizationId: DEFAULT_ORGANIZATION_ID,
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        materialId: true,
+        supplierId: true,
+        volumeUnit: true,
+        baselinePrice: true,
+        newPrice: true,
+      },
+    });
+    expect(mockPrisma.materialConsumptionForecast.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.materialConsumptionActual.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("does not update a record from another tenant", async () => {

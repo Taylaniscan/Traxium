@@ -12,7 +12,18 @@ export const savingCardDetailInclude = {
   buyer: true,
   plant: true,
   businessUnit: true,
-  evidence: true,
+  evidence: {
+    include: {
+      uploadedBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   stakeholders: {
     include: {
       user: true,

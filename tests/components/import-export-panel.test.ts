@@ -14,19 +14,28 @@ describe("import export panel", () => {
       })
     );
 
+    expect(markup).toContain("Controller-Review Workbook");
     expect(markup).toContain("Controlled Workbook Import");
     expect(markup).toContain(
-      "Saving-card workbook imports validate all rows before writing."
+      "Traxium validates all rows before importing."
     );
     expect(markup).toContain(
-      "If any row fails, no saving cards are created and row errors appear below"
+      "If any row fails, no cards are created."
     );
     expect(markup).toContain(
-      "Exports are controller review workbooks."
+      "Valid workbooks are committed in one database transaction."
     );
+    expect(markup).toContain("Portfolio Summary");
+    expect(markup).toContain("Data Dictionary");
+    expect(markup).toContain("Import Template");
+    expect(markup).toContain("Evidence Summary");
     expect(markup).toContain(
-      "active savings, realized and achieved value, finance locks, phase counts"
+      "Private URLs, storage paths, tokens, and provider IDs are never exported."
     );
+    expect(markup).toContain("does not provide ERP sync");
+    expect(markup).toContain("Required fields:");
+    expect(markup).toContain("Imported cards start as Proposed");
+    expect(markup).toContain("Download Workbook With Import Template");
     expect(markup).toContain("Core Master Data Import");
     expect(markup).toContain(
       "Bulk-create buyers, suppliers, materials, or categories for this workspace from a structured CSV or `.xlsx` file."

@@ -30,10 +30,16 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
 - Verify no server secret was moved into a `NEXT_PUBLIC_*` variable.
 - Verify `.env.example` and [environment-setup.md](/Users/atlas/Documents/Traxium/docs/environment-setup.md) still reflect the current config contract if env usage changed.
 - Verify [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) still matches the current access-state mapping, blocked-route contract, billing recovery flow, and Stripe deploy guard behavior if billing or auth guards changed.
+- Verify [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) still matches the real provider proof required for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook, evidence storage, import/export, and worker health when any provider-facing flow changes.
 - Verify [billing-access-staging-qa.md](/Users/atlas/Documents/Traxium/docs/billing-access-staging-qa.md) still matches the real blocked-billing, recovery, multi-org, and release-verification workflow before preview signoff.
 
 ## Deploy Before Release
 
+- Complete the Gap 1 provider-flow gate in [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) and record proof in [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md). Do not claim provider proof unless the corresponding automated local, provider script, manual preview, or production smoke evidence exists.
+- Run the non-mutating provider validation subset in the target deploy environment:
+  - `npm run providers:validate`
+  - or, if running each command separately: `npm run stripe:validate`, `npm run supabase:validate`, and `npm run jobs:worker:healthcheck`
+- Record any blocked provider checks, especially Stripe webhook delivery proof and Supabase Auth redirect allow-list proof, before release approval.
 - Confirm the deployment platform has the required production env values:
   - `APP_ENV=production`
   - `NEXT_PUBLIC_APP_URL`

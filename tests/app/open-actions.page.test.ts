@@ -1,5 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createUtopiaTraxReadiness } from "../helpers/utopiatrax-demo-fixtures";
 
 const OpenActionsListMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -183,5 +184,55 @@ describe("open actions page", () => {
         ],
       },
     });
+  });
+
+  it("renders the populated UtopiaTrax workspace-wide approval queue", async () => {
+    getPendingPhaseChangeRequestsMock.mockResolvedValueOnce(
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `request-${index + 1}`,
+        savingCard: {
+          id: `card-${index + 1}`,
+          title: [
+            "Bio-based carrier pilot sourcing",
+            "Quinacridone red MOQ renegotiation",
+            "Antioxidant blend supplier switch",
+            "Stretch film gauge reduction",
+            "Color matching lab service bundle",
+          ][index],
+        },
+        requestedBy: {
+          name: index % 2 ? "Can Kaya" : "Aylin Demir",
+        },
+        approvals: Array.from({ length: index < 2 ? 2 : 1 }, (_, approvalIndex) => ({
+          approverId: `approver-${index}-${approvalIndex}`,
+          approver: {
+            role:
+              approvalIndex === 0
+                ? "FINANCIAL_CONTROLLER"
+                : "HEAD_OF_GLOBAL_PROCUREMENT",
+          },
+        })),
+        createdAt: new Date(`2026-04-${String(index + 5).padStart(2, "0")}T10:00:00.000Z`),
+        currentPhase: index % 2 ? "VALIDATED" : "IDEA",
+        requestedPhase: index % 2 ? "REALISED" : "VALIDATED",
+        comment: "Ready for governed demo review.",
+      }))
+    );
+    getWorkspaceReadinessMock.mockResolvedValueOnce(createUtopiaTraxReadiness());
+
+    const page = await OpenActionsPage({
+      searchParams: Promise.resolve({ view: "all" }),
+    });
+    const listElement = page.props.children[1];
+
+    expect(listElement.props.actions).toHaveLength(5);
+    expect(
+      listElement.props.actions.reduce(
+        (sum: number, action: { pendingApproverSummary: string }) =>
+          sum + Number.parseInt(action.pendingApproverSummary, 10),
+        0
+      )
+    ).toBe(7);
+    expect(listElement.props.readiness.counts.savingCards).toBe(25);
   });
 });

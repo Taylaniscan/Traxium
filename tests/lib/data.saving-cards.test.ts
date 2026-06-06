@@ -3,6 +3,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
+  user: {
+    findMany: vi.fn(),
+  },
+  buyer: {
+    findMany: vi.fn(),
+  },
+  supplier: {
+    findMany: vi.fn(),
+  },
+  material: {
+    findMany: vi.fn(),
+  },
+  category: {
+    findMany: vi.fn(),
+  },
+  plant: {
+    findMany: vi.fn(),
+  },
+  businessUnit: {
+    findMany: vi.fn(),
+  },
+  fxRate: {
+    findMany: vi.fn(),
+  },
   savingCard: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
@@ -27,7 +51,9 @@ import {
   createAlternativeMaterial,
   createAlternativeSupplier,
   createSavingCard,
+  getReferenceData,
   getSavingCard,
+  getSavingCardDetailReferenceData,
   getSavingCards,
   importSavingCards,
   updateSavingCard,
@@ -38,7 +64,10 @@ function createSavingCardInput(overrides?: Partial<Record<string, unknown>>) {
   return {
     title: "Resin renegotiation",
     description: "Renegotiate the resin packaging contract for margin improvement.",
-    savingType: "Cost reduction",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: Phase.IDEA,
     supplier: { name: "Supplier A" },
     material: { name: "PET Resin" },
@@ -126,8 +155,13 @@ describe("lib/data saving card flows", () => {
 
   beforeEach(() => {
     invalidateScopedCacheMock.mockReset();
+    mockPrisma.$transaction.mockClear();
     tx = createSavingCardTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
+      if (Array.isArray(callback)) {
+        return Promise.all(callback);
+      }
+
       if (typeof callback !== "function") {
         throw new Error("Expected a transaction callback.");
       }
@@ -135,6 +169,60 @@ describe("lib/data saving card flows", () => {
       const transactionCallback = callback as (client: typeof tx) => Promise<unknown>;
       return transactionCallback(tx);
     });
+  });
+
+  it("loads reference data through one batch transaction", async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ id: "user-1" }]);
+    mockPrisma.buyer.findMany.mockResolvedValue([{ id: "buyer-1" }]);
+    mockPrisma.supplier.findMany.mockResolvedValue([{ id: "supplier-1" }]);
+    mockPrisma.material.findMany.mockResolvedValue([{ id: "material-1" }]);
+    mockPrisma.category.findMany.mockResolvedValue([{ id: "category-1" }]);
+    mockPrisma.plant.findMany.mockResolvedValue([{ id: "plant-1" }]);
+    mockPrisma.businessUnit.findMany.mockResolvedValue([{ id: "business-unit-1" }]);
+    mockPrisma.fxRate.findMany.mockResolvedValue([{ id: "fx-rate-1" }]);
+
+    await expect(getReferenceData("org-1")).resolves.toEqual({
+      users: [{ id: "user-1" }],
+      buyers: [{ id: "buyer-1" }],
+      suppliers: [{ id: "supplier-1" }],
+      materials: [{ id: "material-1" }],
+      categories: [{ id: "category-1" }],
+      plants: [{ id: "plant-1" }],
+      businessUnits: [{ id: "business-unit-1" }],
+      fxRates: [{ id: "fx-rate-1" }],
+    });
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$transaction).toHaveBeenCalledWith([
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+      expect.any(Promise),
+    ]);
+  });
+
+  it("loads only supplier and material choices for the detail workspace", async () => {
+    mockPrisma.supplier.findMany.mockResolvedValue([{ id: "supplier-1" }]);
+    mockPrisma.material.findMany.mockResolvedValue([{ id: "material-1" }]);
+
+    await expect(getSavingCardDetailReferenceData("org-1")).resolves.toEqual({
+      suppliers: [{ id: "supplier-1" }],
+      materials: [{ id: "material-1" }],
+    });
+
+    expect(mockPrisma.supplier.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.material.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.buyer.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.category.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.plant.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.businessUnit.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.fxRate.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("creates a saving card with Buyer master data and calculated savings", async () => {
@@ -168,6 +256,13 @@ describe("lib/data saving card flows", () => {
     );
     expect(tx.user.findUnique).not.toHaveBeenCalled();
     expect(tx.user.create).not.toHaveBeenCalled();
+    expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      {
+        maxWait: 10_000,
+        timeout: 30_000,
+      }
+    );
     expect(result).toEqual({ id: "card-1", title: "Resin renegotiation", phase: Phase.IDEA });
     expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
       namespace: "dashboard-data",
@@ -266,6 +361,10 @@ describe("lib/data saving card flows", () => {
       organizationId: "org-1",
       phase: Phase.VALIDATED,
       financeLocked: true,
+      savingType: "PRICE_REDUCTION",
+      impactType: "HARD_SAVINGS",
+      impactRecurrence: "RECURRING",
+      budgetImpact: "BUDGET_IMPACT",
       baselinePrice: 15,
       newPrice: 12,
       annualVolume: 250,
@@ -336,6 +435,38 @@ describe("lib/data saving card flows", () => {
     });
   });
 
+  it("rejects classification changes while finance lock is active", async () => {
+    tx.savingCard.findFirst.mockResolvedValue({
+      id: "card-1",
+      organizationId: "org-1",
+      phase: Phase.VALIDATED,
+      financeLocked: true,
+      savingType: "PRICE_REDUCTION",
+      impactType: "HARD_SAVINGS",
+      impactRecurrence: "RECURRING",
+      budgetImpact: "BUDGET_IMPACT",
+    });
+
+    await expect(
+      updateSavingCard(
+        "card-1",
+        createSavingCardInput({
+          phase: Phase.VALIDATED,
+          impactType: "COST_AVOIDANCE",
+        }),
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toMatchObject({
+      name: "WorkflowError",
+      status: 409,
+      message:
+        "Finance-locked savings cannot change savings classification. Remove the finance lock before changing savings type, impact type, recurrence, or budget impact.",
+    });
+
+    expect(tx.savingCard.update).not.toHaveBeenCalled();
+  });
+
   it("rejects direct phase changes during saving card updates", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
@@ -378,6 +509,28 @@ describe("lib/data saving card flows", () => {
     );
 
     expect(tx.savingCard.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      {
+        maxWait: 10_000,
+        timeout: 120_000,
+      }
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: "org-1",
+        actorUserId: "actor-1",
+        eventType: "saving_cards.imported",
+        action: "saving_cards.imported",
+        detail: "2 saving cards imported in one transaction.",
+        payload: expect.objectContaining({
+          importedCount: 2,
+          phase: "IDEA",
+          atomic: true,
+        }),
+      }),
+    });
     expect(invalidateScopedCacheMock).toHaveBeenCalledTimes(2);
     expect(invalidateScopedCacheMock).toHaveBeenNthCalledWith(1, {
       namespace: "dashboard-data",
@@ -386,6 +539,33 @@ describe("lib/data saving card flows", () => {
     expect(invalidateScopedCacheMock).toHaveBeenNthCalledWith(2, {
       namespace: "workspace-readiness",
       organizationId: "org-1",
+    });
+  });
+
+  it("does not invalidate portfolio caches when the atomic import transaction fails", async () => {
+    tx.savingCard.create
+      .mockResolvedValueOnce({
+        id: "card-1",
+        title: "First card",
+        phase: Phase.IDEA,
+      })
+      .mockRejectedValueOnce(new Error("database write failed"));
+
+    await expect(
+      importSavingCards(
+        [createSavingCardInput(), createSavingCardInput({ title: "Second card" })],
+        "actor-1",
+        "org-1"
+      )
+    ).rejects.toThrow("database write failed");
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.savingCard.create).toHaveBeenCalledTimes(2);
+    expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: "saving_cards.imported",
+      }),
     });
   });
 
@@ -422,7 +602,16 @@ describe("lib/data saving card flows", () => {
     });
 
     const [query] = mockPrisma.savingCard.findMany.mock.calls[0];
-    expect(query.select.evidence).toBeUndefined();
+    expect(query.select.evidence).toEqual({
+      select: {
+        id: true,
+        evidenceType: true,
+        uploadedAt: true,
+      },
+      orderBy: {
+        uploadedAt: "desc",
+      },
+    });
     expect(query.select.comments).toBeUndefined();
     expect(result).toEqual(cards);
   });
@@ -449,7 +638,20 @@ describe("lib/data saving card flows", () => {
           organizationId: "org-1",
         },
         include: expect.objectContaining({
-          evidence: true,
+          evidence: {
+            include: {
+              uploadedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+            orderBy: {
+              uploadedAt: "desc",
+            },
+          },
           comments: expect.any(Object),
           approvals: expect.any(Object),
           phaseHistory: expect.any(Object),

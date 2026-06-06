@@ -33,7 +33,7 @@ export function FirstValueLaunchpad({
     viewerMembershipRole === "OWNER" || viewerMembershipRole === "ADMIN";
 
   return (
-    <Card>
+    <Card className="border-[rgba(37,99,235,0.24)] bg-[rgba(37,99,235,0.04)]">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -44,11 +44,19 @@ export function FirstValueLaunchpad({
           pilot or customer workspace.
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+        <div className="space-y-3">
+          <Link href="/saving-cards/new?from=onboarding" className={buttonVariants({ size: "sm" })}>
             {primaryActionLabel}
           </Link>
-          <LoadSampleDataButton size="sm">Load sample data</LoadSampleDataButton>
+          <p className="text-xs font-medium text-[var(--muted-foreground)]">
+            Primary path: create one real saving card before setup cleanup.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3 border-t border-[var(--border)] pt-4">
+          <LoadSampleDataButton size="sm" variant="outline">
+            Load sample data
+          </LoadSampleDataButton>
           <Link
             href="/onboarding"
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
@@ -56,11 +64,19 @@ export function FirstValueLaunchpad({
             {reviewSetupLabel}
           </Link>
           <Link
-            href="/admin/members"
+            href="/dashboard"
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
           >
-            Invite team members in Admin Members
+            Continue later
           </Link>
+          {canManageMembers ? (
+            <Link
+              href="/admin/members"
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+            >
+              Invite team members in Admin Members
+            </Link>
+          ) : null}
         </div>
 
         {!canManageMembers ? (

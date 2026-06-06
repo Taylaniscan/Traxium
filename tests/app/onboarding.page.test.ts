@@ -302,7 +302,9 @@ describe("onboarding page", () => {
     expect(markup).toContain("Recommended for better reporting");
     expect(markup).toContain("Continue later");
     expect(markup).toContain('href="/dashboard"');
-    expect(markup).toContain("data-launchpad=\"Training and acceleration\"");
+    expect(markup).toContain(
+      'data-launchpad="Create one real saving card first"'
+    );
   });
 
   it("shows first-value blockers for an empty workspace", async () => {
@@ -449,7 +451,7 @@ describe("onboarding page", () => {
     expect(markup).toContain(
       "Live workspace progress could not be refreshed right now."
     );
-    expect(markup).toContain("Training and acceleration");
+    expect(markup).toContain("Create one real saving card first");
     expect(captureExceptionMock).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({

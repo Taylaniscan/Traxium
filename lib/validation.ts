@@ -5,7 +5,11 @@ import {
   implementationComplexities,
   phases,
   qualificationStatuses,
-  savingDrivers
+  savingDrivers,
+  savingTypes,
+  savingsBudgetImpacts,
+  savingsImpactRecurrences,
+  savingsImpactTypes
 } from "@/lib/constants";
 
 const positiveNumberField = (message: string) =>
@@ -37,7 +41,10 @@ export const savingCardSchema = z
   .object({
     title: z.string().min(3),
     description: z.string().min(10),
-    savingType: z.string().min(2),
+    savingType: z.enum(savingTypes).default("PRICE_REDUCTION"),
+    impactType: z.enum(savingsImpactTypes).default("HARD_SAVINGS"),
+    impactRecurrence: z.enum(savingsImpactRecurrences).default("RECURRING"),
+    budgetImpact: z.enum(savingsBudgetImpacts).default("BUDGET_IMPACT"),
     phase: z.enum(phases),
     supplier: masterDataField,
     material: masterDataField,

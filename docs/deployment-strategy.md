@@ -27,6 +27,7 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 ## Preview
 
 - Use `APP_ENV=preview`.
+- Use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the release gate for preview provider proof. Preview must pass or explicitly block the documented invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook, evidence upload/download, import/export, and worker health checks before paid-pilot signoff.
 - Preview deployments must use preview-safe values for:
   - `NEXT_PUBLIC_APP_URL`
   - `DATABASE_URL`
@@ -48,6 +49,7 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 - Add `STRIPE_STARTER_METERED_PRICE_ID` and `STRIPE_GROWTH_METERED_PRICE_ID` only for plans that also have metered recurring Stripe Prices.
 - On Vercel, keep `VERCEL_ENV=preview` aligned with `APP_ENV=preview`.
 - Run `npm run predeploy` before allowing the build to continue.
+- Run `npm run providers:validate` in the preview environment, or run `npm run stripe:validate`, `npm run supabase:validate`, and `npm run jobs:worker:healthcheck` separately when the worker environment is separate from the web shell.
 - Deploy the worker separately with `npm run jobs:worker`.
 - Run `npm run jobs:worker:healthcheck` after the worker starts.
 - For queue validation during preview release checks, `npm run jobs:worker:once` is the safe one-shot verification command.
@@ -55,6 +57,7 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 ## Production
 
 - Use `APP_ENV=production`.
+- Production provider validation is smoke-only. Follow the safe production checklist in [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) and record the result in [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md).
 - Production deployments must use the production application domain and live Supabase project.
 - Production deployments must also use live Stripe billing secrets, return URLs, product ids, and licensed base price ids.
 - Metered Stripe price ids are optional unless a live plan also has metered recurring pricing.
@@ -63,6 +66,7 @@ Traxium uses a split deployment model: preview deployments are for validation ag
 - Keep [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) aligned with deploy behavior whenever billing access or recovery flow changes.
 - On Vercel, keep `VERCEL_ENV=production` aligned with `APP_ENV=production`.
 - Run `npm run release:verify` before approving a production release.
+- Run `npm run providers:validate` in the production environment only when it is configured with production-safe credentials and a worker shell. If the worker is deployed separately, run `npm run jobs:worker:healthcheck` from the worker environment and record both outputs.
 - Production builds should use [vercel.json](/Users/atlas/Documents/Traxium/vercel.json) so the predeploy guard runs before `next build`.
 - Production rollout is incomplete until the separate worker process is deployed with `npm run jobs:worker`.
 - Run `npm run jobs:worker:healthcheck` from the worker environment after deploy and after any worker restart.

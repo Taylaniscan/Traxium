@@ -33,7 +33,7 @@ const navItems = [
   { href: "/timeline", label: "Timeline", icon: CalendarRange },
   { href: "/command-center", label: "Command Center", icon: PanelsTopLeft },
   { href: "/reports", label: "Reports", icon: FileSpreadsheet },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/settings", label: "Workspace Settings", icon: Settings },
   { href: "/open-actions", label: "Open Actions", icon: Bell },
 ] as const;
 
@@ -364,7 +364,7 @@ export function SidebarWorkspaceAccount({
             )}
             title={collapsed ? "Settings" : undefined}
           >
-            {collapsed ? <Settings className="h-4 w-4" /> : "Settings"}
+            {collapsed ? <Settings className="h-4 w-4" /> : "Workspace Settings"}
           </Link>
 
           <form action="/logout" method="post">

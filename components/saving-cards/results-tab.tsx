@@ -29,10 +29,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type {
+  SavingType,
+  SavingsBudgetImpact,
+  SavingsImpactRecurrence,
+  SavingsImpactType,
+} from "@prisma/client";
+import type {
   VolumeImportResult,
   VolumeTimelineResult,
   VolumeTimelineRow,
 } from "@/lib/types";
+import {
+  savingTypeLabels,
+  savingsBudgetImpactLabels,
+  savingsImpactRecurrenceLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 type EditableField = "forecast" | "actual";
@@ -69,6 +81,10 @@ export function ResultsTab({
   annualVolume,
   volumeUnit,
   currency,
+  savingType,
+  impactType,
+  impactRecurrence,
+  budgetImpact,
 }: {
   savingCardId: string;
   materialName: string;
@@ -77,6 +93,10 @@ export function ResultsTab({
   annualVolume: number;
   volumeUnit: string;
   currency: "EUR" | "USD";
+  savingType: SavingType;
+  impactType: SavingsImpactType;
+  impactRecurrence: SavingsImpactRecurrence;
+  budgetImpact: SavingsBudgetImpact;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<SerialVolumeResponse>(EMPTY_TIMELINE);
@@ -338,6 +358,14 @@ export function ResultsTab({
             tone={data.summary.ytdVarianceQty >= 0 ? "emerald" : "rose"}
           />
         </CardContent>
+        <CardContent className="border-t border-[var(--border)] pt-4">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="neutral">{savingTypeLabels[savingType]}</Badge>
+            <Badge tone="neutral">{savingsImpactTypeLabels[impactType]}</Badge>
+            <Badge tone="neutral">{savingsImpactRecurrenceLabels[impactRecurrence]}</Badge>
+            <Badge tone="neutral">{savingsBudgetImpactLabels[budgetImpact]}</Badge>
+          </div>
+        </CardContent>
       </Card>
 
       {loading ? (
@@ -352,16 +380,20 @@ export function ResultsTab({
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                initialDimension={{ width: 640, height: 320 }}
+              >
                 <BarChart data={chartRows}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                    formatter={(value: number, name: string) => [
-                      `${formatVolume(value)} ${volumeUnit}`,
-                      name === "forecastQty" ? "Forecast" : "Actual",
+                    formatter={(value, name) => [
+                      `${formatVolume(Number(value ?? 0))} ${volumeUnit}`,
+                      String(name) === "forecastQty" ? "Forecast" : "Actual",
                     ]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -388,16 +420,20 @@ export function ResultsTab({
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                initialDimension={{ width: 640, height: 320 }}
+              >
                 <ComposedChart data={chartRows}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} tickFormatter={(value) => formatVolume(value)} />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                    formatter={(value: number, name: string) => [
-                      formatCurrency(Math.round(value), currency),
-                      name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
+                    formatter={(value, name) => [
+                      formatCurrency(Math.round(Number(value ?? 0)), currency),
+                      String(name) === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                     ]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />

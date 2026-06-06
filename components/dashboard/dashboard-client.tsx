@@ -696,13 +696,13 @@ export function DashboardClient({
 
       <DashboardSection
         title="Executive Overview"
-        description="Current value position across the procurement savings lifecycle, from early identification through locked-in achievement."
+        description="Current value position across the procurement savings lifecycle, from proposed initiatives through captured savings."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Identified Value"
             value={formatCurrency(executiveMetrics.identifiedValue, "EUR")}
-            description="Opportunities still in idea formation and not yet validated for execution."
+            description="Opportunities still proposed and not yet finance validated for execution."
             tone="neutral"
             delta={
               <MetricDelta
@@ -717,9 +717,9 @@ export function DashboardClient({
             }
           />
           <KpiCard
-            label="Validated Value"
+            label="Finance Validated Value"
             value={formatCurrency(executiveMetrics.validatedValue, "EUR")}
-            description="Business cases that have moved beyond identification and are positioned for delivery."
+            description="Business cases reviewed for finance trust and positioned for delivery."
             tone="info"
             delta={
               <MetricDelta
@@ -735,9 +735,9 @@ export function DashboardClient({
             }
           />
           <KpiCard
-            label="Realized Value"
+            label="Implemented Value"
             value={formatCurrency(executiveMetrics.realisedValue, "EUR")}
-            description="Savings currently in delivery and expected to convert into achieved value."
+            description="Savings currently implemented and expected to convert into captured value."
             tone="warning"
             delta={
               <MetricDelta
@@ -753,9 +753,9 @@ export function DashboardClient({
             }
           />
           <KpiCard
-            label="Achieved Value"
+            label="Captured Value"
             value={formatCurrency(executiveMetrics.achievedValue, "EUR")}
-            description="Locked-in savings already captured and no longer dependent on future conversion."
+            description="Savings impact confirmed and no longer dependent on future conversion."
             tone="success"
             delta={
               <MetricDelta
@@ -790,16 +790,16 @@ export function DashboardClient({
             }
           />
           <KpiCard
-            label="Achieved Share"
+            label="Captured Share"
             value={formatDashboardPercent(executiveMetrics.achievedShare)}
-            description="Share of active pipeline that is already locked in and fully achieved."
+            description="Share of active pipeline that is already confirmed and captured."
             tone="success"
             size="secondary"
           />
           <KpiCard
-            label="Validated+ Coverage"
+            label="Finance-Ready Coverage"
             value={formatDashboardPercent(executiveMetrics.validatedCoverage)}
-            description="Share of pipeline already in validated, realized, or achieved status."
+            description="Share of pipeline already finance validated, implemented, or captured."
             tone="info"
             size="secondary"
           />
@@ -838,7 +838,7 @@ export function DashboardClient({
                     Recent achievement recorded
                   </p>
                   <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-                    {recentAchievements[0].title} reached Achieved in the last
+                    {recentAchievements[0].title} reached Captured in the last
                     24 hours for {recentAchievements[0].buyer.name} at{" "}
                     {formatCurrency(
                       recentAchievements[0].calculatedSavings,
@@ -846,7 +846,7 @@ export function DashboardClient({
                     )}
                     .
                     {recentAchievements.length > 1
-                      ? ` ${recentAchievements.length - 1} more initiative${recentAchievements.length - 1 === 1 ? "" : "s"} also moved into Achieved.`
+                      ? ` ${recentAchievements.length - 1} more initiative${recentAchievements.length - 1 === 1 ? "" : "s"} also moved into Captured.`
                       : ""}
                   </p>
                 </div>
@@ -874,7 +874,7 @@ export function DashboardClient({
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <ChartCard
             title="Savings by Phase"
-            description="Realization pipeline from identified opportunity to achieved value."
+            description="Savings pipeline from proposed initiative to captured value."
             status={resolveChartState({
               error: null,
               points: metrics.byPhase,
@@ -901,7 +901,7 @@ export function DashboardClient({
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard
             title="Savings Forecast"
-            description="Movement between current realized value and forecasted savings by month."
+            description="Movement between current implemented value and forecasted savings by month."
             status={resolveChartState({
               error: null,
               points: metrics.monthlyTrend,
@@ -1013,9 +1013,9 @@ function TargetProgressCard({
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle>Target vs Achieved</CardTitle>
+        <CardTitle>Target vs Captured</CardTitle>
         <CardDescription>
-          Benchmark attainment relative to current realized, achieved, and
+          Benchmark attainment relative to current implemented, captured, and
           forecasted value.
         </CardDescription>
       </CardHeader>
@@ -1032,13 +1032,13 @@ function TargetProgressCard({
         </div>
 
         <ProgressRow
-          label="Realized"
+          label="Implemented"
           value={formatCurrency(realisedValue, "EUR")}
           width={realisedWidth}
           toneClassName="bg-[var(--warning)]"
         />
         <ProgressRow
-          label="Achieved"
+          label="Captured"
           value={formatCurrency(achievedValue, "EUR")}
           width={achievedWidth}
           toneClassName="bg-[var(--success)]"
@@ -1165,7 +1165,11 @@ function ChartStateMessage({ message }: { message: string }) {
 function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
   return (
     <div className="h-full w-full min-h-0 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <BarChart data={data}>
           <CartesianGrid
             strokeDasharray="3 3"
@@ -1190,8 +1194,8 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
               borderColor: "#E5E7EB",
               fontSize: 12,
             }}
-            formatter={(value: number) => [
-              formatCurrency(value, "EUR"),
+            formatter={(value) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
               "Savings",
             ]}
           />
@@ -1205,7 +1209,11 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
 function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
   return (
     <div className="h-full w-full min-h-0 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <BarChart
           data={data}
           layout="vertical"
@@ -1237,8 +1245,8 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
               borderColor: "#E5E7EB",
               fontSize: 12,
             }}
-            formatter={(value: number) => [
-              formatCurrency(value, "EUR"),
+            formatter={(value) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
               "Savings",
             ]}
           />
@@ -1252,7 +1260,11 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
 function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
   return (
     <div className="h-full w-full min-h-0 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <AreaChart data={data}>
           <CartesianGrid
             strokeDasharray="3 3"
@@ -1277,9 +1289,9 @@ function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
               borderColor: "#E5E7EB",
               fontSize: 12,
             }}
-            formatter={(value: number, name: string) => [
-              formatCurrency(value, "EUR"),
-              name === "forecast" ? "Forecast" : "Savings",
+            formatter={(value, name) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
+              String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />
           <Area

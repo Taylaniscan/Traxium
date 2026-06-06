@@ -689,7 +689,7 @@ export function CommandCenterClient({
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
-                      label="Realized Savings"
+                      label="Implemented Savings"
                       value={formatCurrency(safeData.kpis.realisedSavings, "EUR")}
                       icon={TrendingUp}
                       status={isLoading ? "Updating" : "Live"}
@@ -701,7 +701,7 @@ export function CommandCenterClient({
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
-                      label="Achieved Savings"
+                      label="Captured Savings"
                       value={formatCurrency(safeData.kpis.achievedSavings, "EUR")}
                       icon={CheckCircle2}
                       status={isLoading ? "Updating" : "Live"}
@@ -1415,7 +1415,11 @@ function PipelineBarChart({
 }) {
   return (
     <div className="h-full w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
           <XAxis
@@ -1432,8 +1436,8 @@ function PipelineBarChart({
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-            formatter={(value: number) => [
-              formatCurrency(value, "EUR"),
+            formatter={(value) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
               "Savings",
             ]}
           />
@@ -1451,7 +1455,11 @@ function ForecastAreaPanel({
 }) {
   return (
     <div className="h-full w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
           <XAxis
@@ -1468,9 +1476,9 @@ function ForecastAreaPanel({
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-            formatter={(value: number, name: string) => [
-              formatCurrency(value, "EUR"),
-              name === "forecast" ? "Forecast" : "Savings",
+            formatter={(value, name) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
+              String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />
           <Area
@@ -1502,7 +1510,11 @@ function SupplierBarChart({
 }) {
   return (
     <div className="h-full w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 640, height: 320 }}
+      >
         <BarChart
           data={data}
           layout="vertical"
@@ -1526,8 +1538,8 @@ function SupplierBarChart({
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-            formatter={(value: number) => [
-              formatCurrency(value, "EUR"),
+            formatter={(value) => [
+              formatCurrency(Number(value ?? 0), "EUR"),
               "Savings",
             ]}
           />

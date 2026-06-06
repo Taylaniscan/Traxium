@@ -99,12 +99,16 @@ describe("storage tenant access", () => {
       60
     );
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
+        organizationId: DEFAULT_ORGANIZATION_ID,
         userId: "user-1",
+        actorUserId: "user-1",
         savingCardId: "card-1",
+        targetEntityId: "evidence-1",
+        eventType: "evidence.downloaded",
         action: "evidence.downloaded",
         detail: "Evidence downloaded: evidence.pdf",
-      },
+      }),
     });
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(DEFAULT_SIGNED_URL);

@@ -12,7 +12,7 @@ const pilotProofPoints = [
   },
   {
     label: "Finance-reviewed workflow",
-    detail: "Move work through Idea, Validated, Realized, Achieved, and Canceled with approval history.",
+    detail: "Move work through Proposed, Finance Validated, Implemented, Captured, and Canceled with approval history.",
   },
   {
     label: "Private evidence trail",
@@ -20,7 +20,7 @@ const pilotProofPoints = [
   },
   {
     label: "Controller-ready export",
-    detail: "Export active cards, phase counts, realized value, finance locks, and row-level savings assumptions to XLSX.",
+    detail: "Export active cards, phase counts, implemented value, finance locks, and row-level savings assumptions to XLSX.",
   },
 ];
 
@@ -62,9 +62,9 @@ function ProductSnapshot() {
 
       <div className="space-y-2">
         {[
-          ["Validated", "Bio-based carrier pilot sourcing", "Finance Reviewer"],
-          ["Realized", "Titanium dioxide dual-source award", "Procurement Lead"],
-          ["Achieved", "Packaging film gauge reduction", "Finance Reviewer"],
+          ["Finance Validated", "Bio-based carrier pilot sourcing", "Finance Reviewer"],
+          ["Implemented", "Titanium dioxide dual-source award", "Procurement Lead"],
+          ["Captured", "Packaging film gauge reduction", "Finance Reviewer"],
         ].map(([phase, title, owner]) => (
           <div
             key={title}
@@ -99,14 +99,17 @@ export default async function HomePage() {
             Traxium
           </Link>
           <nav className="flex items-center gap-2 text-sm">
+            <Link href="/trust" className="rounded-md px-3 py-2 font-medium">
+              Trust &amp; security
+            </Link>
             <Link href="/login" className="rounded-md px-3 py-2 font-medium">
               Sign in
             </Link>
             <Link
-              href="/dashboard"
-              className="rounded-md border px-3 py-2 font-medium"
+              href="/pilot"
+              className="rounded-md bg-primary px-3 py-2 font-medium !text-white"
             >
-              View product
+              Request paid pilot
             </Link>
           </nav>
         </div>
@@ -129,17 +132,17 @@ export default async function HomePage() {
 
             <div className="flex flex-wrap gap-3">
               <Link
-                href="/login"
+                href="/pilot"
                 className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-5 py-3 text-sm font-medium !text-white"
               >
-                Sign in
+                Request paid pilot
               </Link>
 
               <Link
-                href="/dashboard"
+                href="/pilot#demo-preview"
                 className="inline-flex min-h-11 items-center justify-center rounded-md border bg-surface px-5 py-3 text-sm font-medium"
               >
-                View product
+                See UtopiaTrax demo
               </Link>
             </div>
           </div>
@@ -186,6 +189,14 @@ export default async function HomePage() {
                 {item}
               </li>
             ))}
+            <li>
+              <Link
+                href="/trust"
+                className="inline-flex min-h-11 items-center justify-center rounded-md border bg-surface px-5 py-3 text-sm font-medium"
+              >
+                Review trust &amp; security
+              </Link>
+            </li>
           </ul>
         </div>
       </section>

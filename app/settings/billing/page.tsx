@@ -23,6 +23,7 @@ import {
 import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import type { OrganizationAccessStateResult } from "@/lib/billing/types";
 import { getOrganizationSettings } from "@/lib/organizations";
+import { captureException } from "@/lib/observability";
 
 type BillingReturnPageProps = {
   searchParams: Promise<{
@@ -187,26 +188,37 @@ export default async function BillingReturnPage({
   const resolvedSearchParams = await searchParams;
   const checkoutState = readSingleSearchParam(resolvedSearchParams.checkout);
   const recoveryCode = readSingleSearchParam(resolvedSearchParams.recovery);
-  const session = await bootstrapCurrentUser();
+  const session = await bootstrapCurrentUser().catch((error) => {
+    captureException(error, {
+      event: "settings.billing.bootstrap_failed",
+      route: "/settings/billing",
+      payload: {
+        degradedRender: true,
+        fallback: "require_user_without_billing_gate",
+      },
+    });
+
+    return null;
+  });
 
   let user: Awaited<ReturnType<typeof requireUser>>;
   let accessState: OrganizationAccessStateResult;
 
-  if (session.ok) {
+  if (session?.ok) {
     user = session.user;
     accessState = await loadAccessState(
       session.user.activeOrganization.organizationId
     );
   } else {
-    if (session.code === "UNAUTHENTICATED") {
+    if (session?.code === "UNAUTHENTICATED") {
       redirect("/login");
     }
 
-    if (session.code === "ORGANIZATION_ACCESS_REQUIRED") {
+    if (session?.code === "ORGANIZATION_ACCESS_REQUIRED") {
       redirect("/onboarding");
     }
 
-    if (session.code !== "BILLING_REQUIRED") {
+    if (session && session.code !== "BILLING_REQUIRED") {
       redirect("/login");
     }
 
@@ -216,7 +228,7 @@ export default async function BillingReturnPage({
       redirectTo: null,
     });
     accessState =
-      session.accessState ??
+      session?.accessState ??
       (await loadAccessState(user.activeOrganization.organizationId));
   }
 
@@ -254,7 +266,7 @@ export default async function BillingReturnPage({
                   href="/admin/settings"
                   className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]"
                 >
-                  Workspace Settings
+                  Return to Workspace Settings
                 </Link>
               ) : null}
               {!accessState.isBlocked ? (
@@ -292,6 +304,7 @@ export default async function BillingReturnPage({
           stripeBillingConfigured={stripeBillingConfigured}
           missingStripeBillingEnvKeys={missingStripeBillingEnvKeys}
           workspaceName={workspaceName}
+          billingStatusUnavailable={accessState.reasonCode === "unknown"}
         />
 
         {showSubscriptionPlanSelection ? (

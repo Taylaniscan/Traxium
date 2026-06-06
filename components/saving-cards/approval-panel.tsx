@@ -139,6 +139,17 @@ export function ApprovalPanel({
       <CardContent className="space-y-5">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+        {!card.evidence.length ? (
+          <div className="rounded-2xl border border-[rgba(139,94,21,0.2)] bg-[rgba(139,94,21,0.08)] px-4 py-4">
+            <p className="text-sm font-semibold text-[var(--warning)]">
+              Finance validation without evidence reduces trust.
+            </p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Attach quote, agreement, invoice, or calculation evidence before validation. This warning does not block the existing approval workflow.
+            </p>
+          </div>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <WorkflowMetric label="Pending for You" value={String(actionableRequests.length)} />
           <WorkflowMetric label="Open Requests" value={String(openRequestCount)} />
@@ -205,7 +216,7 @@ export function ApprovalPanel({
                   {card.financeLocked ? "Finance fields are locked" : "Finance fields are open"}
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Locking protects baseline price, new price, annual volume, currency, FX rate, calculated savings, and impact dates once validation is complete.
+                  Locking protects baseline price, new price, annual volume, currency, FX rate, calculated savings, impact dates, and savings classification once validation is complete.
                 </p>
               </div>
               <Badge tone={card.financeLocked ? "lock" : "slate"}>

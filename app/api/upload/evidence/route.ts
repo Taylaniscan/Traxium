@@ -1,11 +1,14 @@
-import { Role, UsageFeature, UsageWindow } from "@prisma/client";
+import { EvidenceType, Role, UsageFeature, UsageWindow } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import {
   MAX_EVIDENCE_FILE_SIZE,
+  allowedEvidenceMimeTypes,
+  evidenceTypes,
   isAllowedEvidenceFileName,
 } from "@/lib/evidence-config";
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import {
   createRateLimitErrorResponse,
@@ -25,40 +28,9 @@ const GLOBAL_ACCESS_ROLES = new Set<Role>([
   Role.GLOBAL_CATEGORY_LEADER,
   Role.FINANCIAL_CONTROLLER,
 ]);
-const ALLOWED_FORM_FIELDS = new Set(["savingCardId", "files"]);
+const ALLOWED_FORM_FIELDS = new Set(["savingCardId", "evidenceType", "files"]);
 const MAX_FILES_PER_UPLOAD = 10;
 const EVIDENCE_UPLOAD_QUOTA_WINDOW = UsageWindow.MONTH;
-const ALLOWED_CONTENT_TYPES_BY_EXTENSION: Record<string, readonly string[]> = {
-  ".pdf": ["application/pdf"],
-  ".jpg": ["image/jpeg"],
-  ".jpeg": ["image/jpeg"],
-  ".png": ["image/png"],
-  ".xls": [
-    "application/vnd.ms-excel",
-    "application/excel",
-    "application/x-excel",
-    "application/x-msexcel",
-  ],
-  ".xlsx": [
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/zip",
-  ],
-  ".doc": ["application/msword", "application/doc", "application/vnd.ms-word"],
-  ".docx": [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/zip",
-  ],
-  ".ppt": [
-    "application/vnd.ms-powerpoint",
-    "application/mspowerpoint",
-    "application/powerpoint",
-  ],
-  ".pptx": [
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "application/zip",
-  ],
-};
-
 const savingCardIdSchema = z.object({
   savingCardId: z
     .string()
@@ -66,6 +38,7 @@ const savingCardIdSchema = z.object({
     .min(1, "Saving card id is required.")
     .refine((value) => !value.includes("/"), "Saving card id is invalid."),
 });
+const evidenceTypeSchema = z.enum(evidenceTypes).default(EvidenceType.OTHER);
 
 function hasGlobalAccess(role: Role) {
   return GLOBAL_ACCESS_ROLES.has(role);
@@ -115,9 +88,15 @@ function getFileValidationError(file: File) {
 
   const normalizedType = file.type.trim().toLowerCase();
   if (normalizedType && normalizedType !== "application/octet-stream") {
-    const allowedTypes = ALLOWED_CONTENT_TYPES_BY_EXTENSION[getFileExtension(fileName)];
+    const allowedTypes =
+      allowedEvidenceMimeTypes[
+        getFileExtension(fileName) as keyof typeof allowedEvidenceMimeTypes
+      ];
 
-    if (allowedTypes && !allowedTypes.includes(normalizedType)) {
+    if (
+      allowedTypes &&
+      !allowedTypes.some((allowedType) => allowedType === normalizedType)
+    ) {
       return "Uploaded file content type does not match the file extension.";
     }
   }
@@ -188,6 +167,14 @@ export async function POST(request: Request) {
     }
 
     const savingCardId = savingCardIdResult.data.savingCardId;
+    const evidenceTypeResult = evidenceTypeSchema.safeParse(
+      formData.get("evidenceType") ?? EvidenceType.OTHER
+    );
+
+    if (!evidenceTypeResult.success) {
+      return errorResponse("Evidence type is invalid.", 422);
+    }
+    const evidenceType = evidenceTypeResult.data;
 
     const rawFiles = formData.getAll("files");
 
@@ -249,6 +236,7 @@ export async function POST(request: Request) {
         data: {
           savingCardId: savingCard.id,
           fileName: stored.fileName,
+          evidenceType,
           storageBucket: stored.storageBucket,
           storagePath: stored.storagePath,
           fileSize: stored.fileSize,
@@ -260,16 +248,23 @@ export async function POST(request: Request) {
           fileName: true,
           fileSize: true,
           fileType: true,
+          evidenceType: true,
           uploadedAt: true,
         },
       });
 
-      await prisma.auditLog.create({
-        data: {
-          userId: user.id,
-          savingCardId: savingCard.id,
-          action: "evidence.uploaded",
-          detail: `Evidence uploaded: ${stored.fileName}`,
+      await writeAuditEvent(prisma, {
+        organizationId: savingCard.organizationId,
+        actorUserId: user.id,
+        savingCardId: savingCard.id,
+        targetEntityId: evidence.id,
+        eventType: auditEventTypes.EVIDENCE_UPLOADED,
+        detail: `Evidence uploaded: ${stored.fileName}`,
+        payload: {
+          evidenceType,
+          fileName: stored.fileName,
+          fileSize: stored.fileSize,
+          fileType: stored.fileType,
         },
       });
 

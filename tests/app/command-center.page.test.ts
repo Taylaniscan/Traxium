@@ -1,6 +1,10 @@
 import React from "react";
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxCommandCenterData,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const CommandCenterClientMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -79,6 +83,27 @@ describe("command center page", () => {
         },
       },
     });
+  });
+
+  it("passes populated UtopiaTrax executive queues and indicators", async () => {
+    const data = createUtopiaTraxCommandCenterData();
+    getCommandCenterDataMock.mockResolvedValue(data);
+    getCommandCenterFilterOptionsMock.mockResolvedValue({
+      categories: [{ id: "category-1", name: "Polymer Carriers" }],
+      businessUnits: [{ id: "unit-1", name: "Packaging Colorants" }],
+      buyers: [{ id: "buyer-1", name: "Aylin Demir" }],
+      plants: [{ id: "plant-1", name: "Apeldoorn Plant" }],
+      suppliers: [{ id: "supplier-1", name: "Borealis Polymers" }],
+    });
+    getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
+
+    const page = await CommandCenterPage();
+    const clientElement = page.props.children[1];
+
+    expect(clientElement.props.initialData.kpis.activeProjects).toBe(23);
+    expect(clientElement.props.initialData.pendingApprovalQueue).not.toHaveLength(0);
+    expect(clientElement.props.initialData.financeLockedItems).not.toHaveLength(0);
+    expect(clientElement.props.filterOptions.categories).not.toHaveLength(0);
   });
 
   it("surfaces command center data and filter failures as visible client load state", async () => {

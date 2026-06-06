@@ -2,6 +2,7 @@ import { UsageFeature, UsageWindow } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { createAuthGuardErrorResponse, requireOrganization } from "@/lib/auth";
 import { getReferenceData, importSavingCards } from "@/lib/data";
 import { canManageOrganizationMembers } from "@/lib/organizations";
@@ -22,7 +23,14 @@ import {
   MASTER_DATA_IMPORT_ENTITY_KEYS,
   type MasterDataImportEntityKey,
 } from "@/lib/onboarding/master-data-config";
-import { phaseLabels, phases } from "@/lib/constants";
+import {
+  parseSavingType,
+  parseSavingsBudgetImpact,
+  parseSavingsImpactRecurrence,
+  parseSavingsImpactType,
+  phaseLabels,
+  phases,
+} from "@/lib/constants";
 
 const IMPORT_QUOTA_WINDOW = UsageWindow.MONTH;
 const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_IMPORT_ENTITY_KEYS;
@@ -54,6 +62,14 @@ type SavingCardImportResult = {
   status: SavingCardImportStatus;
   title: string;
   message: string;
+  errors?: SavingCardImportIssue[];
+};
+
+type SavingCardImportIssue = {
+  field: string;
+  invalidValue: string;
+  message: string;
+  suggestedFix: string;
 };
 
 type SavingCardImportErrorResponse = {
@@ -90,6 +106,22 @@ class ImportFileError extends Error {
 }
 
 const MASTER_DATA_IMPORT_EXTENSIONS = new Set([".csv", ".xlsx"]);
+const SAVING_CARD_IMPORT_EXTENSIONS = new Set([".xlsx"]);
+const SAVING_CARD_REQUIRED_COLUMNS = [
+  { label: "Title", aliases: ["Title", "Saving Card Title"] },
+  { label: "Supplier", aliases: ["Supplier"] },
+  { label: "Material", aliases: ["Material"] },
+  { label: "Category", aliases: ["Category"] },
+  { label: "Plant", aliases: ["Plant"] },
+  { label: "Business Unit", aliases: ["BusinessUnit", "Business Unit"] },
+  { label: "Buyer", aliases: ["Buyer"] },
+  { label: "Baseline Price", aliases: ["BaselinePrice", "Baseline Price"] },
+  { label: "New Price", aliases: ["NewPrice", "New Price"] },
+  { label: "Annual Volume", aliases: ["AnnualVolume", "Annual Volume"] },
+  { label: "Currency", aliases: ["Currency"] },
+  { label: "Start Date", aliases: ["StartDate", "Start Date"] },
+  { label: "End Date", aliases: ["EndDate", "End Date"] },
+] as const;
 const phaseImportAliases = new Map<string, (typeof phases)[number]>(
   phases.flatMap((phase) => [
     [normalizeImportKey(phase), phase],
@@ -98,6 +130,10 @@ const phaseImportAliases = new Map<string, (typeof phases)[number]>(
 );
 
 phaseImportAliases.set("realised", "REALISED");
+phaseImportAliases.set("realized", "REALISED");
+phaseImportAliases.set("idea", "IDEA");
+phaseImportAliases.set("validated", "VALIDATED");
+phaseImportAliases.set("achieved", "ACHIEVED");
 phaseImportAliases.set("cancelled", "CANCELLED");
 
 function normalizeRow(
@@ -136,14 +172,44 @@ function normalizeRow(
   };
   const rawPhase = normalizeImportCell(getCell("Phase"));
   const normalizedPhase =
-    phaseImportAliases.get(normalizeImportKey(rawPhase)) ?? "IDEA";
+    phaseImportAliases.get(normalizeImportKey(rawPhase)) ??
+    (rawPhase || "IDEA");
+  const normalizeClassification = <T extends string>(
+    value: unknown,
+    parser: (input: unknown) => T | null,
+    fallback: T
+  ) => {
+    const normalized = normalizeImportCell(value);
+    return normalized ? parser(normalized) ?? normalized : fallback;
+  };
+  const title = normalizeImportCell(getCell("Title", "Saving Card Title"));
+  const description = normalizeImportCell(
+    getCell("Description", "Business Case / Notes", "Notes")
+  );
 
   return {
-    title: getCell("Title", "Saving Card Title"),
-    description:
-      getCell("Description") ??
-      `${getCell("Title", "Saving Card Title") ?? "Saving card"} imported from Excel`,
-    savingType: getCell("SavingType", "Saving Type") ?? "Imported",
+    title,
+    description: description || `${title || "Saving card"} imported from Excel`,
+    savingType: normalizeClassification(
+      getCell("SavingType", "Saving Type", "Savings Type", "Savings Category"),
+      parseSavingType,
+      "PRICE_REDUCTION"
+    ),
+    impactType: normalizeClassification(
+      getCell("ImpactType", "Impact Type", "Impact Classification"),
+      parseSavingsImpactType,
+      "HARD_SAVINGS"
+    ),
+    impactRecurrence: normalizeClassification(
+      getCell("ImpactRecurrence", "Impact Recurrence", "Recurrence"),
+      parseSavingsImpactRecurrence,
+      "RECURRING"
+    ),
+    budgetImpact: normalizeClassification(
+      getCell("BudgetImpact", "Budget Impact", "Budget Treatment"),
+      parseSavingsBudgetImpact,
+      "BUDGET_IMPACT"
+    ),
     phase: normalizedPhase,
     supplier: {
       id: resolveId(referenceData.suppliers, "Supplier"),
@@ -251,13 +317,15 @@ function createSavingCardImportResult(
   row: number,
   status: SavingCardImportStatus,
   title: string,
-  message: string
+  message: string,
+  errors?: SavingCardImportIssue[]
 ): SavingCardImportResult {
   return {
     row,
     status,
     title,
     message,
+    ...(errors?.length ? { errors } : {}),
   };
 }
 
@@ -272,6 +340,9 @@ function getSavingCardImportFieldLabel(path: PropertyKey[]) {
     title: "Title",
     description: "Description",
     savingType: "Saving Type",
+    impactType: "Impact Type",
+    impactRecurrence: "Impact Recurrence",
+    budgetImpact: "Budget Impact",
     phase: "Phase",
     supplier: "Supplier",
     material: "Material",
@@ -298,26 +369,135 @@ function getSavingCardImportFieldLabel(path: PropertyKey[]) {
   return labels[field] ?? field;
 }
 
-function formatSavingCardImportIssue(issue: z.ZodIssue) {
-  const label = getSavingCardImportFieldLabel(issue.path);
+function getSavingCardImportIssueValue(
+  row: ReturnType<typeof normalizeRow>,
+  path: PropertyKey[]
+) {
+  const field = path[0];
+  const value = typeof field === "string" ? row[field as keyof typeof row] : "";
 
-  return label ? `${label}: ${issue.message}` : issue.message;
+  if (
+    value &&
+    typeof value === "object" &&
+    "name" in value &&
+    typeof value.name === "string"
+  ) {
+    return value.name;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return normalizeImportCell(value);
+}
+
+function getSavingCardImportSuggestedFix(
+  field: string,
+  issueMessage: string
+) {
+  if (field === "Phase") {
+    return "Use Proposed. Advance the card later through Traxium phase-change approvals.";
+  }
+  if (field === "Currency") {
+    return "Use EUR or USD.";
+  }
+  if (field === "Baseline Price") {
+    return "Enter a number greater than zero.";
+  }
+  if (field === "New Price") {
+    return "Enter zero or a positive number that does not exceed Baseline Price.";
+  }
+  if (field === "Annual Volume") {
+    return "Enter a number greater than zero.";
+  }
+  if (field.includes("Date")) {
+    return "Use an Excel date or ISO date such as 2026-01-31 and keep end dates after start dates.";
+  }
+  if (
+    field === "Supplier" ||
+    field === "Material" ||
+    field === "Category" ||
+    field === "Plant" ||
+    field === "Business Unit" ||
+    field === "Buyer"
+  ) {
+    return `Provide a ${field.toLowerCase()} name. Traxium will match it inside the active workspace or create it safely.`;
+  }
+  if (
+    field === "Saving Type" ||
+    field === "Impact Type" ||
+    field === "Impact Recurrence" ||
+    field === "Budget Impact"
+  ) {
+    return "Use a customer-facing value listed in the Import Template or Data Dictionary sheet.";
+  }
+  if (issueMessage.toLowerCase().includes("duplicate")) {
+    return "Keep one row per initiative title or rename the duplicate initiative.";
+  }
+
+  return "Correct the value using the Import Template and retry the complete workbook.";
+}
+
+function formatSavingCardImportIssue(
+  row: ReturnType<typeof normalizeRow>,
+  issue: z.ZodIssue
+): SavingCardImportIssue {
+  const field = getSavingCardImportFieldLabel(issue.path) || "Row";
+
+  return {
+    field,
+    invalidValue: getSavingCardImportIssueValue(row, issue.path),
+    message: issue.message,
+    suggestedFix: getSavingCardImportSuggestedFix(field, issue.message),
+  };
 }
 
 function validateSavingCardImportRows(
   rows: ReturnType<typeof normalizeRow>[]
 ): SavingCardImportErrorResponse | null {
   const results: SavingCardImportResult[] = [];
+  const workbookTitles = new Set<string>();
 
   for (const [index, row] of rows.entries()) {
     const validation = savingCardSchema.safeParse(row);
+    const issues: SavingCardImportIssue[] = validation.success
+      ? []
+      : validation.error.issues.map((issue) =>
+          formatSavingCardImportIssue(row, issue)
+        );
+    const title = normalizeImportCell(row.title);
+    const titleKey = normalizeImportKey(title);
 
-    if (validation.success) {
+    if (validation.success && validation.data.phase !== "IDEA") {
+      issues.push({
+        field: "Phase",
+        invalidValue: phaseLabels[validation.data.phase],
+        message:
+          "Imported saving cards must start in Proposed so phase-change approvals are not bypassed.",
+        suggestedFix:
+          "Use Proposed. Advance the card later through Traxium phase-change approvals.",
+      });
+    }
+
+    if (titleKey && workbookTitles.has(titleKey)) {
+      issues.push({
+        field: "Title",
+        invalidValue: title,
+        message: "Duplicate saving-card title appears earlier in this workbook.",
+        suggestedFix:
+          "Keep one row per initiative title or rename the duplicate initiative.",
+      });
+    } else if (titleKey) {
+      workbookTitles.add(titleKey);
+    }
+
+    if (!issues.length) {
       results.push(
         createSavingCardImportResult(
           index + 2,
           "valid",
-          normalizeImportCell(row.title),
+          title,
           "Ready to import."
         )
       );
@@ -328,8 +508,9 @@ function validateSavingCardImportRows(
       createSavingCardImportResult(
         index + 2,
         "failed",
-        normalizeImportCell(row.title),
-        validation.error.issues.map(formatSavingCardImportIssue).join("; ")
+        title,
+        issues.map((issue) => `${issue.field}: ${issue.message}`).join("; "),
+        issues
       )
     );
   }
@@ -353,6 +534,44 @@ function validateSavingCardImportRows(
     },
     results: failed,
   };
+}
+
+function getMissingSavingCardColumns(rows: Record<string, unknown>[]) {
+  const presentColumns = new Set(
+    rows.flatMap((row) => Object.keys(normalizeImportRow(row)))
+  );
+
+  return SAVING_CARD_REQUIRED_COLUMNS.filter(
+    (column) =>
+      !column.aliases.some((alias) =>
+        presentColumns.has(normalizeImportKey(alias))
+      )
+  ).map((column) => column.label);
+}
+
+async function recordSavingCardImportFailure(input: {
+  organizationId: string;
+  actorUserId: string;
+  fileName?: string;
+  rowCount?: number;
+  failedRowCount?: number;
+  reason: string;
+}) {
+  try {
+    await writeAuditEvent(prisma, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      eventType: auditEventTypes.SAVING_CARDS_IMPORT_FAILED,
+      detail: input.reason,
+      payload: {
+        fileName: input.fileName,
+        rowCount: input.rowCount,
+        failedRowCount: input.failedRowCount,
+      },
+    });
+  } catch {
+    // The import response remains authoritative even if a secondary failure audit cannot be written.
+  }
 }
 
 function getMasterDataHeaderError(importType: MasterDataImportType) {
@@ -398,6 +617,18 @@ function validateMasterDataFileType(file: File) {
   if (!MASTER_DATA_IMPORT_EXTENSIONS.has(extension)) {
     throw new ImportFileError(
       "Master-data imports accept CSV or XLSX files only."
+    );
+  }
+
+  return extension;
+}
+
+function validateSavingCardFileType(file: File) {
+  const extension = getFileExtension(file.name);
+
+  if (!SAVING_CARD_IMPORT_EXTENSIONS.has(extension)) {
+    throw new ImportFileError(
+      "Saving-card imports accept XLSX workbooks only."
     );
   }
 
@@ -768,7 +999,9 @@ export async function POST(request: Request) {
     let workbook: XLSX.WorkBook;
 
     try {
-      if (importType !== "saving_cards") {
+      if (importType === "saving_cards") {
+        validateSavingCardFileType(file);
+      } else {
         validateMasterDataFileType(file);
       }
 
@@ -818,12 +1051,51 @@ export async function POST(request: Request) {
       return NextResponse.json(result);
     }
 
+    const missingColumns = getMissingSavingCardColumns(rows);
+
+    if (missingColumns.length) {
+      const error = `Saving-card import is missing required column${missingColumns.length === 1 ? "" : "s"}: ${missingColumns.join(", ")}. No saving cards were imported.`;
+
+      await recordSavingCardImportFailure({
+        organizationId: user.organizationId,
+        actorUserId: user.id,
+        fileName: file.name,
+        rowCount: rows.length,
+        failedRowCount: rows.length,
+        reason: error,
+      });
+
+      return NextResponse.json(
+        {
+          importType: "saving_cards",
+          error,
+          missingColumns,
+          summary: {
+            total: rows.length,
+            valid: 0,
+            failed: rows.length,
+          },
+          results: [],
+        },
+        { status: 422 }
+      );
+    }
+
     const referenceData = await getReferenceData(user.organizationId);
     const normalized = rows.map((row) => normalizeRow(row, referenceData));
 
     const validationErrorResponse = validateSavingCardImportRows(normalized);
 
     if (validationErrorResponse) {
+      await recordSavingCardImportFailure({
+        organizationId: user.organizationId,
+        actorUserId: user.id,
+        fileName: file.name,
+        rowCount: validationErrorResponse.summary.total,
+        failedRowCount: validationErrorResponse.summary.failed,
+        reason: validationErrorResponse.error,
+      });
+
       return NextResponse.json(validationErrorResponse, { status: 422 });
     }
 
@@ -835,7 +1107,20 @@ export async function POST(request: Request) {
       message: "This import would exceed the saving card quota for the current period.",
     });
 
-    await importSavingCards(normalized, user.id, user.organizationId);
+    try {
+      await importSavingCards(normalized, user.id, user.organizationId);
+    } catch (error) {
+      await recordSavingCardImportFailure({
+        organizationId: user.organizationId,
+        actorUserId: user.id,
+        fileName: file.name,
+        rowCount: normalized.length,
+        failedRowCount: normalized.length,
+        reason:
+          "Saving-card import failed during the atomic database transaction. No saving cards were imported.",
+      });
+      throw error;
+    }
 
     await recordUsageEvent({
       organizationId: user.organizationId,

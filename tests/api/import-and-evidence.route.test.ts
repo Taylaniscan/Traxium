@@ -150,11 +150,18 @@ function createImportForm(file?: File, importType?: string) {
   return formData;
 }
 
-function createUploadForm(fields?: { savingCardId?: string; files?: File[] }) {
+function createUploadForm(fields?: {
+  savingCardId?: string;
+  evidenceType?: string;
+  files?: File[];
+}) {
   const formData = new FormData();
 
   if (fields?.savingCardId !== undefined) {
     formData.append("savingCardId", fields.savingCardId);
+  }
+  if (fields?.evidenceType !== undefined) {
+    formData.append("evidenceType", fields.evidenceType);
   }
 
   for (const file of fields?.files ?? []) {
@@ -501,7 +508,7 @@ describe("import and evidence API routes", () => {
       );
 
       expect(response.status).toBe(422);
-      await expect(response.json()).resolves.toEqual({
+      await expect(response.json()).resolves.toMatchObject({
         importType: "saving_cards",
         error:
           "Saving-card import has 2 row errors. No saving cards were imported. Fix the listed rows and retry.",
@@ -516,6 +523,13 @@ describe("import and evidence API routes", () => {
             status: "failed",
             title: "",
             message: expect.stringContaining("Title:"),
+            errors: expect.arrayContaining([
+              expect.objectContaining({
+                field: "Title",
+                invalidValue: "",
+                suggestedFix: expect.any(String),
+              }),
+            ]),
           },
           {
             row: 4,
@@ -523,6 +537,15 @@ describe("import and evidence API routes", () => {
             title: "Bad prices",
             message:
               "New Price: New price must not exceed the baseline price.",
+            errors: [
+              {
+                field: "New Price",
+                invalidValue: "12",
+                message: "New price must not exceed the baseline price.",
+                suggestedFix:
+                  "Enter zero or a positive number that does not exceed Baseline Price.",
+              },
+            ],
           },
         ],
       });
@@ -541,7 +564,7 @@ describe("import and evidence API routes", () => {
       sheetToJsonMock.mockReturnValueOnce([
         {
           Title: "Resin renegotiation",
-          Description: "Renegotiate the resin packaging contract for margin improvement.",
+          Description: "",
           Supplier: "Supplier A",
           Material: "PET Resin",
           Category: "Packaging",
@@ -569,7 +592,12 @@ describe("import and evidence API routes", () => {
         expect.arrayContaining([
           expect.objectContaining({
             title: "Resin renegotiation",
+            description: "Resin renegotiation imported from Excel",
             buyer: { id: "buyer-1", name: "Strategic Buyer" },
+            savingType: "PRICE_REDUCTION",
+            impactType: "HARD_SAVINGS",
+            impactRecurrence: "RECURRING",
+            budgetImpact: "BUDGET_IMPACT",
           }),
         ]),
         "user-1",
@@ -579,7 +607,7 @@ describe("import and evidence API routes", () => {
       await expect(response.json()).resolves.toEqual({ count: 1 });
     });
 
-    it("accepts controller-friendly saving-card headers and US phase labels", async () => {
+    it("rejects non-Proposed phase imports so workflow approvals are not bypassed", async () => {
       xlsxReadMock.mockReturnValueOnce({
         SheetNames: ["Savings"],
         Sheets: {
@@ -590,7 +618,10 @@ describe("import and evidence API routes", () => {
         {
           "Saving Card Title": "Freight lane consolidation",
           Description: "Consolidate freight lanes after supplier contract reset.",
-          "Saving Type": "Commercial negotiation",
+          "Savings Category": "Freight / Logistics",
+          "Impact Classification": "Hard Savings",
+          Recurrence: "One-Time",
+          "Budget Treatment": "Budget Impact",
           Phase: "Realized",
           Supplier: "Supplier A",
           Material: "PET Resin",
@@ -615,22 +646,244 @@ describe("import and evidence API routes", () => {
         createFormDataRequest(createImportForm(createWorkbookFile()))
       );
 
-      expect(importSavingCardsMock).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toMatchObject({
+        importType: "saving_cards",
+        summary: {
+          total: 1,
+          valid: 0,
+          failed: 1,
+        },
+        results: [
+          {
+            row: 2,
+            status: "failed",
             title: "Freight lane consolidation",
-            savingType: "Commercial negotiation",
-            phase: "REALISED",
-            businessUnit: { id: "business-unit-1", name: "Beverages" },
-            baselinePrice: 10,
-            newPrice: 8,
-          }),
+            errors: [
+              {
+                field: "Phase",
+                invalidValue: "Implemented",
+                message:
+                  "Imported saving cards must start in Proposed so phase-change approvals are not bypassed.",
+                suggestedFix:
+                  "Use Proposed. Advance the card later through Traxium phase-change approvals.",
+              },
+            ],
+          },
         ],
-        "user-1",
-        "org-1"
+      });
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("returns a row-level error for invalid savings classification labels", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Savings"],
+        Sheets: { Savings: {} },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          "Saving Card Title": "Invalid classification card",
+          Description: "This row supplies an unsupported impact classification.",
+          "Savings Type": "Price Reduction",
+          "Impact Type": "Audited Saving",
+          Supplier: "Supplier A",
+          Material: "PET Resin",
+          Category: "Packaging",
+          Plant: "Amsterdam",
+          "Business Unit": "Beverages",
+          Buyer: "Strategic Buyer",
+          "Baseline Price": 10,
+          "New Price": 8,
+          "Annual Volume": 100,
+          Currency: "EUR",
+          "FX Rate": 1,
+          Frequency: "RECURRING",
+          "Start Date": "2025-01-01",
+          "End Date": "2025-12-31",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile()))
       );
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ count: 1 });
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toMatchObject({
+        importType: "saving_cards",
+        summary: { total: 1, valid: 0, failed: 1 },
+        results: [
+          {
+            row: 2,
+            status: "failed",
+            title: "Invalid classification card",
+            message: expect.stringContaining("Impact Type:"),
+          },
+        ],
+      });
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("returns missing required columns before reference-data lookup or write", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Import Template"],
+        Sheets: { "Import Template": {} },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Title: "Incomplete initiative",
+          Supplier: "Supplier A",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile()))
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toMatchObject({
+        importType: "saving_cards",
+        error: expect.stringContaining("missing required columns"),
+        missingColumns: expect.arrayContaining([
+          "Material",
+          "Category",
+          "Plant",
+          "Business Unit",
+          "Buyer",
+          "Baseline Price",
+          "New Price",
+          "Annual Volume",
+          "Currency",
+          "Start Date",
+          "End Date",
+        ]),
+        summary: {
+          total: 1,
+          valid: 0,
+          failed: 1,
+        },
+      });
+      expect(getReferenceDataMock).not.toHaveBeenCalled();
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("reports invalid currency, date, and number values with suggested fixes", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Import Template"],
+        Sheets: { "Import Template": {} },
+      });
+      sheetToJsonMock.mockReturnValueOnce([
+        {
+          Title: "Invalid assumptions",
+          Supplier: "Supplier A",
+          Material: "PET Resin",
+          Category: "Packaging",
+          Plant: "Amsterdam",
+          "Business Unit": "Beverages",
+          Buyer: "Strategic Buyer",
+          "Baseline Price": "not-a-number",
+          "New Price": 8,
+          "Annual Volume": 0,
+          Currency: "GBP",
+          "Start Date": "not-a-date",
+          "End Date": "2025-12-31",
+        },
+      ]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile()))
+      );
+      const result = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(result.results[0].errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "Baseline Price",
+            invalidValue: "not-a-number",
+          }),
+          expect.objectContaining({
+            field: "Annual Volume",
+            invalidValue: "0",
+          }),
+          expect.objectContaining({
+            field: "Currency",
+            invalidValue: "GBP",
+            suggestedFix: "Use EUR or USD.",
+          }),
+          expect.objectContaining({
+            field: "Start Date",
+            invalidValue: "not-a-date",
+          }),
+        ])
+      );
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects duplicate saving-card titles without writing any rows", async () => {
+      xlsxReadMock.mockReturnValueOnce({
+        SheetNames: ["Import Template"],
+        Sheets: { "Import Template": {} },
+      });
+      const row = {
+        Title: "Duplicate title",
+        Description: "A valid procurement savings initiative description.",
+        Supplier: "Supplier A",
+        Material: "PET Resin",
+        Category: "Packaging",
+        Plant: "Amsterdam",
+        "Business Unit": "Beverages",
+        Buyer: "Strategic Buyer",
+        "Baseline Price": 10,
+        "New Price": 8,
+        "Annual Volume": 100,
+        Currency: "EUR",
+        "Start Date": "2025-01-01",
+        "End Date": "2025-12-31",
+      };
+      sheetToJsonMock.mockReturnValueOnce([row, { ...row, Title: "duplicate title" }]);
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(createWorkbookFile()))
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toMatchObject({
+        summary: {
+          total: 2,
+          valid: 1,
+          failed: 1,
+        },
+        results: [
+          {
+            row: 3,
+            errors: [
+              expect.objectContaining({
+                field: "Title",
+                message:
+                  "Duplicate saving-card title appears earlier in this workbook.",
+              }),
+            ],
+          },
+        ],
+      });
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects CSV saving-card uploads with a clear file-type message", async () => {
+      const response = await postImportRoute(
+        createFormDataRequest(
+          createImportForm(
+            createWorkbookFile("title", "cards.csv", "text/csv")
+          )
+        )
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        error: "Saving-card imports accept XLSX workbooks only.",
+      });
+      expect(xlsxReadMock).not.toHaveBeenCalled();
+      expect(importSavingCardsMock).not.toHaveBeenCalled();
     });
 
     it("imports buyer master data from CSV and returns created, skipped, and failed row outcomes", async () => {
@@ -1075,6 +1328,31 @@ describe("import and evidence API routes", () => {
       });
     });
 
+    it("rejects invalid evidence type values", async () => {
+      const response = await postEvidenceUploadRoute(
+        createFormDataRequest(
+          createUploadForm({
+            savingCardId: "card-1",
+            evidenceType: "PUBLIC_LINK",
+            files: [
+              createWorkbookFile(
+                "pdf",
+                "evidence.pdf",
+                "application/pdf"
+              ),
+            ],
+          })
+        )
+      );
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error: "Evidence type is invalid.",
+      });
+      expect(storeEvidenceFileMock).not.toHaveBeenCalled();
+    });
+
     it("returns 422 for unsupported file types", async () => {
       const response = await postEvidenceUploadRoute(
         createFormDataRequest(
@@ -1128,6 +1406,7 @@ describe("import and evidence API routes", () => {
         fileName: "evidence.pdf",
         fileSize: 5,
         fileType: "application/pdf",
+        evidenceType: "SUPPLIER_QUOTE",
         uploadedAt: "2025-01-01T00:00:00.000Z",
       });
 
@@ -1135,6 +1414,7 @@ describe("import and evidence API routes", () => {
         createFormDataRequest(
           createUploadForm({
             savingCardId: "card-1",
+            evidenceType: "SUPPLIER_QUOTE",
             files: [createWorkbookFile("pdf", "evidence.pdf", "application/pdf")],
           })
         )
@@ -1154,6 +1434,23 @@ describe("import and evidence API routes", () => {
           savingCardId: "card-1",
         }
       );
+      expect(prismaMock.savingCardEvidence.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            savingCardId: "card-1",
+            evidenceType: "SUPPLIER_QUOTE",
+          }),
+        })
+      );
+      expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organizationId: "org-1",
+          savingCardId: "card-1",
+          eventType: "evidence.uploaded",
+          action: "evidence.uploaded",
+          targetEntityId: "evidence-1",
+        }),
+      });
       expect(response.status).toBe(201);
       await expect(response.json()).resolves.toEqual({
         success: true,
@@ -1163,6 +1460,7 @@ describe("import and evidence API routes", () => {
             fileName: "evidence.pdf",
             fileSize: 5,
             fileType: "application/pdf",
+            evidenceType: "SUPPLIER_QUOTE",
             uploadedAt: "2025-01-01T00:00:00.000Z",
             downloadUrl: "/api/evidence/evidence-1/download",
           },
@@ -1292,12 +1590,16 @@ describe("import and evidence API routes", () => {
         60
       );
       expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
-        data: {
+        data: expect.objectContaining({
+          organizationId: "org-1",
           userId: "user-1",
+          actorUserId: "user-1",
           savingCardId: "card-1",
+          targetEntityId: "evidence-1",
+          eventType: "evidence.downloaded",
           action: "evidence.downloaded",
           detail: "Evidence downloaded: evidence.pdf",
-        },
+        }),
       });
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe("https://storage.example.com/signed-url");

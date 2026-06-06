@@ -98,7 +98,10 @@ function createSavingCardRequest(ip = "198.51.100.20") {
     body: JSON.stringify({
       title: "Resin renegotiation",
       description: "Renegotiate the resin packaging contract for margin improvement.",
-      savingType: "Cost reduction",
+      savingType: "PRICE_REDUCTION",
+      impactType: "HARD_SAVINGS",
+      impactRecurrence: "RECURRING",
+      budgetImpact: "BUDGET_IMPACT",
       phase: "IDEA",
       supplier: { name: "Supplier A" },
       material: { name: "PET Resin" },

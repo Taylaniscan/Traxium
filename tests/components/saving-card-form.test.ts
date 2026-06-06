@@ -149,7 +149,10 @@ function createLockedSavingCard(): NonNullable<SavingCardFormProps["card"]> {
     organizationId: "org-1",
     title: "Resin renegotiation",
     description: "Validated savings case.",
-    savingType: "Hard savings - price reduction",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "VALIDATED",
     frequency: "RECURRING",
     supplierId: "supplier-1",
@@ -226,13 +229,9 @@ describe("saving card form", () => {
     );
     expect(markup).toContain("Workflow Status");
     expect(markup).toContain(
-      "New cards start in Idea and move after workflow approval."
+      "New cards start as Proposed and move after workflow approval."
     );
-    expect(markup).toContain(
-      "Classify the case as hard savings, cost avoidance, supplier switch, material substitution, or another procurement value type."
-    );
-    expect(markup).toContain("Hard savings - price reduction");
-    expect(markup).toContain("Cost avoidance - inflation mitigation");
+    expect(markup).not.toContain("Savings classification");
     expect(markup).toContain(
       "Save first, then attach quote, contract/PO, invoice, and calculation evidence for finance validation."
     );
@@ -241,19 +240,11 @@ describe("saving card form", () => {
     );
     expect(markup).toContain("No existing category yet");
     expect(markup).toContain("No existing buyer yet");
-    expect(markup).toContain("No existing business unit yet");
-    expect(markup).toContain("No existing plant yet");
     expect(markup).toContain(
       "Type the first category below. Traxium will create it in the active workspace when this card is saved."
     );
     expect(markup).toContain(
       "Type the first buyer below. Traxium will create it in the active workspace when this card is saved."
-    );
-    expect(markup).toContain(
-      "Type the first business unit below. Traxium will create it in the active workspace when this card is saved."
-    );
-    expect(markup).toContain(
-      "Type the first plant below. Traxium will create it in the active workspace when this card is saved."
     );
   });
 
@@ -306,9 +297,34 @@ describe("saving card form", () => {
 
     expect(markup).toContain("Finance lock active");
     expect(markup).toContain(
-      "Baseline price, new price, annual volume, currency, FX rate, and value recognition dates are the core finance control points for this record."
+      "Baseline price, new price, annual volume, currency, FX rate, value recognition dates, and savings classification are the core finance control points for this record."
     );
+    expect(markup).toContain("Finance lock protects the validated savings classification.");
     expect(markup).toContain("Finance-controlled");
     expect(markup).toContain('disabled=""');
+    expect(markup).toContain("Evidence type for this upload");
+    expect(markup).toContain("stored privately");
+    expect(markup).toContain("short-lived signed links");
+  });
+
+  it("renders the compact savings classification section with safe defaults", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(SavingCardForm, {
+        mode: "edit",
+        referenceData: createReferenceData(),
+      })
+    );
+
+    expect(markup).toContain("Savings classification");
+    expect(markup).toContain(
+      "Classification helps finance separate hard savings, cost avoidance, recurring impact, and budget impact."
+    );
+    expect(markup).toContain("Savings Type");
+    expect(markup).toContain("Impact Type");
+    expect(markup).toContain("Impact Recurrence");
+    expect(markup).toContain("Budget Impact");
+    expect(markup).toContain("Price Reduction");
+    expect(markup).toContain("Hard Savings");
+    expect(markup).toContain("Recurring");
   });
 });

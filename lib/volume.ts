@@ -109,6 +109,20 @@ type ScopedVolumeCard = Prisma.SavingCardGetPayload<{
   select: typeof scopedVolumeCardSelect;
 }>;
 
+type VolumeForecastRow = {
+  period: Date;
+  forecastQty: number;
+  unit: string;
+  source: ForecastSource;
+};
+
+type VolumeActualRow = {
+  period: Date;
+  actualQty: number;
+  unit: string;
+  source: ForecastSource;
+};
+
 async function getScopedVolumeCard(
   savingCardId: string,
   context: TenantContextSource
@@ -208,7 +222,6 @@ export async function getVolumeTimeline(
   context: TenantContextSource
 ): Promise<VolumeTimelineResult> {
   const card = await getScopedVolumeCard(savingCardId, context);
-  const priceDelta = card.baselinePrice - card.newPrice;
   const [forecasts, actuals] = await Promise.all([
     prisma.materialConsumptionForecast.findMany({
       where: buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
@@ -232,8 +245,81 @@ export async function getVolumeTimeline(
     }),
   ]);
 
+  return buildVolumeTimelineResult(card, forecasts, actuals);
+}
+
+export async function getPortfolioVolumeTimelines(
+  savingCardIds: string[],
+  context: TenantContextSource
+): Promise<VolumeTimelineResult[]> {
+  const uniqueCardIds = [...new Set(savingCardIds.map((id) => id.trim()).filter(Boolean))];
+
+  if (!uniqueCardIds.length) {
+    return [];
+  }
+
+  const cards = await prisma.savingCard.findMany({
+    where: buildTenantScopeWhere(context, {
+      id: {
+        in: uniqueCardIds,
+      },
+    }),
+    select: scopedVolumeCardSelect,
+  });
+  const scopedCardIds = cards.map((card) => card.id);
+
+  if (!scopedCardIds.length) {
+    return [];
+  }
+
+  const forecasts = await prisma.materialConsumptionForecast.findMany({
+    where: buildTenantOwnedRelationWhere("savingCard", context, {
+      id: {
+        in: scopedCardIds,
+      },
+    }),
+    orderBy: [{ savingCardId: "asc" }, { period: "asc" }],
+    select: {
+      savingCardId: true,
+      period: true,
+      forecastQty: true,
+      unit: true,
+      source: true,
+    },
+  });
+  const actuals = await prisma.materialConsumptionActual.findMany({
+    where: buildTenantOwnedRelationWhere("savingCard", context, {
+      id: {
+        in: scopedCardIds,
+      },
+    }),
+    orderBy: [{ savingCardId: "asc" }, { period: "asc" }],
+    select: {
+      savingCardId: true,
+      period: true,
+      actualQty: true,
+      unit: true,
+      source: true,
+    },
+  });
+
+  return cards.map((card) =>
+    buildVolumeTimelineResult(
+      card,
+      forecasts.filter((row) => row.savingCardId === card.id),
+      actuals.filter((row) => row.savingCardId === card.id)
+    )
+  );
+}
+
+function buildVolumeTimelineResult(
+  card: ScopedVolumeCard,
+  forecasts: VolumeForecastRow[],
+  actuals: VolumeActualRow[]
+): VolumeTimelineResult {
+  const priceDelta = card.baselinePrice - card.newPrice;
   const rows = new Map<string, TimelineAccumulator>();
-  const defaultUnit = card?.volumeUnit ?? "units";
+  const defaultUnit = card.volumeUnit ?? "units";
 
   for (const forecast of forecasts) {
     const normalizedPeriod = normalizePeriod(forecast.period);

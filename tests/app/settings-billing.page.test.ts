@@ -17,6 +17,7 @@ const isStripeBillingConfiguredMock = vi.hoisted(() => vi.fn());
 const getMissingStripeBillingEnvKeysMock = vi.hoisted(() => vi.fn());
 const canManageOrganizationMembersMock = vi.hoisted(() => vi.fn());
 const getOrganizationSettingsMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   redirect: redirectMock,
@@ -39,6 +40,10 @@ vi.mock("@/lib/billing/config", () => ({
 vi.mock("@/lib/organizations", () => ({
   canManageOrganizationMembers: canManageOrganizationMembersMock,
   getOrganizationSettings: getOrganizationSettingsMock,
+}));
+
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
 }));
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -173,19 +178,51 @@ describe("settings billing page", () => {
     expect(markup).toContain("Select Starter");
     expect(markup).toContain("Select Growth");
     expect(markup).toContain("Manage billing");
-    expect(markup).toContain("Workspace Settings");
+    expect(markup).toContain("Return to Workspace Settings");
     expect(markup).toContain("href=\"/admin/settings\"");
     expect(markup).toContain("Secure billing recovery");
     expect(markup).toContain("action=\"/billing/recover\"");
     expect(markup).toContain("method=\"post\"");
     expect(markup).toContain("name=\"intent\"");
-    expect(markup).toContain("value=\"open_billing_portal\"");
     expect(markup).toContain("value=\"resume_subscription\"");
     expect(markup).toContain("name=\"planCode\"");
     expect(markup).toContain("value=\"starter\"");
     expect(markup).toContain("value=\"growth\"");
     expect(markup).not.toContain("/api/billing/portal");
     expect(markup).toContain("No paid plan yet");
+  });
+
+  it("renders UtopiaTrax subscription trial access without a billing block", async () => {
+    getOrganizationAccessStateMock.mockResolvedValueOnce(
+      createAllowedTrialAccessState({
+        subscriptionId: "subrec-utopiatrax",
+        stripeSubscriptionId: "sub-demo",
+        rawSubscriptionStatus: "TRIALING",
+        accessState: "trialing",
+        reasonCode: "trialing",
+        trialEndsAt: new Date("2028-12-31T23:59:59.000Z"),
+        trialSource: "subscription",
+      })
+    );
+    getOrganizationSettingsMock.mockResolvedValueOnce({
+      id: "org-utopiatrax",
+      name: "UtopiaTrax",
+      description: "Manufacturing savings governance demo.",
+      slug: "utopiatrax",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-05T00:00:00.000Z"),
+    });
+
+    const page = await BillingReturnPage({
+      searchParams: Promise.resolve({}),
+    });
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(markup).toContain("UtopiaTrax");
+    expect(markup).toContain("Subscription trial");
+    expect(markup).toContain("Return to Dashboard");
+    expect(markup).not.toContain("Resolve payment failure");
+    expect(redirectMock).not.toHaveBeenCalledWith("/billing-required");
   });
 
   it("renders successful Stripe returns as a clear processing banner when the workspace is still blocked", async () => {
@@ -402,7 +439,6 @@ describe("settings billing page", () => {
     expect(markup).toContain("Select subscription plan");
     expect(markup).toContain("Select Starter");
     expect(markup).toContain("Select Growth");
-    expect(markup).toContain("value=\"open_billing_portal\"");
     expect(markup).toContain("value=\"resume_subscription\"");
     expect(markup).toContain("name=\"planCode\"");
     expect(markup).toContain("value=\"starter\"");
@@ -449,10 +485,38 @@ describe("settings billing page", () => {
     });
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("Stripe billing is not configured");
+    expect(markup).toContain(
+      "Billing provider is not configured in this environment."
+    );
     expect(markup).toContain("Add the missing Stripe billing variables");
     expect(markup).toContain("STRIPE_SECRET_KEY");
     expect(markup).toContain("STRIPE_CHECKOUT_SUCCESS_URL");
+    expect(markup).toContain("Manage billing");
+    expect(markup).toContain("action=\"/billing/recover\"");
+  });
+
+  it("renders degraded billing details when bootstrap billing verification fails", async () => {
+    bootstrapCurrentUserMock.mockRejectedValueOnce(
+      new Error("Billing access lookup failed.")
+    );
+    getOrganizationAccessStateMock.mockRejectedValueOnce(
+      new Error("Billing access lookup failed.")
+    );
+
+    const page = await BillingReturnPage({
+      searchParams: Promise.resolve({}),
+    });
+    const markup = renderToStaticMarkup(page as React.ReactElement);
+
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "settings.billing.bootstrap_failed",
+        route: "/settings/billing",
+      })
+    );
+    expect(markup).toContain("Workspace billing");
+    expect(markup).toContain("Billing status could not be verified.");
     expect(markup).toContain("Manage billing");
     expect(markup).toContain("action=\"/billing/recover\"");
   });

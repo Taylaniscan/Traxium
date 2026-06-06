@@ -303,7 +303,10 @@ function createSavingCard(
   return {
     id: "card-1",
     title: "Packaging renegotiation",
-    savingType: "COST_REDUCTION",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "IDEA",
     supplierId: "supplier-1",
     materialId: "material-1",
@@ -531,7 +534,7 @@ describe("kanban board runtime regression", () => {
     );
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
-    ).toEqual(["Move to...", "Validated", "Canceled"]);
+    ).toEqual(["Move to...", "Finance Validated", "Canceled"]);
 
     await dragCardToPhase({
       runtime,
@@ -574,11 +577,11 @@ describe("kanban board runtime regression", () => {
 
     expect(runtime.getText()).toContain("Board updated");
     expect(runtime.getText()).toContain(
-      "Packaging renegotiation remains in Idea while approval is pending for Validated."
+      "Packaging renegotiation remains in Proposed while approval is pending for Finance Validated."
     );
     expect(runtime.getColumnText("IDEA")).toContain("Pending approval");
     expect(runtime.getColumnText("IDEA")).toContain(
-      "Pending move to Validated. Card remains in Idea until approval completes."
+      "Pending move to Finance Validated. Card remains in Proposed until approval completes."
     );
     expect(runtime.getColumnText("VALIDATED")).not.toContain(
       "Packaging renegotiation"
@@ -591,7 +594,7 @@ describe("kanban board runtime regression", () => {
 
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
-    ).toEqual(["Move to...", "Validated", "Canceled"]);
+    ).toEqual(["Move to...", "Finance Validated", "Canceled"]);
     expect(
       runtime.getSelectOptionLabels("Move Packaging renegotiation to")
     ).not.toContain("Achieved");
@@ -605,7 +608,7 @@ describe("kanban board runtime regression", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(runtime.getText()).toContain("Move blocked");
     expect(runtime.getText()).toContain(
-      "Cannot move from Idea to Achieved. You can only request Validated or Canceled."
+      "Cannot move from Proposed to Captured. You can only request Finance Validated or Canceled."
     );
     expect(runtime.getColumnText("IDEA")).toContain("Packaging renegotiation");
     expect(runtime.getColumnText("ACHIEVED")).not.toContain(

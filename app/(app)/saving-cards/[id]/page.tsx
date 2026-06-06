@@ -6,21 +6,32 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
-import { getReferenceData, getSavingCard } from "@/lib/data";
-import { phaseLabels } from "@/lib/constants";
+import { getSavingCard, getSavingCardDetailReferenceData } from "@/lib/data";
+import {
+  phaseLabels,
+  savingTypeLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import { canLockFinance, hasPermission } from "@/lib/permissions";
 
-export default async function SavingCardDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SavingCardDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ created?: string | string[] }>;
+}) {
   const user = await requireUser();
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const showCreatedSuccess = resolvedSearchParams?.created === "1";
 
-  const [card, referenceData] = await Promise.all([
-    getSavingCard(id, user.organizationId),
-    getReferenceData(user.organizationId),
-  ]);
+  const card = await getSavingCard(id, user.organizationId);
 
   if (!card) notFound();
+
+  const referenceData = await getSavingCardDetailReferenceData(user.organizationId);
 
   const alternativeSupplierLabel =
     card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified";
@@ -50,12 +61,44 @@ export default async function SavingCardDetailPage({ params }: { params: Promise
       <div className="flex flex-wrap gap-2">
         <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
         <span className="rounded-full border border-[var(--border)] bg-white px-3 py-1 text-xs font-medium text-[var(--foreground)]">
-          {card.savingType}
+          {savingTypeLabels[card.savingType]}
+        </span>
+        <span className="rounded-full border border-[var(--border)] bg-white px-3 py-1 text-xs font-medium text-[var(--foreground)]">
+          {savingsImpactTypeLabels[card.impactType]}
         </span>
         <span className="rounded-full border border-[var(--border)] bg-[var(--muted)]/45 px-3 py-1 text-xs font-medium text-[var(--foreground)]">
           {card.financeLocked ? "Finance locked" : "Finance open"}
         </span>
       </div>
+
+      {showCreatedSuccess ? (
+        <Card className="border-[rgba(16,185,129,0.26)] bg-[rgba(16,185,129,0.08)]">
+          <CardHeader>
+            <CardTitle>First saving card created</CardTitle>
+            <CardDescription>
+              This workspace now has a real savings initiative with visible
+              calculated savings. Create the card first. Then attach evidence
+              and request finance validation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Link href={`/saving-cards/${card.id}#evidence`}>
+              <Button variant="outline">Attach evidence</Button>
+            </Link>
+            {canRequestPhaseChange ? (
+              <Link href={`/saving-cards/${card.id}#workflow`}>
+                <Button variant="outline">Request validation</Button>
+              </Link>
+            ) : null}
+            <Link href="/dashboard">
+              <Button>Open dashboard</Button>
+            </Link>
+            <Link href="/saving-cards/new">
+              <Button variant="ghost">Create another card</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="overflow-hidden">
         <CardHeader className="space-y-3 border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">

@@ -20,6 +20,7 @@ Traxium is built to solve that.
 Traxium helps teams:
 
 - create and manage savings cards
+- classify savings by procurement method, finance impact, recurrence, and budget treatment
 - assign buyers and stakeholders
 - track sourcing initiatives through lifecycle phases
 - compare alternative suppliers and materials
@@ -61,31 +62,43 @@ The current first-buyer story is a guided paid pilot for 50-500 employee US manu
 
 See [paid-pilot-buyer-package.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-buyer-package.md) for the landing-page promise, demo script, trust page needs, support expectations, export expectations, and explicit first-pilot exclusions. See [paid-pilot-offer-and-pricing.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-offer-and-pricing.md) for the paid-pilot offer, pricing hypothesis, and Stripe plan-name relationship.
 
+Qualified prospective buyers can request a founder-led paid pilot through the public `/pilot` route. The form stores a validated, rate-limited lead request with honeypot protection; it does not create a user, workspace, free trial, or billing subscription. The product and technical contract is documented in [paid-pilot-lead-capture-contract.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-lead-capture-contract.md).
+
+The public `/trust` route summarizes workspace isolation, roles, private evidence handling, Stripe-managed billing, import/export boundaries, provider-proof status, support, and paid-pilot exclusions. Detailed buyer artifacts are:
+
+- [trust-pack.md](/Users/atlas/Documents/Traxium/docs/trust-pack.md)
+- [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md)
+- [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md)
+- [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md)
+- [paid-pilot-security-review-checklist.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-security-review-checklist.md)
+
+These documents describe paid-pilot controls and limitations. They are not compliance certifications, legal policies, or production provider-proof records.
+
 ## Canonical Workflow Contract
 
 Traxium now treats the workflow contract as a first-class product rule, not a UI convention.
 
-- New saving cards must start in `Idea`.
-- The canonical lifecycle order is `Idea -> Validated -> Realized -> Achieved`.
+- New saving cards must start as Proposed (`IDEA` internal enum).
+- The canonical lifecycle order is Proposed (`IDEA`) -> Finance Validated (`VALIDATED`) -> Implemented (`REALISED`) -> Captured (`ACHIEVED`).
 - Allowed transitions are:
-  - `Idea -> Validated`
-  - `Validated -> Realized`
-  - `Realized -> Achieved`
-  - any non-canceled phase -> `Canceled`, but only with a cancellation reason
+  - Proposed (`IDEA`) -> Finance Validated (`VALIDATED`)
+  - Finance Validated (`VALIDATED`) -> Implemented (`REALISED`)
+  - Implemented (`REALISED`) -> Captured (`ACHIEVED`)
+  - any non-canceled phase -> Canceled (`CANCELLED`), but only with a cancellation reason
 - No skipping is allowed between non-canceled phases.
 - Phase changes must go through the phase-change request and approval flow. Create and edit flows must not mutate `phase` directly.
 
 Target-phase approval requirements:
 
-- `Idea`: initial phase for new cards rather than a normal requested destination
-- `Validated`: Procurement Lead and Finance Reviewer
-- `Realized`: Finance Reviewer
-- `Achieved`: Finance Reviewer
-- `Canceled`: requires a reason and follows the implemented phase-change approval path
+- Proposed (`IDEA`): initial phase for new cards rather than a normal requested destination
+- Finance Validated (`VALIDATED`): Procurement Lead and Finance Reviewer
+- Implemented (`REALISED`): Finance Reviewer
+- Captured (`ACHIEVED`): Finance Reviewer
+- Canceled (`CANCELLED`): requires a reason and follows the implemented phase-change approval path
 
 Additional workflow constraints:
 
-- Finance lock is only allowed for `Validated` savings.
+- Finance lock is only allowed for Finance Validated (`VALIDATED`) savings.
 - Kanban groups cards by persisted `savingCard.phase`, not by a pending request destination.
 - Pending phase-change requests are shown as pending metadata in the card UI. They do not visually relocate the card before approval completes.
 - The legacy approval path is not an active parallel workflow. The phase-change request approval model is the only approval path that may advance card phase.

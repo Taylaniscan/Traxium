@@ -1,6 +1,6 @@
 # API Hardening Matrix
 
-This matrix reflects the current `app/api/**` implementation as of 2026-03-27. It documents protections that are actually enforced in code today, not aspirational controls.
+This matrix reflects the current `app/api/**` implementation as of 2026-06-05. It documents protections that are actually enforced in code today, not aspirational controls.
 
 ## Route Matrix
 
@@ -10,6 +10,7 @@ This matrix reflects the current `app/api/**` implementation as of 2026-03-27. I
 | `/api/auth/change-password` | `POST` | Yes | No | Yes | Current authenticated session only | Yes | No | Yes | No | Strong | Requires the current password, validates the next password locally, and uses the authenticated Supabase session for the final mutation. |
 | `/api/auth/forgot-password` | `POST` | No | No | Yes | Public, IP-scoped only | Yes | No | Yes | No | Strong | Distributed, fail-closed limiter on IP; async email queue path stays controlled. |
 | `/api/auth/reset-password` | `POST` | Reset session required | No | Yes | Supabase reset session only | Yes | No | Yes | No | Strong | Distributed, fail-closed limiter on IP before password mutation. |
+| `/api/pilot-leads` | `POST` | No | No | Yes | Public, IP-scoped only | Yes | Observability event | Yes | No | Strong | Strict field validation, honeypot handling, recent-duplicate suppression, privacy-preserving optional request hashes, and a distributed fail-closed limiter protect the public lead write. |
 | `/api/onboarding/workspace` | `POST` | Yes | No | Yes | Current authenticated user only | Yes | No | No | No | Strong | Idempotent service-layer provisioning path with explicit `code` values on onboarding/auth failure. |
 | `/api/onboarding/sample-data` | `POST` | Yes | No | N/A | Active organization only | Yes | No | No | No | Good | Tenant-scoped sample data load plus analytics/observability events. |
 | `/api/onboarding/master-data` | `POST` | Yes | Yes | Yes | Active organization only | Yes | No | Yes | No | Strong | Starter-data table route creates tenant-scoped onboarding master data, skips duplicates, reports row-level failures, and is distributed-rate-limited. |

@@ -427,11 +427,16 @@ export type AuthGuardOptions = {
 export const savingCardPortfolioSelect = {
   id: true,
   title: true,
+  description: true,
   savingType: true,
+  impactType: true,
+  impactRecurrence: true,
+  budgetImpact: true,
   phase: true,
   supplierId: true,
   materialId: true,
   categoryId: true,
+  plantId: true,
   businessUnitId: true,
   buyerId: true,
   alternativeSupplierManualName: true,
@@ -439,9 +444,11 @@ export const savingCardPortfolioSelect = {
   baselinePrice: true,
   newPrice: true,
   annualVolume: true,
+  volumeUnit: true,
   currency: true,
   calculatedSavings: true,
   calculatedSavingsUSD: true,
+  frequency: true,
   savingDriver: true,
   implementationComplexity: true,
   qualificationStatus: true,
@@ -450,6 +457,17 @@ export const savingCardPortfolioSelect = {
   impactStartDate: true,
   impactEndDate: true,
   financeLocked: true,
+  cancellationReason: true,
+  createdAt: true,
+  updatedAt: true,
+  evidence: {
+    select: {
+      id: true,
+      evidenceType: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   supplier: {
     select: {
       id: true,
@@ -486,6 +504,12 @@ export const savingCardPortfolioSelect = {
       name: true,
     },
   },
+  plant: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
   businessUnit: {
     select: {
       id: true,
@@ -506,6 +530,14 @@ export const savingCardPortfolioSelect = {
     },
     orderBy: { createdAt: "desc" as const },
   },
+  phaseHistory: {
+    select: {
+      toPhase: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
 } satisfies Prisma.SavingCardSelect;
 
 export type SavingCardPortfolio = Prisma.SavingCardGetPayload<{
@@ -515,6 +547,10 @@ export type SavingCardPortfolio = Prisma.SavingCardGetPayload<{
 export const dashboardCardSelect = {
   title: true,
   phase: true,
+  savingType: true,
+  impactType: true,
+  impactRecurrence: true,
+  budgetImpact: true,
   categoryId: true,
   baselinePrice: true,
   newPrice: true,
@@ -525,6 +561,14 @@ export const dashboardCardSelect = {
   implementationComplexity: true,
   qualificationStatus: true,
   impactStartDate: true,
+  evidence: {
+    select: {
+      id: true,
+      evidenceType: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   category: {
     select: {
       name: true,
@@ -809,7 +853,7 @@ export type SavingCardWithRelations = Prisma.SavingCardGetPayload<{
     businessUnit: true;
     buyer: true;
     stakeholders: { include: { user: true } };
-    evidence: true;
+    evidence: { include: { uploadedBy: { select: { id: true; name: true; email: true } } }; orderBy: { uploadedAt: "desc" } };
     alternativeSuppliers: { include: { supplier: true } };
     alternativeMaterials: { include: { material: true; supplier: true } };
     approvals: { include: { approver: true } };

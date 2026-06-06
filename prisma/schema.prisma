@@ -42,6 +42,41 @@ enum Frequency {
   MULTI_YEAR
 }
 
+enum SavingType {
+  PRICE_REDUCTION
+  SUPPLIER_SWITCH
+  REBATE_CREDIT
+  SPECIFICATION_CHANGE
+  VOLUME_CONSOLIDATION
+  FREIGHT_LOGISTICS
+  PAYMENT_TERMS
+  PROCESS_TOLLING
+  COST_AVOIDANCE
+  OTHER
+}
+
+enum SavingsImpactType {
+  HARD_SAVINGS
+  COST_AVOIDANCE
+  CASH_FLOW_IMPROVEMENT
+  WORKING_CAPITAL_IMPACT
+  RISK_CONTINUITY_BENEFIT
+}
+
+enum SavingsImpactRecurrence {
+  RECURRING
+  ONE_TIME
+  TEMPORARY
+  UNKNOWN
+}
+
+enum SavingsBudgetImpact {
+  BUDGET_IMPACT
+  FORECAST_AVOIDANCE
+  NON_BUDGET_OPERATIONAL_BENEFIT
+  UNKNOWN
+}
+
 enum Currency {
   EUR
   USD
@@ -112,14 +147,24 @@ enum UsageWindow {
   YEAR
 }
 
+enum PilotLeadStatus {
+  NEW
+  REVIEWED
+  QUALIFIED
+  DISQUALIFIED
+  CONTACTED
+  CONVERTED
+  ARCHIVED
+}
+
 model Organization {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  slug            String   @unique
+  id                   String    @id @default(cuid())
+  name                 String
+  description          String?
+  slug                 String    @unique
   workspaceTrialEndsAt DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   users           User[]
   memberships     OrganizationMembership[]
@@ -222,7 +267,7 @@ model Buyer {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  savingCards   SavingCard[]
+  savingCards  SavingCard[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -273,7 +318,7 @@ model Category {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization   @relation(fields: [organizationId], references: [id])
   savingCards   SavingCard[]
   annualTargets AnnualTarget[]
 
@@ -311,12 +356,16 @@ model BusinessUnit {
 }
 
 model SavingCard {
-  id                            String    @id @default(cuid())
+  id                            String                  @id @default(cuid())
   organizationId                String
   title                         String
   description                   String
-  savingType                    String
-  phase                         Phase     @default(IDEA)
+  legacySavingsMethod           String?
+  savingType                    SavingType              @default(PRICE_REDUCTION)
+  impactType                    SavingsImpactType       @default(HARD_SAVINGS)
+  impactRecurrence              SavingsImpactRecurrence @default(RECURRING)
+  budgetImpact                  SavingsBudgetImpact     @default(BUDGET_IMPACT)
+  phase                         Phase                   @default(IDEA)
   supplierId                    String
   materialId                    String
   alternativeSupplierId         String?
@@ -330,7 +379,7 @@ model SavingCard {
   baselinePrice                 Float
   newPrice                      Float
   annualVolume                  Float
-  volumeUnit                    String    @default("units")
+  volumeUnit                    String                  @default("units")
   currency                      Currency
   fxRate                        Float
   calculatedSavings             Float
@@ -343,10 +392,10 @@ model SavingCard {
   endDate                       DateTime
   impactStartDate               DateTime
   impactEndDate                 DateTime
-  financeLocked                 Boolean   @default(false)
+  financeLocked                 Boolean                 @default(false)
   cancellationReason            String?
-  createdAt                     DateTime  @default(now())
-  updatedAt                     DateTime  @updatedAt
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
 
   organization        Organization @relation(fields: [organizationId], references: [id])
   supplier            Supplier     @relation("BaselineSupplier", fields: [supplierId], references: [id])
@@ -434,18 +483,35 @@ model SavingCardStakeholder {
 }
 
 model SavingCardEvidence {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   savingCardId  String
   fileName      String
+  evidenceType  EvidenceType @default(OTHER)
+  sourceDate    DateTime?
+  notes         String?
   storageBucket String
   storagePath   String
   fileSize      Int
   fileType      String
   uploadedById  String?
-  uploadedAt    DateTime @default(now())
+  uploadedAt    DateTime     @default(now())
 
   savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
   uploadedBy User?      @relation("UploadedEvidence", fields: [uploadedById], references: [id])
+}
+
+enum EvidenceType {
+  SUPPLIER_QUOTE
+  PRICE_CONFIRMATION
+  CONTRACT_OR_PO
+  INVOICE_OR_ACTUAL
+  CALCULATION_WORKBOOK
+  TECHNICAL_APPROVAL
+  CUSTOMER_APPROVAL
+  REBATE_AGREEMENT
+  TOLLING_RATE_CARD
+  NEGOTIATION_SUMMARY
+  OTHER
 }
 
 model SavingCardAlternativeSupplier {
@@ -562,14 +628,14 @@ model PhaseHistory {
 }
 
 model Notification {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String?
   userId         String
   title          String
   message        String
   href           String?
   readAt         DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -699,35 +765,35 @@ model BillingCustomer {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  organizationId     String
-  billingCustomerId  String
-  productPlanId      String?
-  planPriceId        String?
-  stripeSubscriptionId String          @unique
-  status             SubscriptionStatus
-  currencyCode       String?
-  quantity           Int                @default(1)
-  cancelAtPeriodEnd  Boolean            @default(false)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  trialStart         DateTime?
-  trialEnd           DateTime?
-  canceledAt         DateTime?
-  endedAt            DateTime?
-  metadata           Json?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                   String             @id @default(cuid())
+  organizationId       String
+  billingCustomerId    String
+  productPlanId        String?
+  planPriceId          String?
+  stripeSubscriptionId String             @unique
+  status               SubscriptionStatus
+  currencyCode         String?
+  quantity             Int                @default(1)
+  cancelAtPeriodEnd    Boolean            @default(false)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id], onDelete: Cascade)
-  productPlan    ProductPlan?   @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
-  planPrice      PlanPrice?     @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+  productPlan     ProductPlan?    @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
+  planPrice       PlanPrice?      @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -737,18 +803,18 @@ model Subscription {
 }
 
 model WebhookEvent {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   organizationId  String?
-  stripeEventId   String   @unique
-  source          String   @default("stripe")
+  stripeEventId   String    @unique
+  source          String    @default("stripe")
   eventType       String
   apiVersion      String?
   livemode        Boolean
   payload         Json
-  receivedAt      DateTime @default(now())
+  receivedAt      DateTime  @default(now())
   processedAt     DateTime?
   processingError String?
-  updatedAt       DateTime @updatedAt
+  updatedAt       DateTime  @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
@@ -836,4 +902,35 @@ model RateLimitBucket {
   @@index([policy, expiresAt])
   @@index([policy, action, expiresAt])
   @@index([scope, expiresAt])
+}
+
+model PilotLead {
+  id                String          @id @default(cuid())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  fullName          String
+  workEmail         String
+  companyName       String
+  jobTitle          String?
+  phone             String?
+  companySize       String?
+  industry          String?
+  country           String          @default("United States")
+  state             String?
+  currentTracking   String?
+  savingsPain       String?
+  monthlyReporting  String?
+  hasSavingsTracker Boolean         @default(false)
+  estimatedSpend    String?
+  timeline          String?
+  message           String?
+  source            String          @default("public_pilot_form")
+  status            PilotLeadStatus @default(NEW)
+  dedupeKey         String
+  ipHash            String?
+  userAgentHash     String?
+
+  @@index([dedupeKey, createdAt])
+  @@index([status, createdAt])
+  @@index([workEmail, createdAt])
 }

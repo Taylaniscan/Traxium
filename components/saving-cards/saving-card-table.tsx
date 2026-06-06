@@ -8,10 +8,17 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { phaseLabels, phases } from "@/lib/constants";
+import { Badge } from "@/components/ui/badge";
+import {
+  phaseLabels,
+  phases,
+  savingTypeLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { getEvidenceStatus } from "@/lib/evidence";
 
 export function SavingCardTable({
   cards,
@@ -45,7 +52,8 @@ export function SavingCardTable({
 
       const haystack = [
         card.title,
-        card.savingType,
+        savingTypeLabels[card.savingType],
+        savingsImpactTypeLabels[card.impactType],
         card.category.name,
         card.buyer.name,
         card.supplier.name,
@@ -61,7 +69,7 @@ export function SavingCardTable({
   const activeFilters = Boolean(search.trim() || phaseFilter);
   const totalSavings = filteredCards.reduce((sum, card) => sum + card.calculatedSavings, 0);
   const lockedCount = filteredCards.filter((card) => card.financeLocked).length;
-  const realisedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
+  const capturedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
   const totalLockedCount = cards.filter((card) => card.financeLocked).length;
   const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
   const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
@@ -193,7 +201,7 @@ export function SavingCardTable({
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
-        <SummaryTile label="Realized or Achieved" value={String(realisedCount)} />
+        <SummaryTile label="Implemented or Captured" value={String(capturedCount)} />
       </div>
 
       {!filteredCards.length ? (
@@ -264,9 +272,20 @@ export function SavingCardTable({
                     {card.category.name} · {card.supplier.name} · {card.buyer.name}
                   </p>
                   <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-                    {card.savingType} · {formatDate(card.impactStartDate)} to{" "}
-                    {formatDate(card.impactEndDate)}
+                    {savingTypeLabels[card.savingType]} · {savingsImpactTypeLabels[card.impactType]} ·{" "}
+                    {formatDate(card.impactStartDate)} to {formatDate(card.impactEndDate)}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge tone={getEvidenceTone(card.phase, card.evidence.length)}>
+                      {getEvidenceStatus(card.phase, card.evidence.length)}
+                    </Badge>
+                    {card.evidence.length ? (
+                      <Badge tone="slate">
+                        {card.evidence.length} evidence file
+                        {card.evidence.length === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
@@ -287,6 +306,18 @@ export function SavingCardTable({
       </Card>
     </div>
   );
+}
+
+function getEvidenceTone(
+  phase: SavingCardPortfolio["phase"],
+  evidenceCount: number
+): "emerald" | "amber" | "rose" | "slate" {
+  const status = getEvidenceStatus(phase, evidenceCount);
+
+  if (status === "Evidence attached") return "emerald";
+  if (status === "Missing evidence") return "rose";
+  if (status === "Evidence recommended") return "amber";
+  return "slate";
 }
 
 function ViewScopeCard({

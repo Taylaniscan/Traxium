@@ -2,6 +2,8 @@
 
 This runbook is the manual and simulated release-validation pack for Traxium's subscription gating, billing recovery, and Stripe deploy safety behavior. Use it during preview signoff before production release. It is intentionally explicit so a teammate who did not author the feature can still validate it safely.
 
+Use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master Gap 1 provider-flow gate. This billing-access runbook is the detailed companion for blocked billing, recovery, multi-org, and Stripe access-state QA.
+
 ## Evidence Labels
 
 - `Automated`: already proven by deterministic tests in this repository
@@ -275,6 +277,7 @@ Prepare these before manual testing:
 
 Use these suites before manual staging work:
 
+- [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) for the master provider-flow proof log and release gate
 - `npm run stripe:validate`
 - `npm run stripe:validate -- --exercise-provider-flows`
 - `tests/lib/billing-access.test.ts`

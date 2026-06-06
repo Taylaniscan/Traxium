@@ -19,7 +19,10 @@ export class FirstValueError extends Error {
 type SampleSavingCardInput = {
   title: string;
   description: string;
-  savingType: string;
+  savingType: "PRICE_REDUCTION" | "SPECIFICATION_CHANGE";
+  impactType: "HARD_SAVINGS";
+  impactRecurrence: "RECURRING";
+  budgetImpact: "BUDGET_IMPACT";
   phase: "IDEA" | "VALIDATED";
   supplier: {
     name: string;
@@ -61,7 +64,10 @@ const SAMPLE_SAVING_CARDS: readonly SampleSavingCardInput[] = [
     title: "PET Resin Renegotiation Wave 1",
     description:
       "Renegotiate the PET resin baseline across the Western Europe beverage footprint to reduce unit cost while preserving quality, service level, and approved supply continuity.",
-    savingType: "Commercial renegotiation",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "VALIDATED",
     supplier: {
       name: "Nordic Polymers",
@@ -101,7 +107,10 @@ const SAMPLE_SAVING_CARDS: readonly SampleSavingCardInput[] = [
     title: "Secondary Label Stock Harmonization",
     description:
       "Standardize secondary label stock specifications across nutrition lines to simplify sourcing, improve run-rate pricing, and remove avoidable variant complexity from the packaging base.",
-    savingType: "Specification harmonization",
+    savingType: "SPECIFICATION_CHANGE",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "IDEA",
     supplier: {
       name: "Delta Print Solutions",

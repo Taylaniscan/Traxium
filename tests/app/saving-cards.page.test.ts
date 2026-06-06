@@ -1,5 +1,9 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const SavingCardTableMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -60,6 +64,25 @@ describe("saving cards page", () => {
       },
     });
     expect(getSavingCardsMock).toHaveBeenCalledWith("org-1", undefined);
+  });
+
+  it("passes the complete UtopiaTrax register to the all-cards table", async () => {
+    const cards = createUtopiaTraxPortfolioCards();
+    const readiness = createUtopiaTraxReadiness();
+    getSavingCardsMock.mockResolvedValue(cards);
+    getWorkspaceReadinessMock.mockResolvedValue(readiness);
+
+    const page = await SavingCardsPage({
+      searchParams: Promise.resolve({}),
+    });
+    const tableElement = page.props.children[1];
+
+    expect(tableElement.props.cards).toHaveLength(25);
+    expect(
+      new Set(tableElement.props.cards.map((card: { phase: string }) => card.phase))
+        .size
+    ).toBeGreaterThanOrEqual(5);
+    expect(tableElement.props.readiness.counts.savingCards).toBe(25);
   });
 
   it("keeps rendering a safe fallback and captures degraded page loads", async () => {

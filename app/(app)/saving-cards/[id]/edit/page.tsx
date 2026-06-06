@@ -8,12 +8,11 @@ export default async function EditSavingCardPage({ params }: { params: Promise<{
   const user = await requireUser();
   const { id } = await params;
 
-  const [referenceData, card] = await Promise.all([
-    getReferenceData(user.organizationId),
-    getSavingCard(id, user.organizationId),
-  ]);
+  const card = await getSavingCard(id, user.organizationId);
 
   if (!card) notFound();
+
+  const referenceData = await getReferenceData(user.organizationId);
 
   return (
     <div className="space-y-8">

@@ -1,5 +1,10 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+  createUtopiaTraxReferenceData,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const TimelineBoardMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -69,6 +74,20 @@ describe("timeline page", () => {
       },
     });
     expect(boardElement.props.nowIso).toEqual(expect.any(String));
+  });
+
+  it("passes a populated UtopiaTrax timeline and filter set", async () => {
+    getSavingCardsMock.mockResolvedValue(createUtopiaTraxPortfolioCards());
+    getReferenceDataMock.mockResolvedValue(createUtopiaTraxReferenceData());
+    getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
+
+    const page = await TimelinePage();
+    const boardElement = page.props.children[1];
+
+    expect(boardElement.props.cards).toHaveLength(25);
+    expect(boardElement.props.filters.categories).toHaveLength(6);
+    expect(boardElement.props.filters.suppliers).toHaveLength(25);
+    expect(boardElement.props.readiness.isWorkspaceReady).toBe(true);
   });
 
   it("keeps the timeline usable with empty fallbacks and captures each degraded dependency", async () => {

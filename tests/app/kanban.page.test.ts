@@ -1,5 +1,9 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const KanbanBoardMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
@@ -55,6 +59,30 @@ describe("kanban page", () => {
         },
       },
     });
+  });
+
+  it("provides multiple populated UtopiaTrax phase columns to Kanban", async () => {
+    const cards = createUtopiaTraxPortfolioCards();
+    getSavingCardsMock.mockResolvedValue(cards);
+    getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
+
+    const page = await KanbanPage();
+    const boardElement = page.props.children[1];
+
+    expect(boardElement.props.initialCards).toHaveLength(25);
+    expect(
+      new Set(
+        boardElement.props.initialCards.map(
+          (card: { phase: string }) => card.phase
+        )
+      ).size
+    ).toBe(5);
+    expect(
+      boardElement.props.initialCards.filter(
+        (card: { pendingPhaseChangeRequest?: unknown }) =>
+          card.pendingPhaseChangeRequest
+      )
+    ).toHaveLength(5);
   });
 
   it("surfaces kanban load failures instead of silently rendering an empty board", async () => {
