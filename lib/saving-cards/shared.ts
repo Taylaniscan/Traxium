@@ -1,6 +1,7 @@
 import { Currency, Prisma } from "@prisma/client";
-import { calculateSavings } from "@/lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "@/lib/calculations";
 import { buildTenantOwnedRelationWhere, buildTenantScopeWhere } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import { savingCardSchema } from "@/lib/validation";
 
 export const savingCardDetailInclude = {
@@ -105,22 +106,48 @@ function normalizeOptionalId(value: unknown) {
   return null;
 }
 
+export const DEFAULT_FISCAL_YEAR_START_MONTH = 1;
+
 export function buildSavingCardPayload(
-  input: Prisma.JsonObject | Record<string, unknown>
+  input: Prisma.JsonObject | Record<string, unknown>,
+  options?: { fiscalYearStartMonth?: number }
 ) {
   const parsed = savingCardSchema.parse(input);
+  const referencePrice = parsed.referencePrice ?? null;
   const totals = calculateSavings({
     baselinePrice: parsed.baselinePrice,
     newPrice: parsed.newPrice,
     annualVolume: parsed.annualVolume,
     fxRate: parsed.fxRate,
     currency: parsed.currency,
+    impactType: parsed.impactType,
+    referencePrice,
+  });
+  const periodized = calculatePeriodizedSavings({
+    baselinePrice: parsed.baselinePrice,
+    newPrice: parsed.newPrice,
+    annualVolume: parsed.annualVolume,
+    fxRate: parsed.fxRate,
+    currency: parsed.currency,
+    impactType: parsed.impactType,
+    referencePrice,
+    impactStartDate: parsed.impactStartDate,
+    impactEndDate: parsed.impactEndDate,
+    fiscalYear: {
+      startMonth:
+        options?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
+    },
   });
 
   return {
     ...parsed,
+    referencePrice,
     calculatedSavings: totals.savingsEUR,
     calculatedSavingsUSD: totals.savingsUSD,
+    annualizedRunRate: periodized.annualizedRunRate,
+    annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+    inYearValue: periodized.inYearValue,
+    inYearValueUSD: periodized.inYearValueUSD,
   };
 }
 
@@ -137,7 +164,7 @@ export async function getLatestFxRate(
     orderBy: { validFrom: "desc" },
   });
 
-  return rate?.rateToEUR ?? 1;
+  return toNumber(rate?.rateToEUR ?? 1);
 }
 
 export async function resolveOrCreateSupplier(

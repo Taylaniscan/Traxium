@@ -5,6 +5,7 @@ import {
   buildTenantOwnedRelationWhere,
   buildTenantScopeWhere,
 } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import type {
   TenantContextSource,
   VolumeImportResult,
@@ -111,14 +112,14 @@ type ScopedVolumeCard = Prisma.SavingCardGetPayload<{
 
 type VolumeForecastRow = {
   period: Date;
-  forecastQty: number;
+  forecastQty: Prisma.Decimal | number;
   unit: string;
   source: ForecastSource;
 };
 
 type VolumeActualRow = {
   period: Date;
-  actualQty: number;
+  actualQty: Prisma.Decimal | number;
   unit: string;
   source: ForecastSource;
 };
@@ -317,7 +318,7 @@ function buildVolumeTimelineResult(
   forecasts: VolumeForecastRow[],
   actuals: VolumeActualRow[]
 ): VolumeTimelineResult {
-  const priceDelta = card.baselinePrice - card.newPrice;
+  const priceDelta = toNumber(card.baselinePrice) - toNumber(card.newPrice);
   const rows = new Map<string, TimelineAccumulator>();
   const defaultUnit = card.volumeUnit ?? "units";
 
@@ -335,7 +336,7 @@ function buildVolumeTimelineResult(
       actualRows: 0,
     };
 
-    current.forecastQty += forecast.forecastQty;
+    current.forecastQty += toNumber(forecast.forecastQty);
     current.unit = forecast.unit || current.unit || defaultUnit;
     current.forecastSource = forecast.source;
     current.forecastRows += 1;
@@ -356,7 +357,7 @@ function buildVolumeTimelineResult(
       actualRows: 0,
     };
 
-    current.actualQty += actual.actualQty;
+    current.actualQty += toNumber(actual.actualQty);
     current.unit = actual.unit || current.unit || defaultUnit;
     current.actualSource = actual.source;
     current.actualRows += 1;

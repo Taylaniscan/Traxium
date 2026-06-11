@@ -20,7 +20,7 @@ import {
 } from "@prisma/client";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { calculateSavings } from "../lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "../lib/calculations";
 import { auditEventTypes } from "../lib/audit";
 import { invalidatePortfolioSurfaceCaches } from "../lib/workspace/portfolio-surface-cache";
 import {
@@ -34,6 +34,7 @@ import {
 const DEMO_WORKSPACE_NAME = UTOPIATRAX_DEMO_NAME;
 const DEMO_WORKSPACE_SLUG = UTOPIATRAX_DEMO_SLUG;
 const DEMO_PASSWORD = "Traxium123!";
+const UTOPIATRAX_FISCAL_YEAR_START_MONTH = 1;
 const DEMO_STORAGE_BUCKET = "evidence-private";
 const DEMO_BILLING_CUSTOMER_ID = "cus_demo_utopiatrax";
 const DEMO_SUBSCRIPTION_ID = "sub_demo_utopiatrax";
@@ -107,6 +108,7 @@ export type UtopiaTraxSavingCardSeed = {
   businessUnitName: string;
   baselinePrice: number;
   newPrice: number;
+  referencePrice?: number;
   annualVolume: number;
   currency: Currency;
   impactStart: string;
@@ -693,6 +695,7 @@ const UTOPIATRAX_SAVING_CARD_BASE: readonly UtopiaTraxSavingCardBaseSeed[] = [
     businessUnitName: "Industrial Plastics",
     baselinePrice: 4.85,
     newPrice: 4.55,
+    referencePrice: 5.6,
     annualVolume: 70000,
     currency: Currency.EUR,
     impactStart: "2026-08-01",
@@ -1014,6 +1017,7 @@ const UTOPIATRAX_SAVING_CARD_BASE: readonly UtopiaTraxSavingCardBaseSeed[] = [
     businessUnitName: "Packaging Colorants",
     baselinePrice: 3.95,
     newPrice: 3.7,
+    referencePrice: 4.6,
     annualVolume: 76000,
     currency: Currency.EUR,
     impactStart: "2026-08-01",
@@ -2655,12 +2659,27 @@ async function upsertSavingCardShell(input: {
 
   const dates = resolveProjectDates(card);
   const fxRate = resolveFxRate(card.currency);
+  const referencePrice = card.referencePrice ?? null;
   const savings = calculateSavings({
     baselinePrice: card.baselinePrice,
     newPrice: card.newPrice,
     annualVolume: card.annualVolume,
     currency: card.currency,
     fxRate,
+    impactType: card.impactType,
+    referencePrice,
+  });
+  const periodized = calculatePeriodizedSavings({
+    baselinePrice: card.baselinePrice,
+    newPrice: card.newPrice,
+    annualVolume: card.annualVolume,
+    currency: card.currency,
+    fxRate,
+    impactType: card.impactType,
+    referencePrice,
+    impactStartDate: dates.impactStartDate,
+    impactEndDate: dates.impactEndDate,
+    fiscalYear: { startMonth: UTOPIATRAX_FISCAL_YEAR_START_MONTH },
   });
   const data = {
     organizationId,
@@ -2686,12 +2705,17 @@ async function upsertSavingCardShell(input: {
     buyerId: lookups.buyers[card.buyerName].id,
     baselinePrice: card.baselinePrice,
     newPrice: card.newPrice,
+    referencePrice,
     annualVolume: card.annualVolume,
     volumeUnit: resolveVolumeUnit(card.materialName),
     currency: card.currency,
     fxRate,
     calculatedSavings: savings.savingsEUR,
     calculatedSavingsUSD: savings.savingsUSD,
+    annualizedRunRate: periodized.annualizedRunRate,
+    annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+    inYearValue: periodized.inYearValue,
+    inYearValueUSD: periodized.inYearValueUSD,
     frequency: Frequency.RECURRING,
     savingDriver: card.savingDriver,
     implementationComplexity: card.implementationComplexity,

@@ -63,6 +63,9 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     create: vi.fn(),
   },
+  organization: {
+    findUnique: vi.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }),
+  },
   auditLog: {
     create: vi.fn(),
   },
@@ -536,12 +539,12 @@ describe("import and evidence API routes", () => {
             status: "failed",
             title: "Bad prices",
             message:
-              "New Price: New price must not exceed the baseline price.",
+              "New Price: New price must not exceed the baseline price for hard savings.",
             errors: [
               {
                 field: "New Price",
                 invalidValue: "12",
-                message: "New price must not exceed the baseline price.",
+                message: "New price must not exceed the baseline price for hard savings.",
                 suggestedFix:
                   "Enter zero or a positive number that does not exceed Baseline Price.",
               },

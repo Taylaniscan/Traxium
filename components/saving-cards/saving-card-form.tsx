@@ -69,6 +69,7 @@ type FormState = {
   buyer: CreatableValue;
   baselinePrice: string;
   newPrice: string;
+  referencePrice: string;
   annualVolume: string;
   currency: (typeof currencies)[number];
   fxRate: string;
@@ -136,6 +137,10 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     buyer: existingValue(card?.buyerId, card?.buyer.name),
     baselinePrice: String(card?.baselinePrice ?? ""),
     newPrice: String(card?.newPrice ?? ""),
+    referencePrice:
+      card?.referencePrice === null || card?.referencePrice === undefined
+        ? ""
+        : String(card.referencePrice),
     annualVolume: String(card?.annualVolume ?? ""),
     currency: card?.currency ?? "EUR",
     fxRate: String(card?.fxRate ?? 1),
@@ -154,15 +159,29 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     const newPrice = Number(form.newPrice || 0);
     const annualVolume = Number(form.annualVolume || 0);
     const fxRate = Number(form.fxRate || 1);
+    const referencePrice =
+      form.impactType === "COST_AVOIDANCE" && form.referencePrice
+        ? Number(form.referencePrice)
+        : null;
 
     return calculateSavings({
       baselinePrice,
       newPrice,
       annualVolume,
       fxRate,
-      currency: form.currency
+      currency: form.currency,
+      impactType: form.impactType,
+      referencePrice
     });
-  }, [form.annualVolume, form.baselinePrice, form.currency, form.fxRate, form.newPrice]);
+  }, [
+    form.annualVolume,
+    form.baselinePrice,
+    form.currency,
+    form.fxRate,
+    form.newPrice,
+    form.impactType,
+    form.referencePrice
+  ]);
   const isNegativeSavings = liveSavings.savingsEUR < 0;
   const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
   const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
@@ -322,6 +341,8 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
       buyer: toLookupPayload(form.buyer),
       baselinePrice: form.baselinePrice,
       newPrice: form.newPrice,
+      referencePrice:
+        form.impactType === "COST_AVOIDANCE" ? form.referencePrice : "",
       annualVolume: form.annualVolume,
       currency: form.currency,
       fxRate: form.fxRate,
@@ -657,6 +678,30 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                           />
                         </Field>
                       </div>
+
+                      {form.impactType === "COST_AVOIDANCE" ? (
+                        <div className="grid gap-5 lg:grid-cols-2">
+                          <Field
+                            label="Reference Price"
+                            tooltip="The price you would have paid, e.g. the supplier's quoted increase."
+                            helper="The price you would have paid (e.g., the supplier's quoted increase)."
+                            emphasis="finance"
+                            locked={financeLockActive}
+                            statusLabel={financeLockActive ? "Finance-controlled" : "Cost avoidance input"}
+                          >
+                            <Input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={form.referencePrice}
+                              onChange={(event) => setForm({ ...form, referencePrice: event.target.value })}
+                              disabled={financeLockActive}
+                              required
+                            />
+                          </Field>
+                        </div>
+                      ) : null}
 
                       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
                         <Field

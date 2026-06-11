@@ -32,6 +32,7 @@ import {
 import { getEvidenceStatus } from "@/lib/evidence";
 import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
 import type { SavingCardWithRelations } from "@/lib/types";
 
 type ReferenceData = Awaited<
@@ -113,14 +114,14 @@ export function SavingCardDetailWorkspace({
     ...card.alternativeSuppliers.map((item) => ({
       label: item.supplier?.name ?? item.supplierNameManual ?? "Alternative supplier",
       type: "Supplier",
-      price: item.quotedPrice,
+      price: toNumber(item.quotedPrice),
       currency: item.currency,
       selected: item.isSelected
     })),
     ...card.alternativeMaterials.map((item) => ({
       label: item.material?.name ?? item.materialNameManual ?? "Alternative material",
       type: "Material",
-      price: item.quotedPrice,
+      price: toNumber(item.quotedPrice),
       currency: item.currency,
       selected: item.isSelected
     }))
@@ -435,8 +436,10 @@ export function SavingCardDetailWorkspace({
               <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
               <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-              <Metric label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
-              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(card.calculatedSavingsUSD), "USD")} />
+              <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")} />
+              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
+              <Metric label="In-Year Value (FY)" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
+              <Metric label="Annualized Run-Rate" value={formatCurrency(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
               <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
               <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
               <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
@@ -638,9 +641,9 @@ export function SavingCardDetailWorkspace({
         <ResultsTab
           savingCardId={card.id}
           materialName={card.material.name}
-          baselinePrice={card.baselinePrice}
-          newPrice={card.newPrice}
-          annualVolume={card.annualVolume}
+          baselinePrice={toNumber(card.baselinePrice)}
+          newPrice={toNumber(card.newPrice)}
+          annualVolume={toNumber(card.annualVolume)}
           volumeUnit={card.volumeUnit}
           currency={card.currency}
           savingType={card.savingType}
@@ -1064,7 +1067,7 @@ function RecordSummaryRail({
           <RailRow label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
           <RailRow label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
           <RailRow label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
+          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")} />
         </RailSection>
 
         <RailSection title="Savings Classification">

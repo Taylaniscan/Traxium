@@ -133,6 +133,7 @@ const organizationSettingsSelect = {
   name: true,
   description: true,
   slug: true,
+  fiscalYearStartMonth: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.OrganizationSelect;
@@ -274,6 +275,7 @@ export type OrganizationSettingsSummary = {
   name: string;
   description: string | null;
   slug: string;
+  fiscalYearStartMonth: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -575,9 +577,18 @@ function mapOrganizationSettings(
     name: organization.name,
     description: organization.description,
     slug: organization.slug,
+    fiscalYearStartMonth: organization.fiscalYearStartMonth,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };
+}
+
+function normalizeFiscalYearStartMonth(value: number | null | undefined) {
+  const month = Math.trunc(Number(value));
+  if (!Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return month;
 }
 
 function formatOrganizationRoleLabel(role: OrganizationRole) {
@@ -962,6 +973,7 @@ export async function updateOrganizationSettings(input: {
   actor: AuthenticatedUser;
   name: string;
   description?: string | null;
+  fiscalYearStartMonth?: number | null;
 }): Promise<OrganizationSettingsUpdateResult> {
   const organizationId = normalizeOrganizationId(
     input.actor.activeOrganization.organizationId
@@ -969,6 +981,9 @@ export async function updateOrganizationSettings(input: {
   const actorRole = input.actor.activeOrganization.membershipRole;
   const nextName = input.name.trim();
   const nextDescription = normalizeOrganizationDescription(input.description);
+  const nextFiscalYearStartMonth = normalizeFiscalYearStartMonth(
+    input.fiscalYearStartMonth
+  );
 
   if (!organizationId) {
     throw new OrganizationSettingsError("Organization context is required.", 422);
@@ -980,6 +995,17 @@ export async function updateOrganizationSettings(input: {
 
   if (!nextName) {
     throw new OrganizationSettingsError("Workspace name is required.", 422);
+  }
+
+  if (
+    input.fiscalYearStartMonth !== undefined &&
+    input.fiscalYearStartMonth !== null &&
+    nextFiscalYearStartMonth === null
+  ) {
+    throw new OrganizationSettingsError(
+      "Fiscal year start month must be between 1 and 12.",
+      422
+    );
   }
 
   return prisma.$transaction(async (tx) => {
@@ -994,9 +1020,13 @@ export async function updateOrganizationSettings(input: {
       throw new OrganizationSettingsError("Organization not found.", 404);
     }
 
+    const resolvedFiscalYearStartMonth =
+      nextFiscalYearStartMonth ?? organization.fiscalYearStartMonth;
+
     if (
       organization.name === nextName &&
-      normalizeOrganizationDescription(organization.description) === nextDescription
+      normalizeOrganizationDescription(organization.description) === nextDescription &&
+      organization.fiscalYearStartMonth === resolvedFiscalYearStartMonth
     ) {
       return {
         changed: false,
@@ -1011,6 +1041,7 @@ export async function updateOrganizationSettings(input: {
       data: {
         name: nextName,
         description: nextDescription,
+        fiscalYearStartMonth: resolvedFiscalYearStartMonth,
       },
       select: organizationSettingsSelect,
     });
@@ -1029,6 +1060,9 @@ export async function updateOrganizationSettings(input: {
               ? ["description"]
               : []
           ),
+          ...(organization.fiscalYearStartMonth !== resolvedFiscalYearStartMonth
+            ? ["fiscalYearStartMonth"]
+            : []),
         ],
       },
     });

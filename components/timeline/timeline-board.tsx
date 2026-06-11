@@ -11,6 +11,7 @@ import { phases, phaseLabels } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
 
 const ROW_HEIGHT = 84;
 const PROJECT_COLUMN_WIDTH = 280;
@@ -138,7 +139,7 @@ export function TimelineBoard({
       .sort((a, b) => {
         const startDiff = new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
         if (startDiff !== 0) return startDiff;
-        return b.calculatedSavings - a.calculatedSavings;
+        return toNumber(b.calculatedSavings) - toNumber(a.calculatedSavings);
       });
   }, [cards, state]);
 
@@ -555,7 +556,7 @@ export function TimelineBoard({
                               <div className="relative flex h-full items-center justify-between gap-3 px-3">
                                 {barPixelWidth >= 92 ? (
                                   <p className="truncate text-[11px] font-semibold opacity-95">
-                                    {formatCurrency(Math.round(card.calculatedSavings), card.currency)}
+                                    {formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)}
                                   </p>
                                 ) : (
                                   <span className="h-2.5 w-2.5 rounded-full bg-white/75" aria-hidden="true" />
@@ -584,7 +585,7 @@ export function TimelineBoard({
                                 <p>{card.supplier.name} · {card.material.name}</p>
                               </div>
                               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                                <TooltipRow label="Saving" value={formatCurrency(Math.round(card.calculatedSavings), card.currency)} />
+                                <TooltipRow label="Saving" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
                                 <TooltipRow label="Phase" value={phaseLabels[card.phase]} />
                                 <TooltipRow label="Owner" value={card.buyer.name} />
                                 <TooltipRow

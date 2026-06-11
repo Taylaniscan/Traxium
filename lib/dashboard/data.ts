@@ -1,6 +1,7 @@
 import { getScopedCachedValue } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import type { DashboardData, TenantContextSource } from "@/lib/types";
 import { dashboardCardSelect } from "@/lib/types";
 import {
@@ -45,7 +46,7 @@ export async function getDashboardData(
         }),
         annualTargetAggregate,
       ]);
-      const annualTarget = annualTargetSummary._sum.targetValue ?? 0;
+      const annualTarget = toNumber(annualTargetSummary._sum.targetValue);
 
       return annualTarget > 0 ? { cards, annualTarget } : { cards };
     }

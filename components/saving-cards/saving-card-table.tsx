@@ -18,6 +18,7 @@ import {
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
 import { getEvidenceStatus } from "@/lib/evidence";
 
 export function SavingCardTable({
@@ -67,7 +68,7 @@ export function SavingCardTable({
   }, [cards, phaseFilter, search]);
 
   const activeFilters = Boolean(search.trim() || phaseFilter);
-  const totalSavings = filteredCards.reduce((sum, card) => sum + card.calculatedSavings, 0);
+  const totalSavings = filteredCards.reduce((sum, card) => sum + toNumber(card.calculatedSavings), 0);
   const lockedCount = filteredCards.filter((card) => card.financeLocked).length;
   const capturedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
   const totalLockedCount = cards.filter((card) => card.financeLocked).length;
@@ -291,7 +292,7 @@ export function SavingCardTable({
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-base font-semibold text-[var(--foreground)]">
-                      {formatCurrency(Math.round(card.calculatedSavings), "EUR")}
+                      {formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")}
                     </p>
                     <p className="text-[12px] text-[var(--muted-foreground)]">
                       {card.currency} basis

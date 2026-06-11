@@ -44,6 +44,8 @@ export const controllerSavingCardColumns = [
   "Calculated Savings (Local)",
   "Savings EUR",
   "Savings USD",
+  "In-Year Value (FY)",
+  "Annualized Run-Rate",
   "Impact Start Date",
   "Impact End Date",
   "Finance Lock Status",
@@ -137,6 +139,10 @@ const columnDefinitions: Record<
   "Calculated Savings (Local)": "Calculated savings in the card currency.",
   "Savings EUR": "Calculated savings in Traxium reporting currency.",
   "Savings USD": "Calculated savings translated to USD.",
+  "In-Year Value (FY)":
+    "Prorated savings landing inside the fiscal year of the impact start, in the card currency.",
+  "Annualized Run-Rate":
+    "Full-year steady-state savings once impact is fully ramped, in the card currency.",
   "Impact Start Date": "Date the financial or operational impact begins.",
   "Impact End Date": "Date the financial or operational impact ends.",
   "Finance Lock Status": "Whether finance-controlled assumptions are locked against normal edits.",
@@ -152,12 +158,38 @@ const columnDefinitions: Record<
 };
 
 function normalizeNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  // Money columns arrive as Prisma Decimal; coerce to a finite number.
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function sumSavings(cards: SavingCardPortfolio[]) {
   return cards.reduce(
     (sum, card) => sum + normalizeNumber(card.calculatedSavings),
+    0
+  );
+}
+
+// The card's annualized run-rate equals its annual (EUR) calculated savings, so the
+// EUR run-rate total reconciles with the existing savings basis.
+function sumAnnualizedRunRateEur(cards: SavingCardPortfolio[]) {
+  return sumSavings(cards);
+}
+
+// In-year value as a fraction of the run-rate, applied to the EUR savings basis so the
+// EUR in-year total stays currency-consistent with the rest of the workbook.
+function getInYearFraction(card: SavingCardPortfolio) {
+  const runRate = normalizeNumber(card.annualizedRunRate);
+  if (runRate === 0) {
+    return 0;
+  }
+  return normalizeNumber(card.inYearValue) / runRate;
+}
+
+function sumInYearValueEur(cards: SavingCardPortfolio[]) {
+  return cards.reduce(
+    (sum, card) =>
+      sum + normalizeNumber(card.calculatedSavings) * getInYearFraction(card),
     0
   );
 }
@@ -220,6 +252,8 @@ export function mapSavingCardsForControllerExport(
     "Calculated Savings (Local)": getLocalSavings(card),
     "Savings EUR": normalizeNumber(card.calculatedSavings),
     "Savings USD": normalizeNumber(card.calculatedSavingsUSD),
+    "In-Year Value (FY)": normalizeNumber(card.inYearValue),
+    "Annualized Run-Rate": normalizeNumber(card.annualizedRunRate),
     "Impact Start Date": card.impactStartDate,
     "Impact End Date": card.impactEndDate,
     "Finance Lock Status": card.financeLocked ? "Locked" : "Not Locked",
@@ -279,6 +313,16 @@ function buildPortfolioSummaryRows(input: {
     ["Portfolio Cards", cards.length, "Includes canceled cards for governance"],
     ["Active Cards", activeCards.length, "Excludes canceled cards"],
     ["Active Forecast / Pipeline Value (EUR)", activeSavings, "Sum of active saving-card rows"],
+    [
+      "In-Year Value (EUR)",
+      sumInYearValueEur(activeCards),
+      "Prorated active savings landing inside the fiscal year of impact start",
+    ],
+    [
+      "Annualized Run-Rate (EUR)",
+      sumAnnualizedRunRateEur(activeCards),
+      "Full-year steady-state value of active savings once fully ramped",
+    ],
     [
       "Implemented Value (EUR)",
       sumSavings(cards.filter((card) => card.phase === "REALISED")),

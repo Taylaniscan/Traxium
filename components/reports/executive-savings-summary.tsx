@@ -64,6 +64,17 @@ export function ExecutiveSavingsSummary({
   const forecastSavings = normalizeMetricValue(
     commandCenterData.kpis.savingsForecast
   );
+  const activePortfolioCards = Array.isArray(dashboardData.cards)
+    ? dashboardData.cards.filter((card) => card.phase !== "CANCELLED")
+    : [];
+  const inYearValue = activePortfolioCards.reduce(
+    (sum, card) => sum + normalizeMetricValue(card.inYearValue),
+    0
+  );
+  const annualizedRunRate = activePortfolioCards.reduce(
+    (sum, card) => sum + normalizeMetricValue(card.annualizedRunRate),
+    0
+  );
   const pendingApprovals = normalizeMetricValue(
     commandCenterData.kpis.pendingApprovals
   );
@@ -226,6 +237,19 @@ export function ExecutiveSavingsSummary({
               label="Forecast"
               value={formatCurrency(forecastSavings, "EUR")}
               detail={`${formatSignedCurrency(forecastDelta)} versus ${forecastComparisonLabel}`}
+            />
+          </div>
+
+          <div className="grid gap-4 border-t border-[var(--border)] pt-5 lg:grid-cols-2">
+            <ExecutiveMetric
+              label="In-Year Value (FY)"
+              value={formatCurrency(inYearValue, "EUR")}
+              detail="Prorated savings landing inside the current fiscal year across live initiatives."
+            />
+            <ExecutiveMetric
+              label="Annualized Run-Rate"
+              value={formatCurrency(annualizedRunRate, "EUR")}
+              detail="Full-year steady-state value once active savings are fully ramped."
             />
           </div>
 
@@ -538,7 +562,9 @@ function OutlookLine({ children }: { children: ReactNode }) {
 }
 
 function normalizeMetricValue(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  // Money columns arrive as Prisma Decimal; coerce to a finite number.
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function formatPercent(value: number) {

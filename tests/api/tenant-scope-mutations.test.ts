@@ -8,6 +8,9 @@ import {
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
+  organization: {
+    findUnique: vi.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }),
+  },
 }));
 const invalidateScopedCacheMock = vi.hoisted(() => vi.fn());
 

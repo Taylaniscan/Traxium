@@ -9,12 +9,28 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   captureException,
   trackClientEvent,
 } from "@/lib/observability";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+
+const FISCAL_YEAR_MONTHS = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+] as const;
 
 type WorkspaceSettingsFormProps = {
   organization: OrganizationSettingsSummary;
@@ -30,6 +46,9 @@ export function WorkspaceSettingsForm({
   const router = useRouter();
   const [name, setName] = useState(organization.name);
   const [description, setDescription] = useState(organization.description ?? "");
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(
+    organization.fiscalYearStartMonth
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -38,8 +57,13 @@ export function WorkspaceSettingsForm({
   useEffect(() => {
     setName(organization.name);
     setDescription(organization.description ?? "");
+    setFiscalYearStartMonth(organization.fiscalYearStartMonth);
     inFlightRef.current = false;
-  }, [organization.description, organization.name]);
+  }, [
+    organization.description,
+    organization.name,
+    organization.fiscalYearStartMonth,
+  ]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +85,7 @@ export function WorkspaceSettingsForm({
         body: JSON.stringify({
           name,
           description,
+          fiscalYearStartMonth,
         }),
       });
 
@@ -92,6 +117,7 @@ export function WorkspaceSettingsForm({
       if (payload.organization) {
         setName(payload.organization.name);
         setDescription(payload.organization.description ?? "");
+        setFiscalYearStartMonth(payload.organization.fiscalYearStartMonth);
       }
       inFlightRef.current = false;
       setLoading(false);
@@ -154,6 +180,27 @@ export function WorkspaceSettingsForm({
               />
               <p className="text-xs text-[var(--muted-foreground)]">
                 Optional internal description shown to admins when managing the active workspace.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="fiscal-year-start-month">Fiscal year start month</Label>
+              <Select
+                id="fiscal-year-start-month"
+                value={fiscalYearStartMonth}
+                onChange={(event) =>
+                  setFiscalYearStartMonth(Number(event.target.value))
+                }
+              >
+                {FISCAL_YEAR_MONTHS.map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Controls how in-year savings value is prorated. Cards with mid-year impact
+                start dates count only the months that fall inside this fiscal year.
               </p>
             </div>
 

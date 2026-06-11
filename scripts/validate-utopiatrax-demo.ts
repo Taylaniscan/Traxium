@@ -49,7 +49,11 @@ type PersistedOrganizationRecord = {
     id: string;
     title: string;
     phase: UtopiaTraxPersistedSnapshot["cards"][number]["phase"];
+    impactType: UtopiaTraxPersistedSnapshot["cards"][number]["impactType"];
+    referencePrice: number | null;
     calculatedSavings: number;
+    annualizedRunRate: number;
+    inYearValue: number;
     financeLocked: boolean;
     cancellationReason: string | null;
     category: { name: string };
@@ -119,7 +123,11 @@ const UTOPIATRAX_DEMO_HEALTH_SELECT = {
       id: true,
       title: true,
       phase: true,
+      impactType: true,
+      referencePrice: true,
       calculatedSavings: true,
+      annualizedRunRate: true,
+      inYearValue: true,
       financeLocked: true,
       cancellationReason: true,
       category: {
@@ -250,7 +258,12 @@ function mapPersistedOrganization(
       id: card.id,
       title: card.title,
       phase: card.phase,
-      calculatedSavings: card.calculatedSavings,
+      impactType: card.impactType,
+      referencePrice:
+        card.referencePrice === null ? null : Number(card.referencePrice),
+      calculatedSavings: Number(card.calculatedSavings),
+      annualizedRunRate: Number(card.annualizedRunRate),
+      inYearValue: Number(card.inYearValue),
       financeLocked: card.financeLocked,
       cancellationReason: card.cancellationReason,
       categoryName: card.category.name,

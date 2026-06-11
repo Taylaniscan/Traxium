@@ -56,6 +56,15 @@ export const savingCardSchema = z
     buyer: masterDataField,
     baselinePrice: positiveNumberField("Baseline price must be greater than zero."),
     newPrice: nonNegativeNumberField("New price must be zero or greater."),
+    referencePrice: z.preprocess(
+      (value) =>
+        value === "" || value === null || value === undefined ? undefined : value,
+      z.coerce
+        .number()
+        .finite()
+        .positive("Reference price must be greater than zero.")
+        .optional()
+    ),
     annualVolume: positiveNumberField("Annual volume must be greater than zero."),
     currency: z.enum(currencies),
     fxRate: positiveNumberField("FX rate must be greater than zero."),
@@ -80,12 +89,32 @@ export const savingCardSchema = z
       .default([])
   })
   .superRefine((value, ctx) => {
-    if (value.newPrice > value.baselinePrice) {
+    // Hard savings must reduce against the approved baseline. Cost avoidance can
+    // mitigate a price increase, so it is measured against a quoted reference price
+    // rather than requiring newPrice <= baselinePrice.
+    if (value.impactType === "HARD_SAVINGS" && value.newPrice > value.baselinePrice) {
       ctx.addIssue({
         code: "custom",
-        message: "New price must not exceed the baseline price.",
+        message: "New price must not exceed the baseline price for hard savings.",
         path: ["newPrice"]
       });
+    }
+
+    if (value.impactType === "COST_AVOIDANCE") {
+      if (value.referencePrice === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Reference price is required for cost avoidance (the price you would have paid).",
+          path: ["referencePrice"]
+        });
+      } else if (value.referencePrice <= value.newPrice) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Reference price must be greater than the new price.",
+          path: ["referencePrice"]
+        });
+      }
     }
 
     if (value.endDate < value.startDate) {

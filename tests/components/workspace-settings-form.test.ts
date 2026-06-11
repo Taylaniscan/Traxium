@@ -115,6 +115,7 @@ const organization = {
   name: "Atlas Procurement",
   description: "Global procurement savings governance workspace.",
   slug: "atlas-procurement",
+  fiscalYearStartMonth: 1,
   createdAt: new Date("2026-03-20T09:00:00.000Z"),
   updatedAt: new Date("2026-03-26T12:00:00.000Z"),
 };
@@ -154,6 +155,7 @@ function mockFormState(input: {
   useStateMock
     .mockReturnValueOnce([input.name ?? organization.name, vi.fn()])
     .mockReturnValueOnce([input.description ?? organization.description ?? "", vi.fn()])
+    .mockReturnValueOnce([organization.fiscalYearStartMonth, vi.fn()])
     .mockReturnValueOnce([input.loading ?? false, vi.fn()])
     .mockReturnValueOnce([input.error ?? null, vi.fn()])
     .mockReturnValueOnce([input.notice ?? null, vi.fn()]);
@@ -234,6 +236,7 @@ describe("workspace settings form", () => {
       body: JSON.stringify({
         name: "Atlas Savings",
         description: "Updated pilot scope.",
+        fiscalYearStartMonth: 1,
       }),
     });
     expect(refreshMock).toHaveBeenCalled();

@@ -162,6 +162,7 @@ model Organization {
   name                 String
   description          String?
   slug                 String    @unique
+  fiscalYearStartMonth Int       @default(1)
   workspaceTrialEndsAt DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -314,7 +315,7 @@ model Category {
   id             String   @id @default(cuid())
   organizationId String
   name           String
-  annualTarget   Float    @default(0)
+  annualTarget   Decimal  @default(0) @db.Decimal(18, 4)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -376,14 +377,19 @@ model SavingCard {
   plantId                       String
   businessUnitId                String
   buyerId                       String
-  baselinePrice                 Float
-  newPrice                      Float
-  annualVolume                  Float
+  baselinePrice                 Decimal                 @db.Decimal(18, 4)
+  newPrice                      Decimal                 @db.Decimal(18, 4)
+  referencePrice                Decimal?                @db.Decimal(18, 4)
+  annualVolume                  Decimal                 @db.Decimal(18, 4)
   volumeUnit                    String                  @default("units")
   currency                      Currency
-  fxRate                        Float
-  calculatedSavings             Float
-  calculatedSavingsUSD          Float
+  fxRate                        Decimal                 @db.Decimal(18, 8)
+  calculatedSavings             Decimal                 @db.Decimal(18, 4)
+  calculatedSavingsUSD          Decimal                 @db.Decimal(18, 4)
+  annualizedRunRate             Decimal                 @default(0) @db.Decimal(18, 4)
+  annualizedRunRateUSD          Decimal                 @default(0) @db.Decimal(18, 4)
+  inYearValue                   Decimal                 @default(0) @db.Decimal(18, 4)
+  inYearValueUSD                Decimal                 @default(0) @db.Decimal(18, 4)
   frequency                     Frequency
   savingDriver                  String?
   implementationComplexity      String?
@@ -431,7 +437,7 @@ model MaterialConsumptionForecast {
   materialId   String
   supplierId   String?
   period       DateTime
-  forecastQty  Float
+  forecastQty  Decimal        @db.Decimal(18, 4)
   unit         String         @default("units")
   source       ForecastSource @default(MANUAL_ENTRY)
   notes        String?
@@ -454,7 +460,7 @@ model MaterialConsumptionActual {
   materialId    String
   supplierId    String?
   period        DateTime
-  actualQty     Float
+  actualQty     Decimal        @db.Decimal(18, 4)
   unit          String         @default("units")
   source        ForecastSource @default(MANUAL_ENTRY)
   invoiceRef    String?
@@ -520,7 +526,7 @@ model SavingCardAlternativeSupplier {
   supplierId         String?
   supplierNameManual String?
   country            String
-  quotedPrice        Float
+  quotedPrice        Decimal  @db.Decimal(18, 4)
   currency           Currency
   leadTimeDays       Int
   moq                Int
@@ -543,7 +549,7 @@ model SavingCardAlternativeMaterial {
   supplierId          String?
   supplierNameManual  String?
   specification       String
-  quotedPrice         Float
+  quotedPrice         Decimal  @db.Decimal(18, 4)
   currency            Currency
   performanceImpact   String
   qualificationStatus String
@@ -671,7 +677,7 @@ model AuditLog {
 model FxRate {
   id        String   @id @default(cuid())
   currency  Currency
-  rateToEUR Float
+  rateToEUR Decimal  @db.Decimal(18, 8)
   validFrom DateTime
   createdAt DateTime @default(now())
 }
@@ -680,7 +686,7 @@ model AnnualTarget {
   id             String   @id @default(cuid())
   organizationId String
   year           Int
-  targetValue    Float
+  targetValue    Decimal  @db.Decimal(18, 4)
   categoryId     String?
   createdAt      DateTime @default(now())
 

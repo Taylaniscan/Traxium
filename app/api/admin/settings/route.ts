@@ -25,6 +25,12 @@ import {
 const organizationSettingsSchema = z.object({
   name: z.string().trim().min(1, "Workspace name is required."),
   description: z.string().trim().max(240, "Workspace description must be 240 characters or fewer.").optional().or(z.literal("")),
+  fiscalYearStartMonth: z.coerce
+    .number()
+    .int("Fiscal year start month must be a whole number.")
+    .min(1, "Fiscal year start month must be between 1 and 12.")
+    .max(12, "Fiscal year start month must be between 1 and 12.")
+    .optional(),
 });
 
 function jsonError(error: string, status: number) {
@@ -189,6 +195,7 @@ export async function PATCH(request: Request) {
       actor: user,
       name: payload.name,
       description: payload.description ?? null,
+      fiscalYearStartMonth: payload.fiscalYearStartMonth ?? null,
     });
 
     trackServerEvent({

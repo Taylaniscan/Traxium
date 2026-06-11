@@ -311,7 +311,7 @@ describe("UtopiaTrax demo seed dataset", () => {
           },
         ],
       };
-    }) as SavingCardPortfolio[];
+    }) as unknown as SavingCardPortfolio[];
     const model = buildControllerWorkbookModel({
       cards,
       generatedAt: new Date("2026-06-05T12:00:00.000Z"),

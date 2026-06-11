@@ -12,7 +12,7 @@ import { renderControllerWorkbookXlsx } from "@/lib/export/controller-workbook-x
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 
 function createCard(
-  overrides: Partial<SavingCardPortfolio> = {}
+  overrides: Partial<Record<keyof SavingCardPortfolio, unknown>> = {}
 ): SavingCardPortfolio {
   return {
     id: "card-1",
@@ -33,11 +33,16 @@ function createCard(
     alternativeMaterialManualName: null,
     baselinePrice: 12,
     newPrice: 10,
+    referencePrice: null,
     annualVolume: 1000,
     volumeUnit: "lb",
     currency: "USD",
     calculatedSavings: 1840,
     calculatedSavingsUSD: 2000,
+    annualizedRunRate: 2000,
+    annualizedRunRateUSD: 2000,
+    inYearValue: 1833.33,
+    inYearValueUSD: 1833.33,
     frequency: "RECURRING",
     savingDriver: "Negotiation",
     implementationComplexity: "Medium",
@@ -86,7 +91,7 @@ function createCard(
       },
     ],
     ...overrides,
-  };
+  } as unknown as SavingCardPortfolio;
 }
 
 function createReadiness(): WorkspaceReadiness {

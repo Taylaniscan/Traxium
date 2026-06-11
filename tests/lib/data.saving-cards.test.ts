@@ -31,6 +31,9 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn(),
     findFirst: vi.fn(),
   },
+  organization: {
+    findUnique: vi.fn(),
+  },
 }));
 const invalidateScopedCacheMock = vi.hoisted(() => vi.fn());
 
@@ -156,6 +159,10 @@ describe("lib/data saving card flows", () => {
   beforeEach(() => {
     invalidateScopedCacheMock.mockReset();
     mockPrisma.$transaction.mockClear();
+    mockPrisma.organization.findUnique.mockReset();
+    mockPrisma.organization.findUnique.mockResolvedValue({
+      fiscalYearStartMonth: 1,
+    });
     tx = createSavingCardTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (Array.isArray(callback)) {
@@ -453,6 +460,7 @@ describe("lib/data saving card flows", () => {
         createSavingCardInput({
           phase: Phase.VALIDATED,
           impactType: "COST_AVOIDANCE",
+          referencePrice: 999,
         }),
         "actor-1",
         "org-1"

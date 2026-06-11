@@ -97,7 +97,7 @@ function createDashboardCard(
     },
     evidence: [],
     ...overrides,
-  } as DashboardData["cards"][number];
+  } as unknown as DashboardData["cards"][number];
 }
 
 function renderDashboard(cards: DashboardData["cards"]) {

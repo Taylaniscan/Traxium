@@ -84,6 +84,8 @@ function applyColumnFormats(
     "Calculated Savings (Local)",
     "Savings EUR",
     "Savings USD",
+    "In-Year Value (FY)",
+    "Annualized Run-Rate",
   ]);
   const numberHeaders = new Set(["Annual Volume", "Evidence Count"]);
   const dateHeaders = new Set([

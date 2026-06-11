@@ -1,5 +1,6 @@
 import { ApprovalStatus, Phase, Prisma } from "@prisma/client";
-import { getForecastMultiplier } from "@/lib/calculations";
+import { impactDurationYears } from "@/lib/calculations";
+import { toNumber } from "@/lib/utils/decimal";
 import { phaseLabels, roleLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere } from "@/lib/tenant-scope";
@@ -101,6 +102,7 @@ export async function getCommandCenterData(
     where,
     select: {
       impactStartDate: true,
+      impactEndDate: true,
       calculatedSavings: true,
       frequency: true,
       phase: true,
@@ -311,7 +313,7 @@ export async function getCommandCenterData(
     : [];
 
   const phaseMap = new Map(
-    phaseSavings.map((item) => [item.phase, item._sum.calculatedSavings ?? 0])
+    phaseSavings.map((item) => [item.phase, toNumber(item._sum.calculatedSavings)])
   );
 
   const pipelineByPhase = [
@@ -343,9 +345,10 @@ export async function getCommandCenterData(
         sortValue: monthBucket.sortValue,
       };
 
-      acc[monthKey].savings += card.calculatedSavings;
+      acc[monthKey].savings += toNumber(card.calculatedSavings);
       acc[monthKey].forecast +=
-        card.calculatedSavings * getForecastMultiplier(card.frequency);
+        toNumber(card.calculatedSavings) *
+        impactDurationYears(card.impactStartDate, card.impactEndDate);
       return acc;
     }, {})
   ).sort((left, right) => left.sortValue - right.sortValue);
@@ -354,7 +357,7 @@ export async function getCommandCenterData(
 
   const topSuppliers = supplierSavings.map((item) => ({
     supplier: supplierNameMap.get(item.supplierId) ?? "Unknown supplier",
-    savings: item._sum.calculatedSavings ?? 0,
+    savings: toNumber(item._sum.calculatedSavings),
   }));
 
   const riskOrder = ["Low", "Medium", "High", "Critical", "Unrated"];
@@ -362,7 +365,7 @@ export async function getCommandCenterData(
     const supplierRisk = card.alternativeSuppliers[0]?.riskLevel;
     const materialRisk = card.alternativeMaterials[0]?.riskLevel;
     const level = normalizeRiskLevel(materialRisk ?? supplierRisk ?? "Unrated");
-    acc[level] = (acc[level] ?? 0) + card.calculatedSavings;
+    acc[level] = (acc[level] ?? 0) + toNumber(card.calculatedSavings);
     return acc;
   }, {});
 
@@ -381,10 +384,11 @@ export async function getCommandCenterData(
   const savingsByQualificationStatus = qualificationOrder
     .map((status) => ({
       status,
-      savings:
+      savings: toNumber(
         qualificationGroups.find(
           (item) => (item.qualificationStatus ?? "Unspecified") === status
-        )?._sum.calculatedSavings ?? 0,
+        )?._sum.calculatedSavings
+      ),
     }))
     .filter((item) => item.savings > 0 || item.status === "Unspecified");
 
@@ -415,7 +419,7 @@ export async function getCommandCenterData(
         isOverdue: ageDays >= COMMAND_CENTER_PENDING_OVERDUE_DAYS,
         pendingApproverCount: item.approvals.length,
         pendingApproverRoles: uniquePendingRoles,
-        savings: item.savingCard.calculatedSavings,
+        savings: toNumber(item.savingCard.calculatedSavings),
         financeLocked: item.savingCard.financeLocked,
       };
     });
@@ -428,7 +432,7 @@ export async function getCommandCenterData(
     dateLabel: "Due date",
     dateValue: item.endDate.toISOString(),
     ageDays: getCommandCenterAgeDays(item.endDate, now),
-    savings: item.calculatedSavings,
+    savings: toNumber(item.calculatedSavings),
     financeLocked: item.financeLocked,
   }));
   const normalizedFinanceLockedItems: CommandCenterAttentionItem[] = financeLockedItems.map((item) => ({
@@ -440,7 +444,7 @@ export async function getCommandCenterData(
     dateLabel: "Last updated",
     dateValue: item.updatedAt.toISOString(),
     ageDays: getCommandCenterAgeDays(item.updatedAt, now),
-    savings: item.calculatedSavings,
+    savings: toNumber(item.calculatedSavings),
     financeLocked: item.financeLocked,
   }));
   const normalizedRecentDecisions: CommandCenterDecisionItem[] = recentDecisions.map((item) => ({
@@ -463,7 +467,7 @@ export async function getCommandCenterData(
     categoryName: item.category.name,
     updatedAt: item.updatedAt.toISOString(),
     financeLocked: item.financeLocked,
-    savings: item.calculatedSavings,
+    savings: toNumber(item.calculatedSavings),
   }));
 
   return {

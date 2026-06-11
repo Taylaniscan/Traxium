@@ -85,7 +85,7 @@ function createDashboardCard(
     },
     evidence: [],
     ...overrides,
-  } as DashboardData["cards"][number];
+  } as unknown as DashboardData["cards"][number];
 }
 
 function resolveUtopiaFxRate(
@@ -135,7 +135,7 @@ function createUtopiaDashboardCards(): DashboardData["cards"] {
         evidenceType: item.evidenceType,
         uploadedAt: new Date("2026-03-01T00:00:00.000Z"),
       })),
-    } as DashboardData["cards"][number];
+    } as unknown as DashboardData["cards"][number];
   });
 }
 

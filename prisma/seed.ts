@@ -7,8 +7,11 @@ import {
   PrismaClient,
   Role,
   SavingType,
+  SavingsImpactType,
 } from "@prisma/client";
-import { calculateSavings } from "../lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "../lib/calculations";
+
+const SEED_FISCAL_YEAR_START_MONTH = 1;
 
 const prisma = new PrismaClient();
 
@@ -179,8 +182,10 @@ const savingCardsSeed: Array<{
   businessUnitKey: BusinessUnitKey;
   buyerKey: BuyerKey;
   stakeholderKeys: UserKey[];
+  impactType?: SavingsImpactType;
   baselinePrice: number;
   newPrice: number;
+  referencePrice?: number;
   annualVolume: number;
   currency: Currency;
   fxRate: number;
@@ -334,8 +339,10 @@ const savingCardsSeed: Array<{
     businessUnitKey: "additives" as BusinessUnitKey,
     buyerKey: "packagingStrategic" as BuyerKey,
     stakeholderKeys: ["sophie"] as UserKey[],
+    impactType: SavingsImpactType.COST_AVOIDANCE,
     baselinePrice: 6.1,
     newPrice: 5.72,
+    referencePrice: 6.8,
     annualVolume: 96000,
     currency: Currency.EUR,
     fxRate: 1,
@@ -365,8 +372,10 @@ const savingCardsSeed: Array<{
     businessUnitKey: "masterbatch" as BusinessUnitKey,
     buyerKey: "luca" as BuyerKey,
     stakeholderKeys: ["helen", "luca"] as UserKey[],
+    impactType: SavingsImpactType.COST_AVOIDANCE,
     baselinePrice: 4.85,
     newPrice: 4.3,
+    referencePrice: 5.4,
     annualVolume: 188000,
     currency: Currency.EUR,
     fxRate: 1,
@@ -1195,12 +1204,28 @@ async function main() {
   const createdCards: Record<string, { id: string }> = {};
 
   for (const card of savingCardsSeed) {
+    const impactType = card.impactType ?? SavingsImpactType.HARD_SAVINGS;
+    const referencePrice = card.referencePrice ?? null;
     const savings = calculateSavings({
       baselinePrice: card.baselinePrice,
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
       currency: card.currency,
       fxRate: card.fxRate,
+      impactType,
+      referencePrice,
+    });
+    const periodized = calculatePeriodizedSavings({
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      fxRate: card.fxRate,
+      impactType,
+      referencePrice,
+      impactStartDate: card.impactStartDate,
+      impactEndDate: card.impactEndDate,
+      fiscalYear: { startMonth: SEED_FISCAL_YEAR_START_MONTH },
     });
 
     const created = await prisma.savingCard.create({
@@ -1210,6 +1235,7 @@ async function main() {
         description: card.description,
         legacySavingsMethod: card.savingType,
         savingType: classifyLegacySavingType(card.savingType),
+        impactType,
         phase: card.phase,
         supplierId: suppliers[card.supplierKey].id,
         materialId: materials[card.materialKey].id,
@@ -1225,11 +1251,16 @@ async function main() {
         buyerId: buyers[card.buyerKey].id,
         baselinePrice: card.baselinePrice,
         newPrice: card.newPrice,
+        referencePrice,
         annualVolume: card.annualVolume,
         currency: card.currency,
         fxRate: card.fxRate,
         calculatedSavings: savings.savingsEUR,
         calculatedSavingsUSD: savings.savingsUSD,
+        annualizedRunRate: periodized.annualizedRunRate,
+        annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+        inYearValue: periodized.inYearValue,
+        inYearValueUSD: periodized.inYearValueUSD,
         frequency: card.frequency,
         savingDriver: card.savingDriver,
         implementationComplexity: card.implementationComplexity,

@@ -140,7 +140,7 @@ function createSavingCard(
     },
     phaseChangeRequests: [],
     ...overrides,
-  } as SavingCardPortfolio;
+  } as unknown as SavingCardPortfolio;
 }
 
 function createStableSeedId(prefix: string, value: string) {
@@ -258,7 +258,7 @@ function createUtopiaKanbanCards(): SavingCardPortfolio[] {
         name: card.businessUnitName,
       },
       phaseChangeRequests,
-    } as SavingCardPortfolio;
+    } as unknown as SavingCardPortfolio;
   });
 }
 

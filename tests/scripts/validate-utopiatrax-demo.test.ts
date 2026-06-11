@@ -4,6 +4,7 @@ import {
   OrganizationRole,
   Phase,
   Role,
+  SavingsImpactType,
   SubscriptionStatus,
 } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
@@ -40,7 +41,14 @@ function createCompleteOrganization() {
         ? UTOPIATRAX_SHOWCASE_CARD_TITLE
         : `Manufacturing saving card ${index + 1}`,
       phase,
+      impactType:
+        index === 3 || index === 4
+          ? SavingsImpactType.COST_AVOIDANCE
+          : SavingsImpactType.HARD_SAVINGS,
+      referencePrice: index === 3 || index === 4 ? 99 : null,
       calculatedSavings: 25000 + index * 1000,
+      annualizedRunRate: 25000 + index * 1000,
+      inYearValue: 25000 + index * 1000,
       financeLocked: index === 1,
       cancellationReason:
         phase === Phase.CANCELLED ? "Qualification did not meet tolerance." : null,

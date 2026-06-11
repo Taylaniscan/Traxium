@@ -71,6 +71,8 @@ type DashboardMetrics = {
   realisedSavings: number;
   achievedSavings: number;
   forecastSavings: number;
+  inYearValue: number;
+  annualizedRunRate: number;
   byPhase: DashboardChartDatum[];
   byCategory: DashboardChartDatum[];
   monthlyTrend: DashboardForecastDatum[];
@@ -112,7 +114,9 @@ function isDevelopment() {
 }
 
 function normalizeDashboardNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  // Money/quantity columns arrive as Prisma Decimal; coerce to a finite number.
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function hasMeaningfulDashboardValue(value: unknown) {
@@ -236,6 +240,15 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
       (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
       0
     );
+  const activeCards = cards.filter((card) => card.phase !== "CANCELLED");
+  const inYearValue = activeCards.reduce(
+    (sum, card) => sum + normalizeDashboardNumber(card.inYearValue),
+    0
+  );
+  const annualizedRunRate = activeCards.reduce(
+    (sum, card) => sum + normalizeDashboardNumber(card.annualizedRunRate),
+    0
+  );
 
   const monthlyTrend = Object.values(
     cards.reduce<
@@ -268,6 +281,8 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
     pipelineSavings,
     realisedSavings,
     achievedSavings,
+    inYearValue,
+    annualizedRunRate,
     forecastSavings: monthlyTrend.reduce(
       (sum, item) => sum + normalizeDashboardNumber(item.forecast),
       0
@@ -313,11 +328,13 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
 
 function inspectDashboardData(cards: DashboardData["cards"]): DashboardDataWarning {
   return {
-    hasInvalidSavings: cards.some(
-      (card) =>
-        typeof card.calculatedSavings !== "number" ||
-        !Number.isFinite(card.calculatedSavings)
-    ),
+    hasInvalidSavings: cards.some((card) => {
+      const value =
+        typeof card.calculatedSavings === "number"
+          ? card.calculatedSavings
+          : Number(card.calculatedSavings);
+      return !Number.isFinite(value);
+    }),
     hasInvalidDates: cards.some((card) => {
       if (card.impactStartDate instanceof Date) {
         return Number.isNaN(card.impactStartDate.getTime());
@@ -764,6 +781,21 @@ export function DashboardClient({
                 tone="positive"
               />
             }
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <KpiCard
+            label="In-Year Value"
+            value={formatCurrency(Math.round(metrics.inYearValue), "EUR")}
+            description="Prorated savings landing inside the current fiscal year, based on each card's impact start date."
+            tone="info"
+          />
+          <KpiCard
+            label="Annualized Run-Rate"
+            value={formatCurrency(Math.round(metrics.annualizedRunRate), "EUR")}
+            description="Full-year steady-state value of active savings once impact is fully ramped."
+            tone="neutral"
           />
         </div>
 

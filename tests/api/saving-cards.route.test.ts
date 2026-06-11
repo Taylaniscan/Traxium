@@ -529,7 +529,10 @@ describe("saving card API routes", () => {
         createJsonRequest(
           "http://localhost/api/saving-cards/card-1",
           "PUT",
-          createValidSavingCardPayload({ impactType: "COST_AVOIDANCE" })
+          createValidSavingCardPayload({
+            impactType: "COST_AVOIDANCE",
+            referencePrice: 12,
+          })
         ),
         { params: Promise.resolve({ id: "card-1" }) }
       );

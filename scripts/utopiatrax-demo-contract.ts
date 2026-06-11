@@ -4,6 +4,7 @@ import {
   OrganizationRole,
   Phase,
   Role,
+  SavingsImpactType,
   SubscriptionStatus,
 } from "@prisma/client";
 
@@ -127,7 +128,11 @@ export type UtopiaTraxPersistedSnapshot = {
     id: string;
     title: string;
     phase: Phase;
+    impactType: SavingsImpactType;
+    referencePrice: number | null;
     calculatedSavings: number;
+    annualizedRunRate: number;
+    inYearValue: number;
     financeLocked: boolean;
     cancellationReason: string | null;
     categoryName: string;
@@ -570,6 +575,29 @@ export function validateUtopiaTraxPersistedSnapshot(
         cards.every((card) => card.calculatedSavings > 0),
       `${cards.length} cards with ${cards.filter((card) => card.calculatedSavings > 0).length} positive savings cases`
     ),
+    (() => {
+      const periodizedConsistent = cards.every(
+        (card) =>
+          card.annualizedRunRate > 0 &&
+          card.inYearValue >= 0 &&
+          card.inYearValue <= card.annualizedRunRate + 0.01
+      );
+      const costAvoidanceCards = cards.filter(
+        (card) => card.impactType === SavingsImpactType.COST_AVOIDANCE
+      );
+      const costAvoidanceWithReference = costAvoidanceCards.filter(
+        (card) => card.referencePrice !== null && (card.referencePrice ?? 0) > 0
+      );
+
+      return makeCheck(
+        "periodized-savings",
+        "In-year vs annualized run-rate reconciliation",
+        periodizedConsistent &&
+          costAvoidanceCards.length >= 2 &&
+          costAvoidanceWithReference.length === costAvoidanceCards.length,
+        `run-rate populated and in-year ≤ run-rate on all cards; ${costAvoidanceWithReference.length}/${costAvoidanceCards.length} cost-avoidance cards carry a reference price`
+      );
+    })(),
     makeCheck(
       "phases",
       "Mixed workflow phases",

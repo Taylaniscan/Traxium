@@ -1,7 +1,8 @@
-import { Phase, Prisma } from "@prisma/client";
+import { Currency, Phase, Prisma, SavingsImpactType } from "@prisma/client";
 import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
-import { calculateSavings } from "@/lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "@/lib/calculations";
 import { prisma } from "@/lib/prisma";
+import { toNumber } from "@/lib/utils/decimal";
 import {
   buildTenantOwnedRelationWhere,
   resolveTenantScope,
@@ -19,6 +20,7 @@ import {
 import { WorkflowError } from "@/lib/workflow/errors";
 import {
   buildSavingCardPayload,
+  DEFAULT_FISCAL_YEAR_START_MONTH,
   getLatestFxRate,
   getScopedAlternativeMaterial,
   getScopedAlternativeSupplier,
@@ -34,6 +36,64 @@ import { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surf
 
 function buildSavingCardPath(savingCardId: string) {
   return `/saving-cards/${savingCardId}`;
+}
+
+async function getFiscalYearStartMonth(organizationId: string) {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { fiscalYearStartMonth: true },
+  });
+
+  return organization?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH;
+}
+
+/**
+ * Recompute the persisted savings figures (annual totals + periodized run-rate /
+ * in-year value) when an applied scenario changes the card's new price, currency, or
+ * fx rate. Keeps every write path consistent with buildSavingCardPayload.
+ */
+function computeCardScenarioFinancials(args: {
+  baselinePrice: number;
+  newPrice: number;
+  annualVolume: number;
+  fxRate: number;
+  currency: Currency;
+  impactType: SavingsImpactType;
+  referencePrice: number | null;
+  impactStartDate: Date;
+  impactEndDate: Date;
+  fiscalYearStartMonth: number;
+}) {
+  const totals = calculateSavings({
+    baselinePrice: args.baselinePrice,
+    newPrice: args.newPrice,
+    annualVolume: args.annualVolume,
+    fxRate: args.fxRate,
+    currency: args.currency,
+    impactType: args.impactType,
+    referencePrice: args.referencePrice,
+  });
+  const periodized = calculatePeriodizedSavings({
+    baselinePrice: args.baselinePrice,
+    newPrice: args.newPrice,
+    annualVolume: args.annualVolume,
+    fxRate: args.fxRate,
+    currency: args.currency,
+    impactType: args.impactType,
+    referencePrice: args.referencePrice,
+    impactStartDate: args.impactStartDate,
+    impactEndDate: args.impactEndDate,
+    fiscalYear: { startMonth: args.fiscalYearStartMonth },
+  });
+
+  return {
+    calculatedSavings: totals.savingsEUR,
+    calculatedSavingsUSD: totals.savingsUSD,
+    annualizedRunRate: periodized.annualizedRunRate,
+    annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+    inYearValue: periodized.inYearValue,
+    inYearValueUSD: periodized.inYearValueUSD,
+  };
 }
 
 const SAVING_CARD_CREATE_TRANSACTION_OPTIONS = {
@@ -89,11 +149,16 @@ async function createSavingCardRecord(
       buyerId: resolved.buyerId,
       baselinePrice: payload.baselinePrice,
       newPrice: payload.newPrice,
+      referencePrice: payload.referencePrice,
       annualVolume: payload.annualVolume,
       currency: payload.currency,
       fxRate: payload.fxRate,
       calculatedSavings: payload.calculatedSavings,
       calculatedSavingsUSD: payload.calculatedSavingsUSD,
+      annualizedRunRate: payload.annualizedRunRate,
+      annualizedRunRateUSD: payload.annualizedRunRateUSD,
+      inYearValue: payload.inYearValue,
+      inYearValueUSD: payload.inYearValueUSD,
       frequency: payload.frequency,
       savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
       implementationComplexity: normalizeOptionalName(
@@ -141,7 +206,8 @@ export async function createSavingCard(
   }
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const payload = buildSavingCardPayload(input);
+  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const payload = buildSavingCardPayload(input, { fiscalYearStartMonth });
 
   assertInitialSavingCardPhase(payload.phase);
 
@@ -164,7 +230,8 @@ export async function updateSavingCard(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const payload = buildSavingCardPayload(input);
+  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const payload = buildSavingCardPayload(input, { fiscalYearStartMonth });
 
   const updated = await prisma.$transaction(async (tx) => {
     const existing = await tx.savingCard.findFirst({
@@ -234,6 +301,9 @@ export async function updateSavingCard(
           ? existing.baselinePrice
           : payload.baselinePrice,
         newPrice: existing.financeLocked ? existing.newPrice : payload.newPrice,
+        referencePrice: existing.financeLocked
+          ? existing.referencePrice
+          : payload.referencePrice,
         annualVolume: existing.financeLocked
           ? existing.annualVolume
           : payload.annualVolume,
@@ -245,6 +315,18 @@ export async function updateSavingCard(
         calculatedSavingsUSD: existing.financeLocked
           ? existing.calculatedSavingsUSD
           : payload.calculatedSavingsUSD,
+        annualizedRunRate: existing.financeLocked
+          ? existing.annualizedRunRate
+          : payload.annualizedRunRate,
+        annualizedRunRateUSD: existing.financeLocked
+          ? existing.annualizedRunRateUSD
+          : payload.annualizedRunRateUSD,
+        inYearValue: existing.financeLocked
+          ? existing.inYearValue
+          : payload.inYearValue,
+        inYearValueUSD: existing.financeLocked
+          ? existing.inYearValueUSD
+          : payload.inYearValueUSD,
         frequency: payload.frequency,
         savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
         implementationComplexity: normalizeOptionalName(
@@ -647,12 +729,19 @@ async function applySelectedAlternativeSupplier(
   }
 
   const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const totals = calculateSavings({
-    baselinePrice: card.baselinePrice,
-    newPrice: alternative.quotedPrice,
-    annualVolume: card.annualVolume,
+  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const financials = computeCardScenarioFinancials({
+    baselinePrice: toNumber(card.baselinePrice),
+    newPrice: toNumber(alternative.quotedPrice),
+    annualVolume: toNumber(card.annualVolume),
     fxRate,
     currency: alternative.currency,
+    impactType: card.impactType,
+    referencePrice:
+      card.referencePrice === null ? null : toNumber(card.referencePrice),
+    impactStartDate: card.impactStartDate,
+    impactEndDate: card.impactEndDate,
+    fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -666,8 +755,7 @@ async function applySelectedAlternativeSupplier(
       newPrice: alternative.quotedPrice,
       currency: alternative.currency,
       fxRate,
-      calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD,
+      ...financials,
     },
   });
 
@@ -712,12 +800,19 @@ async function applySelectedAlternativeMaterial(
   }
 
   const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const totals = calculateSavings({
-    baselinePrice: card.baselinePrice,
-    newPrice: alternative.quotedPrice,
-    annualVolume: card.annualVolume,
+  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const financials = computeCardScenarioFinancials({
+    baselinePrice: toNumber(card.baselinePrice),
+    newPrice: toNumber(alternative.quotedPrice),
+    annualVolume: toNumber(card.annualVolume),
     fxRate,
     currency: alternative.currency,
+    impactType: card.impactType,
+    referencePrice:
+      card.referencePrice === null ? null : toNumber(card.referencePrice),
+    impactStartDate: card.impactStartDate,
+    impactEndDate: card.impactEndDate,
+    fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -736,8 +831,7 @@ async function applySelectedAlternativeMaterial(
       newPrice: alternative.quotedPrice,
       currency: alternative.currency,
       fxRate,
-      calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD,
+      ...financials,
     },
   });
 
@@ -832,7 +926,10 @@ export async function importSavingCards(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const payloads = rows.map((row) => buildSavingCardPayload(row));
+  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const payloads = rows.map((row) =>
+    buildSavingCardPayload(row, { fiscalYearStartMonth })
+  );
 
   payloads.forEach((payload) => assertInitialSavingCardPhase(payload.phase));
 
