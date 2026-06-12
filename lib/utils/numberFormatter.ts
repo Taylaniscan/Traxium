@@ -36,7 +36,7 @@ export function formatCurrency(value: unknown, currency: string) {
         ? "€"
         : new Intl.NumberFormat("en-US", {
             style: "currency",
-            currency: currency || "EUR",
+            currency: currency || "USD",
             maximumFractionDigits: 0
           })
             .format(0)

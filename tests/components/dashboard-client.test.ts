@@ -115,7 +115,7 @@ function createUtopiaDashboardCards(): DashboardData["cards"] {
       baselinePrice: card.baselinePrice,
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
-      calculatedSavings: savings.savingsEUR,
+      calculatedSavings: savings.localSavings,
       frequency: "RECURRING",
       savingDriver: card.savingDriver,
       implementationComplexity: card.implementationComplexity,

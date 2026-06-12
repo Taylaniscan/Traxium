@@ -1,5 +1,6 @@
 import {
   ApprovalStatus,
+  Currency,
   MembershipStatus,
   OrganizationRole,
   Phase,
@@ -41,6 +42,7 @@ function createCompleteOrganization() {
         ? UTOPIATRAX_SHOWCASE_CARD_TITLE
         : `Manufacturing saving card ${index + 1}`,
       phase,
+      currency: Currency.USD,
       impactType:
         index === 3 || index === 4
           ? SavingsImpactType.COST_AVOIDANCE

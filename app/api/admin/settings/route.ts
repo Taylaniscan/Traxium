@@ -31,6 +31,8 @@ const organizationSettingsSchema = z.object({
     .min(1, "Fiscal year start month must be between 1 and 12.")
     .max(12, "Fiscal year start month must be between 1 and 12.")
     .optional(),
+  defaultCurrency: z.enum(["USD", "EUR"]).optional(),
+  multiCurrencyEnabled: z.boolean().optional(),
 });
 
 function jsonError(error: string, status: number) {
@@ -196,6 +198,8 @@ export async function PATCH(request: Request) {
       name: payload.name,
       description: payload.description ?? null,
       fiscalYearStartMonth: payload.fiscalYearStartMonth ?? null,
+      defaultCurrency: payload.defaultCurrency ?? null,
+      multiCurrencyEnabled: payload.multiCurrencyEnabled ?? null,
     });
 
     trackServerEvent({

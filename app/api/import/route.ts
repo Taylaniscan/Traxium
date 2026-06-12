@@ -238,7 +238,7 @@ function normalizeRow(
     baselinePrice: getCell("BaselinePrice", "Baseline Price"),
     newPrice: getCell("NewPrice", "New Price"),
     annualVolume: getCell("AnnualVolume", "Annual Volume"),
-    currency: getCell("Currency") ?? "EUR",
+    currency: getCell("Currency") ?? "USD",
     fxRate: getCell("FxRate", "FX Rate") ?? 1,
     frequency: getCell("Frequency") ?? "RECURRING",
     startDate: getCell("StartDate", "Start Date"),

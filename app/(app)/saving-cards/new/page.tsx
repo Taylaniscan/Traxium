@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getWorkspaceReadiness } from "@/lib/data";
+import { getWorkspaceCurrencyMode } from "@/lib/organizations";
 import { captureException } from "@/lib/observability";
 
 function formatSetupList(items: string[]) {
@@ -23,7 +24,7 @@ function formatSetupList(items: string[]) {
 
 export default async function NewSavingCardPage() {
   const user = await requireUser();
-  const [referenceData, workspaceReadiness] = await Promise.all([
+  const [referenceData, workspaceReadiness, currencyMode] = await Promise.all([
     getReferenceData(user.organizationId),
     getWorkspaceReadiness(user.organizationId).catch((error) => {
       captureException(error, {
@@ -39,6 +40,7 @@ export default async function NewSavingCardPage() {
       });
       return null;
     }),
+    getWorkspaceCurrencyMode(user.organizationId),
   ]);
   const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
   const configuredCollections = workspaceReadiness?.masterData.filter((item) => item.ready).length ?? 0;
@@ -86,6 +88,7 @@ export default async function NewSavingCardPage() {
         mode="create"
         referenceData={referenceData}
         workspaceReadiness={workspaceReadiness ?? undefined}
+        currencyMode={currencyMode}
       />
     </div>
   );

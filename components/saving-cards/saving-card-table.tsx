@@ -200,7 +200,7 @@ export function SavingCardTable({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
+        <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "USD")} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
         <SummaryTile label="Implemented or Captured" value={String(capturedCount)} />
       </div>
@@ -292,7 +292,7 @@ export function SavingCardTable({
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-base font-semibold text-[var(--foreground)]">
-                      {formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")}
+                      {formatCurrency(Math.round(toNumber(card.calculatedSavings)), "USD")}
                     </p>
                     <p className="text-[12px] text-[var(--muted-foreground)]">
                       {card.currency} basis

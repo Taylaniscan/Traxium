@@ -117,7 +117,7 @@ export default async function SavingCardDetailPage({
         </CardHeader>
         <CardContent className="space-y-6 p-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <TopMetric label="Indicative Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")} emphasis />
+            <TopMetric label="Indicative Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "USD")} emphasis />
             <TopMetric label="Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
             <TopMetric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
             <TopMetric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />

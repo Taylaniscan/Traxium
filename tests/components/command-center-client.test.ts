@@ -135,7 +135,7 @@ function getUtopiaSavingsEUR(card: (typeof UTOPIATRAX_SAVING_CARDS)[number]) {
     annualVolume: card.annualVolume,
     currency: card.currency,
     fxRate: resolveUtopiaFxRate(card.currency),
-  }).savingsEUR;
+  }).localSavings;
 }
 
 function sumSavings(

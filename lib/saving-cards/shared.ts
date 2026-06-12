@@ -142,7 +142,7 @@ export function buildSavingCardPayload(
   return {
     ...parsed,
     referencePrice,
-    calculatedSavings: totals.savingsEUR,
+    calculatedSavings: totals.localSavings,
     calculatedSavingsUSD: totals.savingsUSD,
     annualizedRunRate: periodized.annualizedRunRate,
     annualizedRunRateUSD: periodized.annualizedRunRateUSD,
@@ -157,14 +157,14 @@ export async function getLatestFxRate(
   tx: Prisma.TransactionClient,
   currency: Currency
 ) {
-  if (currency === Currency.EUR) return 1;
+  if (currency === Currency.USD) return 1;
 
   const rate = await tx.fxRate.findFirst({
     where: { currency },
     orderBy: { validFrom: "desc" },
   });
 
-  return toNumber(rate?.rateToEUR ?? 1);
+  return toNumber(rate?.rateToUSD ?? 1);
 }
 
 export async function resolveOrCreateSupplier(

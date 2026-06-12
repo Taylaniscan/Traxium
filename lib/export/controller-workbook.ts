@@ -42,7 +42,6 @@ export const controllerSavingCardColumns = [
   "Volume Unit",
   "Currency",
   "Calculated Savings (Local)",
-  "Savings EUR",
   "Savings USD",
   "In-Year Value (FY)",
   "Annualized Run-Rate",
@@ -96,7 +95,7 @@ export const importTemplateColumns = [
 
 export type ControllerWorkbookModel = {
   generatedAt: Date;
-  reportingCurrency: "EUR";
+  reportingCurrency: "USD";
   portfolioSummaryRows: ControllerWorkbookCell[][];
   savingCardRows: ControllerWorkbookRow[];
   dataDictionaryRows: ControllerWorkbookCell[][];
@@ -137,8 +136,7 @@ const columnDefinitions: Record<
   "Volume Unit": "Unit of measure for annual volume.",
   Currency: "Commercial assumption currency.",
   "Calculated Savings (Local)": "Calculated savings in the card currency.",
-  "Savings EUR": "Calculated savings in Traxium reporting currency.",
-  "Savings USD": "Calculated savings translated to USD.",
+  "Savings USD": "Calculated savings in USD, the Traxium reporting currency.",
   "In-Year Value (FY)":
     "Prorated savings landing inside the fiscal year of the impact start, in the card currency.",
   "Annualized Run-Rate":
@@ -165,19 +163,19 @@ function normalizeNumber(value: unknown) {
 
 function sumSavings(cards: SavingCardPortfolio[]) {
   return cards.reduce(
-    (sum, card) => sum + normalizeNumber(card.calculatedSavings),
+    (sum, card) => sum + normalizeNumber(card.calculatedSavingsUSD),
     0
   );
 }
 
-// The card's annualized run-rate equals its annual (EUR) calculated savings, so the
-// EUR run-rate total reconciles with the existing savings basis.
-function sumAnnualizedRunRateEur(cards: SavingCardPortfolio[]) {
+// The card's annualized run-rate equals its annual (USD) calculated savings, so the
+// USD run-rate total reconciles with the canonical savings basis.
+function sumAnnualizedRunRateUsd(cards: SavingCardPortfolio[]) {
   return sumSavings(cards);
 }
 
-// In-year value as a fraction of the run-rate, applied to the EUR savings basis so the
-// EUR in-year total stays currency-consistent with the rest of the workbook.
+// In-year value as a fraction of the run-rate, applied to the USD savings basis so the
+// USD in-year total stays currency-consistent with the rest of the workbook.
 function getInYearFraction(card: SavingCardPortfolio) {
   const runRate = normalizeNumber(card.annualizedRunRate);
   if (runRate === 0) {
@@ -186,10 +184,10 @@ function getInYearFraction(card: SavingCardPortfolio) {
   return normalizeNumber(card.inYearValue) / runRate;
 }
 
-function sumInYearValueEur(cards: SavingCardPortfolio[]) {
+function sumInYearValueUsd(cards: SavingCardPortfolio[]) {
   return cards.reduce(
     (sum, card) =>
-      sum + normalizeNumber(card.calculatedSavings) * getInYearFraction(card),
+      sum + normalizeNumber(card.calculatedSavingsUSD) * getInYearFraction(card),
     0
   );
 }
@@ -250,7 +248,6 @@ export function mapSavingCardsForControllerExport(
     "Volume Unit": card.volumeUnit || "units",
     Currency: card.currency,
     "Calculated Savings (Local)": getLocalSavings(card),
-    "Savings EUR": normalizeNumber(card.calculatedSavings),
     "Savings USD": normalizeNumber(card.calculatedSavingsUSD),
     "In-Year Value (FY)": normalizeNumber(card.inYearValue),
     "Annualized Run-Rate": normalizeNumber(card.annualizedRunRate),
@@ -291,7 +288,7 @@ function buildPortfolioSummaryRows(input: {
   const activeRowSavings = savingCardRows.reduce((sum, row, index) => {
     return cards[index]?.phase === "CANCELLED"
       ? sum
-      : sum + normalizeNumber(row["Savings EUR"]);
+      : sum + normalizeNumber(row["Savings USD"]);
   }, 0);
   const phaseCounts = Object.fromEntries(
     phases.map((phase) => [
@@ -304,7 +301,7 @@ function buildPortfolioSummaryRows(input: {
     ["Metric", "Value", "Review Note"],
     ["Workspace", workspaceReadiness.workspace.name, "Active organization only"],
     ["Generated At (UTC)", generatedAt, "Point-in-time export"],
-    ["Reporting Currency", "EUR", "Savings EUR is the controller reporting basis"],
+    ["Reporting Currency", "USD", "Savings USD is the controller reporting basis"],
     [
       "Reporting Basis",
       "Approved saving-card assumptions",
@@ -312,29 +309,29 @@ function buildPortfolioSummaryRows(input: {
     ],
     ["Portfolio Cards", cards.length, "Includes canceled cards for governance"],
     ["Active Cards", activeCards.length, "Excludes canceled cards"],
-    ["Active Forecast / Pipeline Value (EUR)", activeSavings, "Sum of active saving-card rows"],
+    ["Active Forecast / Pipeline Value (USD)", activeSavings, "Sum of active saving-card rows"],
     [
-      "In-Year Value (EUR)",
-      sumInYearValueEur(activeCards),
+      "In-Year Value (USD)",
+      sumInYearValueUsd(activeCards),
       "Prorated active savings landing inside the fiscal year of impact start",
     ],
     [
-      "Annualized Run-Rate (EUR)",
-      sumAnnualizedRunRateEur(activeCards),
+      "Annualized Run-Rate (USD)",
+      sumAnnualizedRunRateUsd(activeCards),
       "Full-year steady-state value of active savings once fully ramped",
     ],
     [
-      "Implemented Value (EUR)",
+      "Implemented Value (USD)",
       sumSavings(cards.filter((card) => card.phase === "REALISED")),
       "Current approved phase is Implemented",
     ],
     [
-      "Captured Value (EUR)",
+      "Captured Value (USD)",
       sumSavings(cards.filter((card) => card.phase === "ACHIEVED")),
       "Current approved phase is Captured",
     ],
     ["Finance-Locked Cards", financeLockedCards.length, "Active cards only"],
-    ["Finance-Locked Value (EUR)", sumSavings(financeLockedCards), "Active cards only"],
+    ["Finance-Locked Value (USD)", sumSavings(financeLockedCards), "Active cards only"],
     ["Cards With Evidence", cardsWithEvidence.length, "Active cards with at least one evidence record"],
     ["Cards Missing Evidence", cardsMissingEvidence.length, "Active cards without evidence"],
     ["Evidence Coverage", `${evidenceCoveragePercent}%`, "Cards with evidence / active cards"],
@@ -348,11 +345,11 @@ function buildPortfolioSummaryRows(input: {
       workspaceReadiness.activity.lastPortfolioUpdateAt ?? "Not available",
       "Most recent saving-card update",
     ],
-    ["Saving Cards Active Row Total (EUR)", activeRowSavings, "Reconciliation source"],
-    ["Reconciliation Difference (EUR)", activeSavings - activeRowSavings, "Expected to equal zero"],
+    ["Saving Cards Active Row Total (USD)", activeRowSavings, "Reconciliation source"],
+    ["Reconciliation Difference (USD)", activeSavings - activeRowSavings, "Expected to equal zero"],
     ["", "", ""],
     ["Phase Summary", "", ""],
-    ["Phase", "Cards", "Savings EUR"],
+    ["Phase", "Cards", "Savings USD"],
   ];
 
   for (const phase of phases) {
@@ -363,7 +360,7 @@ function buildPortfolioSummaryRows(input: {
     ]);
   }
 
-  rows.push(["", "", ""], ["Savings Type Summary", "", ""], ["Savings Type", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Savings Type Summary", "", ""], ["Savings Type", "Cards", "Savings USD"]);
   for (const savingType of savingTypes) {
     const matchingCards = activeCards.filter(
       (card) => card.savingType === savingType
@@ -375,7 +372,7 @@ function buildPortfolioSummaryRows(input: {
     ]);
   }
 
-  rows.push(["", "", ""], ["Impact Type Summary", "", ""], ["Impact Type", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Impact Type Summary", "", ""], ["Impact Type", "Cards", "Savings USD"]);
   for (const impactType of savingsImpactTypes) {
     const matchingCards = activeCards.filter(
       (card) => card.impactType === impactType
@@ -387,7 +384,7 @@ function buildPortfolioSummaryRows(input: {
     ]);
   }
 
-  rows.push(["", "", ""], ["Impact Recurrence Summary", "", ""], ["Impact Recurrence", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Impact Recurrence Summary", "", ""], ["Impact Recurrence", "Cards", "Savings USD"]);
   for (const recurrence of savingsImpactRecurrences) {
     const matchingCards = activeCards.filter(
       (card) => card.impactRecurrence === recurrence
@@ -399,7 +396,7 @@ function buildPortfolioSummaryRows(input: {
     ]);
   }
 
-  rows.push(["", "", ""], ["Budget Impact Summary", "", ""], ["Budget Impact", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Budget Impact Summary", "", ""], ["Budget Impact", "Cards", "Savings USD"]);
   for (const budgetImpact of savingsBudgetImpacts) {
     const matchingCards = activeCards.filter(
       (card) => card.budgetImpact === budgetImpact
@@ -411,7 +408,7 @@ function buildPortfolioSummaryRows(input: {
     ]);
   }
 
-  rows.push(["", "", ""], ["Category Summary", "", ""], ["Category", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Category Summary", "", ""], ["Category", "Cards", "Savings USD"]);
   const categoryNames = [
     ...new Set(activeCards.map((card) => card.category?.name ?? "Unassigned")),
   ].sort((left, right) => left.localeCompare(right));
@@ -423,7 +420,7 @@ function buildPortfolioSummaryRows(input: {
     rows.push([categoryName, categoryCards.length, sumSavings(categoryCards)]);
   }
 
-  rows.push(["", "", ""], ["Buyer / Owner Summary", "", ""], ["Buyer / Owner", "Cards", "Savings EUR"]);
+  rows.push(["", "", ""], ["Buyer / Owner Summary", "", ""], ["Buyer / Owner", "Cards", "Savings USD"]);
   const buyerNames = [
     ...new Set(activeCards.map((card) => card.buyer?.name ?? "Unassigned")),
   ].sort((left, right) => left.localeCompare(right));
@@ -512,7 +509,7 @@ function buildImportTemplateRows(): ControllerWorkbookRow[] {
       "Baseline Price": 1.42,
       "New Price": 1.31,
       "Annual Volume": 850000,
-      Currency: "EUR",
+      Currency: "USD",
       "Start Date": "2026-01-01",
       "End Date": "2026-12-31",
       "Impact Start Date": "2026-01-01",
@@ -546,7 +543,7 @@ export function buildControllerWorkbookModel(input: {
 
   return {
     generatedAt: input.generatedAt,
-    reportingCurrency: "EUR",
+    reportingCurrency: "USD",
     portfolioSummaryRows: summary.rows,
     savingCardRows: mapSavingCardsForControllerExport(input.cards),
     dataDictionaryRows: buildDataDictionaryRows(),

@@ -684,25 +684,25 @@ export function CommandCenterClient({
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <MetricCard
                       label="Pipeline Savings"
-                      value={formatCurrency(safeData.kpis.totalPipelineSavings, "EUR")}
+                      value={formatCurrency(safeData.kpis.totalPipelineSavings, "USD")}
                       icon={CircleDollarSign}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Implemented Savings"
-                      value={formatCurrency(safeData.kpis.realisedSavings, "EUR")}
+                      value={formatCurrency(safeData.kpis.realisedSavings, "USD")}
                       icon={TrendingUp}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Savings Forecast"
-                      value={formatCurrency(safeData.kpis.savingsForecast, "EUR")}
+                      value={formatCurrency(safeData.kpis.savingsForecast, "USD")}
                       icon={ClipboardList}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Captured Savings"
-                      value={formatCurrency(safeData.kpis.achievedSavings, "EUR")}
+                      value={formatCurrency(safeData.kpis.achievedSavings, "USD")}
                       icon={CheckCircle2}
                       status={isLoading ? "Updating" : "Live"}
                     />
@@ -997,7 +997,7 @@ function ActionQueueCard({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {formatCurrency(item.savings, "EUR")}
+                    {formatCurrency(item.savings, "USD")}
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
                     {formatCommandCenterRelativeDays(item.ageDays)}
@@ -1077,7 +1077,7 @@ function AttentionListCard({
                   </p>
                 </div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {formatCurrency(item.savings, "EUR")}
+                  {formatCurrency(item.savings, "USD")}
                 </p>
               </div>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--muted-foreground)]">
@@ -1221,7 +1221,7 @@ function RecentActivityCard({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {formatCurrency(item.savings, "EUR")}
+                    {formatCurrency(item.savings, "USD")}
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
                     Updated {formatCommandCenterDate(item.updatedAt)}
@@ -1302,7 +1302,7 @@ function DistributionList({
                   {item.label}
                 </span>
                 <span className="text-sm font-semibold text-[var(--foreground)]">
-                  {formatCurrency(item.value, "EUR")}
+                  {formatCurrency(item.value, "USD")}
                 </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
@@ -1432,12 +1432,12 @@ function PipelineBarChart({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               "Savings",
             ]}
           />
@@ -1472,12 +1472,12 @@ function ForecastAreaPanel({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
             formatter={(value, name) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />
@@ -1526,7 +1526,7 @@ function SupplierBarChart({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <YAxis
             type="category"
@@ -1539,7 +1539,7 @@ function SupplierBarChart({
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               "Savings",
             ]}
           />

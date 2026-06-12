@@ -6,6 +6,7 @@ const SavingCardFormMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const getWorkspaceCurrencyModeMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/saving-cards/saving-card-form", () => ({
@@ -19,6 +20,10 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/data", () => ({
   getReferenceData: getReferenceDataMock,
   getWorkspaceReadiness: getWorkspaceReadinessMock,
+}));
+
+vi.mock("@/lib/organizations", () => ({
+  getWorkspaceCurrencyMode: getWorkspaceCurrencyModeMock,
 }));
 
 vi.mock("@/lib/observability", () => ({
@@ -47,6 +52,10 @@ describe("new saving card page", () => {
       fxRates: [],
     });
     getWorkspaceReadinessMock.mockResolvedValue(null);
+    getWorkspaceCurrencyModeMock.mockResolvedValue({
+      defaultCurrency: "USD",
+      multiCurrencyEnabled: false,
+    });
   });
 
   it("keeps rendering the form when workspace readiness cannot be loaded", async () => {

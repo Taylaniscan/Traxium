@@ -436,7 +436,7 @@ export function SavingCardDetailWorkspace({
               <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
               <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-              <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")} />
+              <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
               <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
               <Metric label="In-Year Value (FY)" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
               <Metric label="Annualized Run-Rate" value={formatCurrency(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
@@ -1067,7 +1067,7 @@ function RecordSummaryRail({
           <RailRow label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
           <RailRow label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
           <RailRow label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), "EUR")} />
+          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
         </RailSection>
 
         <RailSection title="Savings Classification">
@@ -1244,7 +1244,7 @@ function emptySupplierForm(): SupplierForm {
     supplier: { mode: "existing", id: undefined, name: "" },
     country: "",
     quotedPrice: "",
-    currency: "EUR",
+    currency: "USD",
     leadTimeDays: "",
     moq: "",
     paymentTerms: "",
@@ -1261,7 +1261,7 @@ function emptyMaterialForm(): MaterialForm {
     supplier: { mode: "existing", id: undefined, name: "" },
     specification: "",
     quotedPrice: "",
-    currency: "EUR",
+    currency: "USD",
     performanceImpact: "",
     qualificationStatus: "",
     riskLevel: "",

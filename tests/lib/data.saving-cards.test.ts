@@ -162,6 +162,8 @@ describe("lib/data saving card flows", () => {
     mockPrisma.organization.findUnique.mockReset();
     mockPrisma.organization.findUnique.mockResolvedValue({
       fiscalYearStartMonth: 1,
+      defaultCurrency: Currency.USD,
+      multiCurrencyEnabled: true,
     });
     tx = createSavingCardTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
@@ -279,6 +281,32 @@ describe("lib/data saving card flows", () => {
       namespace: "workspace-readiness",
       organizationId: "org-1",
     });
+  });
+
+  it("forces USD and a unit fx rate when the workspace is single-currency, ignoring the client payload", async () => {
+    mockPrisma.organization.findUnique.mockResolvedValue({
+      fiscalYearStartMonth: 1,
+      defaultCurrency: Currency.USD,
+      multiCurrencyEnabled: false,
+    });
+
+    await createSavingCard(
+      createSavingCardInput({ currency: Currency.EUR, fxRate: 1.1 }),
+      "actor-1",
+      "org-1"
+    );
+
+    expect(tx.savingCard.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          currency: Currency.USD,
+          fxRate: 1,
+          // (10 - 8) * 100 in USD, no fx applied
+          calculatedSavings: 200,
+          calculatedSavingsUSD: 200,
+        }),
+      })
+    );
   });
 
   it("rejects non-positive commercial assumptions before creating a saving card", async () => {

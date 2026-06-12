@@ -3,6 +3,7 @@ import { SavingCardForm } from "@/components/saving-cards/saving-card-form";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import { getReferenceData, getSavingCard } from "@/lib/data";
+import { getWorkspaceCurrencyMode } from "@/lib/organizations";
 
 export default async function EditSavingCardPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -12,7 +13,10 @@ export default async function EditSavingCardPage({ params }: { params: Promise<{
 
   if (!card) notFound();
 
-  const referenceData = await getReferenceData(user.organizationId);
+  const [referenceData, currencyMode] = await Promise.all([
+    getReferenceData(user.organizationId),
+    getWorkspaceCurrencyMode(user.organizationId),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -20,7 +24,12 @@ export default async function EditSavingCardPage({ params }: { params: Promise<{
         title={card.title}
         subtitle="Update scope, commercial assumptions, dates, stakeholders, and evidence without changing the underlying workflow rules."
       />
-      <SavingCardForm mode="edit" referenceData={referenceData} card={card} />
+      <SavingCardForm
+        mode="edit"
+        referenceData={referenceData}
+        card={card}
+        currencyMode={currencyMode}
+      />
     </div>
   );
 }

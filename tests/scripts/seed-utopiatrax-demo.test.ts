@@ -62,7 +62,7 @@ describe("UtopiaTrax demo seed dataset", () => {
     expect(getUtopiaTraxDatasetSummary().financeLockedViolations).toEqual([]);
   });
 
-  it("includes evidence, alternatives, and mixed currency data for demo surfaces", () => {
+  it("includes evidence, alternatives, and USD-only currency data for demo surfaces", () => {
     const summary = getUtopiaTraxDatasetSummary();
     const currencies = new Set(UTOPIATRAX_SAVING_CARDS.map((card) => card.currency));
 
@@ -76,8 +76,9 @@ describe("UtopiaTrax demo seed dataset", () => {
       )
     ).toBe(true);
     expect(summary.alternativeCount).toBeGreaterThanOrEqual(8);
-    expect(currencies.has(Currency.EUR)).toBe(true);
-    expect(currencies.has(Currency.USD)).toBe(true);
+    // USD-only demo workspace: every card is USD and no EUR appears.
+    expect(currencies.has(Currency.EUR)).toBe(false);
+    expect([...currencies]).toEqual([Currency.USD]);
     expect(shouldPersistUtopiaTraxEvidenceRecord(false)).toBe(false);
     expect(shouldPersistUtopiaTraxEvidenceRecord(true)).toBe(true);
   });
@@ -256,7 +257,7 @@ describe("UtopiaTrax demo seed dataset", () => {
         annualVolume: card.annualVolume,
         volumeUnit: "kg",
         currency: card.currency,
-        calculatedSavings: totals.savingsEUR,
+        calculatedSavings: totals.localSavings,
         calculatedSavingsUSD: totals.savingsUSD,
         frequency: Frequency.RECURRING,
         savingDriver: card.savingDriver,

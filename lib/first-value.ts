@@ -45,7 +45,7 @@ type SampleSavingCardInput = {
   baselinePrice: number;
   newPrice: number;
   annualVolume: number;
-  currency: "EUR";
+  currency: "USD";
   fxRate: number;
   frequency: "RECURRING";
   savingDriver: string;
@@ -90,7 +90,7 @@ const SAMPLE_SAVING_CARDS: readonly SampleSavingCardInput[] = [
     baselinePrice: 1.24,
     newPrice: 1.12,
     annualVolume: 240000,
-    currency: "EUR",
+    currency: "USD",
     fxRate: 1,
     frequency: "RECURRING",
     savingDriver: "Negotiation",
@@ -133,7 +133,7 @@ const SAMPLE_SAVING_CARDS: readonly SampleSavingCardInput[] = [
     baselinePrice: 0.41,
     newPrice: 0.36,
     annualVolume: 180000,
-    currency: "EUR",
+    currency: "USD",
     fxRate: 1,
     frequency: "RECURRING",
     savingDriver: "Specification Optimization",

@@ -57,33 +57,33 @@ describe("command center data helpers", () => {
       .mockResolvedValueOnce([
         {
           phase: Phase.IDEA,
-          _sum: { calculatedSavings: 100 },
+          _sum: { calculatedSavingsUSD: 100 },
         },
       ])
       .mockResolvedValueOnce([
         {
           supplierId: "supplier-1",
-          _sum: { calculatedSavings: 100 },
+          _sum: { calculatedSavingsUSD: 100 },
         },
       ])
       .mockResolvedValueOnce([
         {
           qualificationStatus: "Approved",
-          _sum: { calculatedSavings: 100 },
+          _sum: { calculatedSavingsUSD: 100 },
         },
       ]);
     prismaMock.savingCard.findMany
       .mockResolvedValueOnce([
         {
           impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
-          calculatedSavings: 100,
+          calculatedSavingsUSD: 100,
           frequency: Frequency.RECURRING,
           phase: Phase.IDEA,
         },
       ])
       .mockResolvedValueOnce([
         {
-          calculatedSavings: 100,
+          calculatedSavingsUSD: 100,
           alternativeSuppliers: [{ riskLevel: "Low" }],
           alternativeMaterials: [],
         },
@@ -94,7 +94,7 @@ describe("command center data helpers", () => {
           title: "Overdue card",
           phase: Phase.IDEA,
           endDate: new Date("2025-01-01T00:00:00.000Z"),
-          calculatedSavings: 50,
+          calculatedSavingsUSD: 50,
           financeLocked: false,
           buyer: { name: "Can Kaya" },
           category: { name: "Packaging Materials" },
@@ -106,7 +106,7 @@ describe("command center data helpers", () => {
           title: "Locked card",
           phase: Phase.VALIDATED,
           updatedAt: new Date("2026-04-02T00:00:00.000Z"),
-          calculatedSavings: 60,
+          calculatedSavingsUSD: 60,
           financeLocked: true,
           buyer: { name: "Aylin Demir" },
           category: { name: "Polymer Carriers" },
@@ -118,7 +118,7 @@ describe("command center data helpers", () => {
           title: "Recent card",
           phase: Phase.REALISED,
           updatedAt: new Date("2026-04-03T00:00:00.000Z"),
-          calculatedSavings: 70,
+          calculatedSavingsUSD: 70,
           financeLocked: false,
           buyer: { name: "Taylan Iscan" },
           category: { name: "TiO2 & White Pigments" },
@@ -140,7 +140,7 @@ describe("command center data helpers", () => {
         savingCard: {
           id: "card-1",
           title: "PP Carrier dual-source negotiation",
-          calculatedSavings: 100,
+          calculatedSavingsUSD: 100,
           financeLocked: false,
         },
       },

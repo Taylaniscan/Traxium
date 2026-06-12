@@ -180,12 +180,12 @@ function calculateMagnitudeShare(value: number, basis: number) {
 
 function formatSignedCurrency(value: number) {
   if (value === 0) {
-    return formatCurrency(0, "EUR");
+    return formatCurrency(0, "USD");
   }
 
   return value > 0
-    ? `+${formatCurrency(value, "EUR")}`
-    : `-${formatCurrency(Math.abs(value), "EUR")}`;
+    ? `+${formatCurrency(value, "USD")}`
+    : `-${formatCurrency(Math.abs(value), "USD")}`;
 }
 
 function formatDayDistance(days: number) {
@@ -460,7 +460,7 @@ function buildDashboardExceptions(
           tone,
           title: normalizeDashboardLabel(card.title, "Untitled saving card"),
           detail,
-          value: formatCurrency(value, "EUR"),
+          value: formatCurrency(value, "USD"),
           meta,
           phase: card.phase,
           phaseLabel,
@@ -718,7 +718,7 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Identified Value"
-            value={formatCurrency(executiveMetrics.identifiedValue, "EUR")}
+            value={formatCurrency(executiveMetrics.identifiedValue, "USD")}
             description="Opportunities still proposed and not yet finance validated for execution."
             tone="neutral"
             delta={
@@ -735,7 +735,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Finance Validated Value"
-            value={formatCurrency(executiveMetrics.validatedValue, "EUR")}
+            value={formatCurrency(executiveMetrics.validatedValue, "USD")}
             description="Business cases reviewed for finance trust and positioned for delivery."
             tone="info"
             delta={
@@ -753,7 +753,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Implemented Value"
-            value={formatCurrency(executiveMetrics.realisedValue, "EUR")}
+            value={formatCurrency(executiveMetrics.realisedValue, "USD")}
             description="Savings currently implemented and expected to convert into captured value."
             tone="warning"
             delta={
@@ -771,7 +771,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Captured Value"
-            value={formatCurrency(executiveMetrics.achievedValue, "EUR")}
+            value={formatCurrency(executiveMetrics.achievedValue, "USD")}
             description="Savings impact confirmed and no longer dependent on future conversion."
             tone="success"
             delta={
@@ -787,13 +787,13 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2">
           <KpiCard
             label="In-Year Value"
-            value={formatCurrency(Math.round(metrics.inYearValue), "EUR")}
+            value={formatCurrency(Math.round(metrics.inYearValue), "USD")}
             description="Prorated savings landing inside the current fiscal year, based on each card's impact start date."
             tone="info"
           />
           <KpiCard
             label="Annualized Run-Rate"
-            value={formatCurrency(Math.round(metrics.annualizedRunRate), "EUR")}
+            value={formatCurrency(Math.round(metrics.annualizedRunRate), "USD")}
             description="Full-year steady-state value of active savings once impact is fully ramped."
             tone="neutral"
           />
@@ -802,10 +802,10 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard
             label={executiveMetrics.gapLabel}
-            value={formatCurrency(executiveMetrics.gapValue, "EUR")}
+            value={formatCurrency(executiveMetrics.gapValue, "USD")}
             description={`${executiveMetrics.benchmarkLabel} benchmark: ${formatCurrency(
               executiveMetrics.benchmarkValue,
-              "EUR"
+              "USD"
             )}.`}
             tone="warning"
             size="secondary"
@@ -874,7 +874,7 @@ export function DashboardClient({
                     24 hours for {recentAchievements[0].buyer.name} at{" "}
                     {formatCurrency(
                       recentAchievements[0].calculatedSavings,
-                      "EUR"
+                      "USD"
                     )}
                     .
                     {recentAchievements.length > 1
@@ -1055,29 +1055,29 @@ function TargetProgressCard({
         <div className="grid gap-3 md:grid-cols-2">
           <ValueSnapshot
             label={benchmarkLabel}
-            value={formatCurrency(benchmarkValue, "EUR")}
+            value={formatCurrency(benchmarkValue, "USD")}
           />
           <ValueSnapshot
             label={gapLabel}
-            value={formatCurrency(gapValue, "EUR")}
+            value={formatCurrency(gapValue, "USD")}
           />
         </div>
 
         <ProgressRow
           label="Implemented"
-          value={formatCurrency(realisedValue, "EUR")}
+          value={formatCurrency(realisedValue, "USD")}
           width={realisedWidth}
           toneClassName="bg-[var(--warning)]"
         />
         <ProgressRow
           label="Captured"
-          value={formatCurrency(achievedValue, "EUR")}
+          value={formatCurrency(achievedValue, "USD")}
           width={achievedWidth}
           toneClassName="bg-[var(--success)]"
         />
         <ProgressRow
           label="Forecast"
-          value={formatCurrency(forecastValue, "EUR")}
+          value={formatCurrency(forecastValue, "USD")}
           width={forecastWidth}
           toneClassName="bg-[var(--info-forecast)]"
         />
@@ -1085,7 +1085,7 @@ function TargetProgressCard({
         <div className="flex flex-wrap gap-2">
           <MetricDelta
             label={gapLabel}
-            value={formatCurrency(gapValue, "EUR")}
+            value={formatCurrency(gapValue, "USD")}
             tone={gapValue > 0 ? "caution" : "positive"}
           />
           <MetricDelta
@@ -1218,7 +1218,7 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <Tooltip
             contentStyle={{
@@ -1227,7 +1227,7 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
               fontSize: 12,
             }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               "Savings",
             ]}
           />
@@ -1261,7 +1261,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <YAxis
             type="category"
@@ -1278,7 +1278,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
               fontSize: 12,
             }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               "Savings",
             ]}
           />
@@ -1313,7 +1313,7 @@ function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: "#6B7280", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "EUR")}
+            tickFormatter={(value) => formatCurrency(value, "USD")}
           />
           <Tooltip
             contentStyle={{
@@ -1322,7 +1322,7 @@ function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
               fontSize: 12,
             }}
             formatter={(value, name) => [
-              formatCurrency(Number(value ?? 0), "EUR"),
+              formatCurrency(Number(value ?? 0), "USD"),
               String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />

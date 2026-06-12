@@ -156,7 +156,7 @@ describe("executive savings summary", () => {
     expect(markup).toContain("Recent Wins &amp; Decisions");
     expect(markup).toContain("Freight lane consolidation");
     expect(markup).toContain("Approved");
-    expect(markup).toContain("€420k");
+    expect(markup).toContain("$420k");
     expect(markup).toContain("Savings by Savings Type");
     expect(markup).toContain("Savings by Impact Type");
     expect(markup).toContain("Recurring vs One-Time");

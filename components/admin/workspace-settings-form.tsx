@@ -49,6 +49,12 @@ export function WorkspaceSettingsForm({
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(
     organization.fiscalYearStartMonth
   );
+  const [defaultCurrency, setDefaultCurrency] = useState(
+    organization.defaultCurrency
+  );
+  const [multiCurrencyEnabled, setMultiCurrencyEnabled] = useState(
+    organization.multiCurrencyEnabled
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -58,11 +64,15 @@ export function WorkspaceSettingsForm({
     setName(organization.name);
     setDescription(organization.description ?? "");
     setFiscalYearStartMonth(organization.fiscalYearStartMonth);
+    setDefaultCurrency(organization.defaultCurrency);
+    setMultiCurrencyEnabled(organization.multiCurrencyEnabled);
     inFlightRef.current = false;
   }, [
     organization.description,
     organization.name,
     organization.fiscalYearStartMonth,
+    organization.defaultCurrency,
+    organization.multiCurrencyEnabled,
   ]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -86,6 +96,8 @@ export function WorkspaceSettingsForm({
           name,
           description,
           fiscalYearStartMonth,
+          defaultCurrency,
+          multiCurrencyEnabled,
         }),
       });
 
@@ -118,6 +130,8 @@ export function WorkspaceSettingsForm({
         setName(payload.organization.name);
         setDescription(payload.organization.description ?? "");
         setFiscalYearStartMonth(payload.organization.fiscalYearStartMonth);
+        setDefaultCurrency(payload.organization.defaultCurrency);
+        setMultiCurrencyEnabled(payload.organization.multiCurrencyEnabled);
       }
       inFlightRef.current = false;
       setLoading(false);
@@ -202,6 +216,44 @@ export function WorkspaceSettingsForm({
                 Controls how in-year savings value is prorated. Cards with mid-year impact
                 start dates count only the months that fall inside this fiscal year.
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="default-currency">Default currency</Label>
+              <Select
+                id="default-currency"
+                value={defaultCurrency}
+                onChange={(event) =>
+                  setDefaultCurrency(event.target.value as typeof defaultCurrency)
+                }
+              >
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </Select>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                New saving cards use this currency. USD is the canonical reporting currency.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={multiCurrencyEnabled}
+                  onChange={(event) => setMultiCurrencyEnabled(event.target.checked)}
+                />
+                <span>
+                  <span className="block text-[13px] font-medium text-[var(--foreground)]">
+                    Enable multi-currency
+                  </span>
+                  <span className="block text-xs text-[var(--muted-foreground)]">
+                    When off, the workspace is USD-only: saving cards never show a currency
+                    or FX rate field. Turn this on only if buyers transact in more than one
+                    currency.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {notice ? (

@@ -96,14 +96,14 @@ export async function getCommandCenterData(
   const phaseSavings = await prisma.savingCard.groupBy({
     by: ["phase"],
     where,
-    _sum: { calculatedSavings: true },
+    _sum: { calculatedSavingsUSD: true },
   });
   const forecastCards = await prisma.savingCard.findMany({
     where,
     select: {
       impactStartDate: true,
       impactEndDate: true,
-      calculatedSavings: true,
+      calculatedSavingsUSD: true,
       frequency: true,
       phase: true,
     },
@@ -114,10 +114,10 @@ export async function getCommandCenterData(
       ...where,
       phase: { not: Phase.CANCELLED },
     },
-    _sum: { calculatedSavings: true },
+    _sum: { calculatedSavingsUSD: true },
     orderBy: {
       _sum: {
-        calculatedSavings: "desc",
+        calculatedSavingsUSD: "desc",
       },
     },
     take: 10,
@@ -125,7 +125,7 @@ export async function getCommandCenterData(
   const qualificationGroups = await prisma.savingCard.groupBy({
     by: ["qualificationStatus"],
     where,
-    _sum: { calculatedSavings: true },
+    _sum: { calculatedSavingsUSD: true },
   });
   const pendingApprovals = await prisma.phaseChangeRequest.count({
     where: {
@@ -142,7 +142,7 @@ export async function getCommandCenterData(
   const riskCards = await prisma.savingCard.findMany({
     where,
     select: {
-      calculatedSavings: true,
+      calculatedSavingsUSD: true,
       alternativeSuppliers: {
         where: { isSelected: true },
         select: { riskLevel: true },
@@ -181,7 +181,7 @@ export async function getCommandCenterData(
         select: {
           id: true,
           title: true,
-          calculatedSavings: true,
+          calculatedSavingsUSD: true,
           financeLocked: true,
         },
       },
@@ -204,7 +204,7 @@ export async function getCommandCenterData(
       title: true,
       phase: true,
       endDate: true,
-      calculatedSavings: true,
+      calculatedSavingsUSD: true,
       financeLocked: true,
       buyer: {
         select: {
@@ -233,7 +233,7 @@ export async function getCommandCenterData(
       title: true,
       phase: true,
       updatedAt: true,
-      calculatedSavings: true,
+      calculatedSavingsUSD: true,
       financeLocked: true,
       buyer: {
         select: {
@@ -286,7 +286,7 @@ export async function getCommandCenterData(
       title: true,
       phase: true,
       updatedAt: true,
-      calculatedSavings: true,
+      calculatedSavingsUSD: true,
       financeLocked: true,
       buyer: {
         select: {
@@ -313,7 +313,7 @@ export async function getCommandCenterData(
     : [];
 
   const phaseMap = new Map(
-    phaseSavings.map((item) => [item.phase, toNumber(item._sum.calculatedSavings)])
+    phaseSavings.map((item) => [item.phase, toNumber(item._sum.calculatedSavingsUSD)])
   );
 
   const pipelineByPhase = [
@@ -345,9 +345,9 @@ export async function getCommandCenterData(
         sortValue: monthBucket.sortValue,
       };
 
-      acc[monthKey].savings += toNumber(card.calculatedSavings);
+      acc[monthKey].savings += toNumber(card.calculatedSavingsUSD);
       acc[monthKey].forecast +=
-        toNumber(card.calculatedSavings) *
+        toNumber(card.calculatedSavingsUSD) *
         impactDurationYears(card.impactStartDate, card.impactEndDate);
       return acc;
     }, {})
@@ -357,7 +357,7 @@ export async function getCommandCenterData(
 
   const topSuppliers = supplierSavings.map((item) => ({
     supplier: supplierNameMap.get(item.supplierId) ?? "Unknown supplier",
-    savings: toNumber(item._sum.calculatedSavings),
+    savings: toNumber(item._sum.calculatedSavingsUSD),
   }));
 
   const riskOrder = ["Low", "Medium", "High", "Critical", "Unrated"];
@@ -365,7 +365,7 @@ export async function getCommandCenterData(
     const supplierRisk = card.alternativeSuppliers[0]?.riskLevel;
     const materialRisk = card.alternativeMaterials[0]?.riskLevel;
     const level = normalizeRiskLevel(materialRisk ?? supplierRisk ?? "Unrated");
-    acc[level] = (acc[level] ?? 0) + toNumber(card.calculatedSavings);
+    acc[level] = (acc[level] ?? 0) + toNumber(card.calculatedSavingsUSD);
     return acc;
   }, {});
 
@@ -387,7 +387,7 @@ export async function getCommandCenterData(
       savings: toNumber(
         qualificationGroups.find(
           (item) => (item.qualificationStatus ?? "Unspecified") === status
-        )?._sum.calculatedSavings
+        )?._sum.calculatedSavingsUSD
       ),
     }))
     .filter((item) => item.savings > 0 || item.status === "Unspecified");
@@ -419,7 +419,7 @@ export async function getCommandCenterData(
         isOverdue: ageDays >= COMMAND_CENTER_PENDING_OVERDUE_DAYS,
         pendingApproverCount: item.approvals.length,
         pendingApproverRoles: uniquePendingRoles,
-        savings: toNumber(item.savingCard.calculatedSavings),
+        savings: toNumber(item.savingCard.calculatedSavingsUSD),
         financeLocked: item.savingCard.financeLocked,
       };
     });
@@ -432,7 +432,7 @@ export async function getCommandCenterData(
     dateLabel: "Due date",
     dateValue: item.endDate.toISOString(),
     ageDays: getCommandCenterAgeDays(item.endDate, now),
-    savings: toNumber(item.calculatedSavings),
+    savings: toNumber(item.calculatedSavingsUSD),
     financeLocked: item.financeLocked,
   }));
   const normalizedFinanceLockedItems: CommandCenterAttentionItem[] = financeLockedItems.map((item) => ({
@@ -444,7 +444,7 @@ export async function getCommandCenterData(
     dateLabel: "Last updated",
     dateValue: item.updatedAt.toISOString(),
     ageDays: getCommandCenterAgeDays(item.updatedAt, now),
-    savings: toNumber(item.calculatedSavings),
+    savings: toNumber(item.calculatedSavingsUSD),
     financeLocked: item.financeLocked,
   }));
   const normalizedRecentDecisions: CommandCenterDecisionItem[] = recentDecisions.map((item) => ({
@@ -467,7 +467,7 @@ export async function getCommandCenterData(
     categoryName: item.category.name,
     updatedAt: item.updatedAt.toISOString(),
     financeLocked: item.financeLocked,
-    savings: toNumber(item.calculatedSavings),
+    savings: toNumber(item.calculatedSavingsUSD),
   }));
 
   return {

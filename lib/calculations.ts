@@ -57,25 +57,17 @@ export function calculateSavings({
   if ([unitSaving, volume, fx].some((value) => Number.isNaN(value) || !Number.isFinite(value))) {
     return {
       localSavings: 0,
-      savingsEUR: 0,
       savingsUSD: 0
     };
   }
 
   const localSavings = unitSaving * volume;
 
-  if (currency === "EUR") {
-    return {
-      localSavings,
-      savingsEUR: localSavings,
-      savingsUSD: localSavings * fx
-    };
-  }
-
+  // USD is the canonical reporting currency. A USD card reports its local value
+  // directly; any other currency converts through its rate to USD.
   return {
     localSavings,
-    savingsEUR: localSavings * fx,
-    savingsUSD: localSavings
+    savingsUSD: currency === "USD" ? localSavings : localSavings * fx
   };
 }
 

@@ -38,13 +38,50 @@ function buildSavingCardPath(savingCardId: string) {
   return `/saving-cards/${savingCardId}`;
 }
 
-async function getFiscalYearStartMonth(organizationId: string) {
+type WorkspaceFinancialSettings = {
+  fiscalYearStartMonth: number;
+  defaultCurrency: Currency;
+  multiCurrencyEnabled: boolean;
+};
+
+async function getWorkspaceFinancialSettings(
+  organizationId: string
+): Promise<WorkspaceFinancialSettings> {
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { fiscalYearStartMonth: true },
+    select: {
+      fiscalYearStartMonth: true,
+      defaultCurrency: true,
+      multiCurrencyEnabled: true,
+    },
   });
 
-  return organization?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH;
+  return {
+    fiscalYearStartMonth:
+      organization?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
+    defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
+    multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+  };
+}
+
+/**
+ * In a single-currency (USD-only) workspace the buyer never sees a currency or fx
+ * field, so any client-supplied currency/fxRate is ignored: cards are forced to the
+ * workspace default currency at a 1.0 rate regardless of payload.
+ */
+function applyWorkspaceCurrencyMode(
+  input: Prisma.JsonObject | Record<string, unknown>,
+  settings: WorkspaceFinancialSettings
+) {
+  if (settings.multiCurrencyEnabled) {
+    return input;
+  }
+
+  return {
+    ...input,
+    currency: settings.defaultCurrency,
+    fxRate: 1,
+  };
 }
 
 /**
@@ -87,7 +124,7 @@ function computeCardScenarioFinancials(args: {
   });
 
   return {
-    calculatedSavings: totals.savingsEUR,
+    calculatedSavings: totals.localSavings,
     calculatedSavingsUSD: totals.savingsUSD,
     annualizedRunRate: periodized.annualizedRunRate,
     annualizedRunRateUSD: periodized.annualizedRunRateUSD,
@@ -206,8 +243,11 @@ export async function createSavingCard(
   }
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
-  const payload = buildSavingCardPayload(input, { fiscalYearStartMonth });
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const payload = buildSavingCardPayload(
+    applyWorkspaceCurrencyMode(input, settings),
+    { fiscalYearStartMonth: settings.fiscalYearStartMonth }
+  );
 
   assertInitialSavingCardPhase(payload.phase);
 
@@ -230,8 +270,11 @@ export async function updateSavingCard(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
-  const payload = buildSavingCardPayload(input, { fiscalYearStartMonth });
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const payload = buildSavingCardPayload(
+    applyWorkspaceCurrencyMode(input, settings),
+    { fiscalYearStartMonth: settings.fiscalYearStartMonth }
+  );
 
   const updated = await prisma.$transaction(async (tx) => {
     const existing = await tx.savingCard.findFirst({
@@ -728,20 +771,25 @@ async function applySelectedAlternativeSupplier(
     );
   }
 
-  const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const scenarioCurrency = settings.multiCurrencyEnabled
+    ? alternative.currency
+    : settings.defaultCurrency;
+  const fxRate = settings.multiCurrencyEnabled
+    ? await getLatestFxRate(tx, scenarioCurrency)
+    : 1;
   const financials = computeCardScenarioFinancials({
     baselinePrice: toNumber(card.baselinePrice),
     newPrice: toNumber(alternative.quotedPrice),
     annualVolume: toNumber(card.annualVolume),
     fxRate,
-    currency: alternative.currency,
+    currency: scenarioCurrency,
     impactType: card.impactType,
     referencePrice:
       card.referencePrice === null ? null : toNumber(card.referencePrice),
     impactStartDate: card.impactStartDate,
     impactEndDate: card.impactEndDate,
-    fiscalYearStartMonth,
+    fiscalYearStartMonth: settings.fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -753,7 +801,7 @@ async function applySelectedAlternativeSupplier(
         ? null
         : alternative.supplierNameManual,
       newPrice: alternative.quotedPrice,
-      currency: alternative.currency,
+      currency: scenarioCurrency,
       fxRate,
       ...financials,
     },
@@ -799,20 +847,25 @@ async function applySelectedAlternativeMaterial(
     );
   }
 
-  const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const scenarioCurrency = settings.multiCurrencyEnabled
+    ? alternative.currency
+    : settings.defaultCurrency;
+  const fxRate = settings.multiCurrencyEnabled
+    ? await getLatestFxRate(tx, scenarioCurrency)
+    : 1;
   const financials = computeCardScenarioFinancials({
     baselinePrice: toNumber(card.baselinePrice),
     newPrice: toNumber(alternative.quotedPrice),
     annualVolume: toNumber(card.annualVolume),
     fxRate,
-    currency: alternative.currency,
+    currency: scenarioCurrency,
     impactType: card.impactType,
     referencePrice:
       card.referencePrice === null ? null : toNumber(card.referencePrice),
     impactStartDate: card.impactStartDate,
     impactEndDate: card.impactEndDate,
-    fiscalYearStartMonth,
+    fiscalYearStartMonth: settings.fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -829,7 +882,7 @@ async function applySelectedAlternativeMaterial(
         ? null
         : alternative.supplierNameManual,
       newPrice: alternative.quotedPrice,
-      currency: alternative.currency,
+      currency: scenarioCurrency,
       fxRate,
       ...financials,
     },
@@ -926,9 +979,11 @@ export async function importSavingCards(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const fiscalYearStartMonth = await getFiscalYearStartMonth(organizationId);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
   const payloads = rows.map((row) =>
-    buildSavingCardPayload(row, { fiscalYearStartMonth })
+    buildSavingCardPayload(applyWorkspaceCurrencyMode(row, settings), {
+      fiscalYearStartMonth: settings.fiscalYearStartMonth,
+    })
   );
 
   payloads.forEach((payload) => assertInitialSavingCardPhase(payload.phase));

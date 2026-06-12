@@ -43,11 +43,17 @@ import type { SavingCardWithRelations } from "@/lib/types";
 type ReferenceData = Awaited<ReturnType<typeof import("@/lib/data").getReferenceData>>;
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
 
+export type SavingCardCurrencyMode = {
+  defaultCurrency: (typeof currencies)[number];
+  multiCurrencyEnabled: boolean;
+};
+
 type Props = {
   mode: "create" | "edit";
   referenceData: ReferenceData;
   workspaceReadiness?: WorkspaceReadiness | null;
   card?: SavingCardWithRelations | null;
+  currencyMode?: SavingCardCurrencyMode;
 };
 
 type FormState = {
@@ -91,8 +97,16 @@ const createModeSteps: Array<{ id: WizardStepId; title: string }> = [
   { id: 3, title: "What happens next?" },
 ];
 
-export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }: Props) {
+export function SavingCardForm({
+  mode,
+  referenceData,
+  workspaceReadiness,
+  card,
+  currencyMode,
+}: Props) {
   const router = useRouter();
+  const multiCurrencyEnabled = currencyMode?.multiCurrencyEnabled ?? false;
+  const workspaceDefaultCurrency = currencyMode?.defaultCurrency ?? "USD";
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +156,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
         ? ""
         : String(card.referencePrice),
     annualVolume: String(card?.annualVolume ?? ""),
-    currency: card?.currency ?? "EUR",
+    currency: card?.currency ?? workspaceDefaultCurrency,
     fxRate: String(card?.fxRate ?? 1),
     savingDriver: card?.savingDriver ?? "",
     implementationComplexity: card?.implementationComplexity ?? "",
@@ -182,7 +196,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
     form.impactType,
     form.referencePrice
   ]);
-  const isNegativeSavings = liveSavings.savingsEUR < 0;
+  const isNegativeSavings = liveSavings.savingsUSD < 0;
   const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
   const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
   const inlineFirstCardSetupGaps = getInlineFirstCardSetupGaps(referenceData);
@@ -704,24 +718,26 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       ) : null}
 
                       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-                        <Field
-                          label="Currency"
-                          emphasis="finance"
-                          locked={financeLockActive}
-                          statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
-                        >
-                          <Select
-                            value={form.currency}
-                            onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}
-                            disabled={financeLockActive}
+                        {multiCurrencyEnabled ? (
+                          <Field
+                            label="Currency"
+                            emphasis="finance"
+                            locked={financeLockActive}
+                            statusLabel={financeLockActive ? "Finance-controlled" : "Critical input"}
                           >
-                            {currencies.map((currency) => (
-                              <option key={currency} value={currency}>
-                                {currency}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
+                            <Select
+                              value={form.currency}
+                              onChange={(event) => setForm({ ...form, currency: event.target.value as FormState["currency"] })}
+                              disabled={financeLockActive}
+                            >
+                              {currencies.map((currency) => (
+                                <option key={currency} value={currency}>
+                                  {currency}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                        ) : null}
                         <Field
                           label="Frequency"
                           tooltip="How finance should interpret the recognized value cadence."
@@ -738,28 +754,30 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                             ))}
                           </Select>
                         </Field>
-                        <Field
-                          label="FX Rate"
-                          optional
-                          emphasis="finance"
-                          locked={financeLockActive}
-                          statusLabel={financeLockActive ? "Finance-controlled" : "Conversion input"}
-                        >
-                          <Input
-                            type="number"
-                            min="0.0001"
-                            step="0.0001"
-                            placeholder="1.0000"
-                            value={form.fxRate}
-                            onChange={(event) => setForm({ ...form, fxRate: event.target.value })}
-                            disabled={financeLockActive}
-                            required
-                          />
-                        </Field>
+                        {multiCurrencyEnabled ? (
+                          <Field
+                            label="FX Rate"
+                            optional
+                            emphasis="finance"
+                            locked={financeLockActive}
+                            statusLabel={financeLockActive ? "Finance-controlled" : "Conversion input"}
+                          >
+                            <Input
+                              type="number"
+                              min="0.0001"
+                              step="0.0001"
+                              placeholder="1.0000"
+                              value={form.fxRate}
+                              onChange={(event) => setForm({ ...form, fxRate: event.target.value })}
+                              disabled={financeLockActive}
+                              required
+                            />
+                          </Field>
+                        ) : null}
                       </div>
                     </div>
 
-                    <div className="grid gap-3 xl:grid-cols-4">
+                    <div className={cn("grid gap-3", multiCurrencyEnabled ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
                       <InlineCalculationCue
                         label="Baseline Annual Spend"
                         value={formatCurrency(Math.round(Number(form.baselinePrice || 0) * Number(form.annualVolume || 0)), form.currency)}
@@ -775,11 +793,13 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                         value={formatCurrency(Math.round(Number(form.baselinePrice || 0) - Number(form.newPrice || 0)), form.currency)}
                         detail="Per-unit price difference"
                       />
-                      <InlineCalculationCue
-                        label="FX Translation"
-                        value={`${form.currency} x ${form.fxRate || "1"}`}
-                        detail="Applied before EUR and USD outputs"
-                      />
+                      {multiCurrencyEnabled ? (
+                        <InlineCalculationCue
+                          label="FX Translation"
+                          value={`${form.currency} x ${form.fxRate || "1"}`}
+                          detail="Applied before USD reporting output"
+                        />
+                      ) : null}
                     </div>
 
                     <div
@@ -791,7 +811,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                       )}
                     >
                       <p className="text-sm font-semibold">
-                        Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
+                        Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsUSD), "USD")}
                       </p>
                       <p className="mt-1 text-sm">
                         (Baseline price - New price) × Annual volume
@@ -804,7 +824,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                     <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 md:p-5">
                       <SectionLabel title="Calculated View" description="Use this as a quick cross-check before submitting the card; finance will review the baseline, new price, annual volume, currency, FX, impact dates, and evidence together." />
                       <div className="grid gap-4 md:grid-cols-3">
-                        <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
+                        <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
                         <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
                         <SummaryMetric label="Savings Formula" value="(Baseline price - New price) × Annual volume" muted />
                       </div>
@@ -1097,7 +1117,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
                 <div>
                   <p className="text-[11px] text-[var(--muted-foreground)]">Indicative Savings</p>
                   <p className="mt-2 text-[1.4rem] font-semibold tracking-[-0.03em]">
-                    {formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")}
+                    {formatCurrency(Math.round(liveSavings.savingsUSD), "USD")}
                   </p>
                   <p className="mt-2 text-sm text-[var(--muted-foreground)]">
                     {isNegativeSavings ? "Current assumptions indicate value erosion." : "Current assumptions indicate positive annualized value."}
@@ -1124,7 +1144,7 @@ export function SavingCardForm({ mode, referenceData, workspaceReadiness, card }
             </SummaryGroup>
 
             <SummaryGroup title="Calculation Summary">
-              <InfoRow label="Calculated Savings (EUR)" value={formatCurrency(Math.round(liveSavings.savingsEUR), "EUR")} />
+              <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
               <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
               <InfoRow label="Formula" value="(Baseline price - New price) × Annual volume" />
               <InfoRow label="Frequency" value={form.frequency.replaceAll("_", " ")} />

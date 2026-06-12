@@ -153,7 +153,7 @@ describe("controller workbook model", () => {
       Plant: "Ohio Compounding Site",
       "Alternative Supplier": "Backup Polymer Supplier",
       "Calculated Savings (Local)": 2000,
-      "Savings EUR": 1840,
+      "Savings USD": 2000,
       "Finance Lock Status": "Locked",
       "Evidence Status": "Evidence attached",
       "Pending Approval Status": "Pending: Implemented",
@@ -202,15 +202,15 @@ describe("controller workbook model", () => {
     expect(importTemplateColumns).toContain("Business Case / Notes");
     expect(model.importTemplateRows[0]).toMatchObject({
       Phase: "Proposed",
-      Currency: "EUR",
+      Currency: "USD",
     });
     expect(model.reconciliation).toMatchObject({
       activeCardCount: 2,
-      activeSavings: 31840,
-      activeRowSavings: 31840,
+      activeSavings: 34608.7,
+      activeRowSavings: 34608.7,
       difference: 0,
       evidenceCoveragePercent: 50,
-      financeLockedSavings: 1840,
+      financeLockedSavings: 2000,
     });
     expect(model.reconciliation.phaseCounts).toMatchObject({
       VALIDATED: 1,
@@ -224,10 +224,10 @@ describe("controller workbook model", () => {
     ]);
     expect(
       model.portfolioSummaryRows.find(
-        (row) => row[0] === "Reconciliation Difference (EUR)"
+        (row) => row[0] === "Reconciliation Difference (USD)"
       )
     ).toEqual([
-      "Reconciliation Difference (EUR)",
+      "Reconciliation Difference (USD)",
       0,
       "Expected to equal zero",
     ]);
@@ -267,9 +267,46 @@ describe("controller workbook model", () => {
         header: 1,
       })
     ).toContainEqual([
-      "Reconciliation Difference (EUR)",
+      "Reconciliation Difference (USD)",
       0,
       "Expected to equal zero",
     ]);
+  });
+
+  it("formats export cells with US currency and date number formats", () => {
+    const model = buildControllerWorkbookModel({
+      cards: [createCard()],
+      generatedAt: new Date("2026-06-05T12:00:00.000Z"),
+      workspaceReadiness: createReadiness(),
+    });
+    const buffer = renderControllerWorkbookXlsx({
+      model,
+      workspaceName: "Atlas Manufacturing",
+    });
+    const workbook = XLSX.read(buffer, {
+      type: "buffer",
+      cellDates: true,
+      cellStyles: true,
+    });
+    const sheet = workbook.Sheets["Saving Cards"];
+
+    const headerColumn = (header: string) => {
+      const index = controllerSavingCardColumns.indexOf(
+        header as (typeof controllerSavingCardColumns)[number]
+      );
+      if (index < 0) {
+        throw new Error(`Missing export column ${header}`);
+      }
+      return index;
+    };
+
+    const cellAt = (header: string) =>
+      sheet[XLSX.utils.encode_cell({ r: 1, c: headerColumn(header) })];
+
+    // US currency: dollar sign, thousands separators, no cents.
+    expect(cellAt("Baseline Price").z).toBe('"$"#,##0');
+    expect(cellAt("Savings USD").z).toBe('"$"#,##0');
+    // US date format MM/DD/YYYY.
+    expect(cellAt("Impact Start Date").z).toBe("mm/dd/yyyy");
   });
 });

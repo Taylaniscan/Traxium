@@ -1,4 +1,4 @@
-import { Prisma, Role } from "@prisma/client";
+import { Currency, Prisma, Role } from "@prisma/client";
 import type {
   InvitationStatus,
   MembershipStatus,
@@ -134,6 +134,8 @@ const organizationSettingsSelect = {
   description: true,
   slug: true,
   fiscalYearStartMonth: true,
+  defaultCurrency: true,
+  multiCurrencyEnabled: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.OrganizationSelect;
@@ -276,6 +278,8 @@ export type OrganizationSettingsSummary = {
   description: string | null;
   slug: string;
   fiscalYearStartMonth: number;
+  defaultCurrency: Currency;
+  multiCurrencyEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -578,9 +582,18 @@ function mapOrganizationSettings(
     description: organization.description,
     slug: organization.slug,
     fiscalYearStartMonth: organization.fiscalYearStartMonth,
+    defaultCurrency: organization.defaultCurrency,
+    multiCurrencyEnabled: organization.multiCurrencyEnabled,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };
+}
+
+function normalizeDefaultCurrency(value: unknown): Currency | null {
+  if (value === Currency.USD || value === Currency.EUR) {
+    return value;
+  }
+  return null;
 }
 
 function normalizeFiscalYearStartMonth(value: number | null | undefined) {
@@ -946,6 +959,23 @@ export async function getOrganizationMembersDirectory(
   );
 }
 
+export async function getWorkspaceCurrencyMode(
+  organizationId: string
+): Promise<{ defaultCurrency: Currency; multiCurrencyEnabled: boolean }> {
+  const normalizedOrganizationId = normalizeOrganizationId(organizationId);
+  const organization = normalizedOrganizationId
+    ? await prisma.organization.findUnique({
+        where: { id: normalizedOrganizationId },
+        select: { defaultCurrency: true, multiCurrencyEnabled: true },
+      })
+    : null;
+
+  return {
+    defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
+    multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+  };
+}
+
 export async function getOrganizationSettings(
   organizationId: string
 ): Promise<OrganizationSettingsSummary> {
@@ -974,6 +1004,8 @@ export async function updateOrganizationSettings(input: {
   name: string;
   description?: string | null;
   fiscalYearStartMonth?: number | null;
+  defaultCurrency?: Currency | null;
+  multiCurrencyEnabled?: boolean | null;
 }): Promise<OrganizationSettingsUpdateResult> {
   const organizationId = normalizeOrganizationId(
     input.actor.activeOrganization.organizationId
@@ -984,6 +1016,7 @@ export async function updateOrganizationSettings(input: {
   const nextFiscalYearStartMonth = normalizeFiscalYearStartMonth(
     input.fiscalYearStartMonth
   );
+  const nextDefaultCurrency = normalizeDefaultCurrency(input.defaultCurrency);
 
   if (!organizationId) {
     throw new OrganizationSettingsError("Organization context is required.", 422);
@@ -1008,6 +1041,14 @@ export async function updateOrganizationSettings(input: {
     );
   }
 
+  if (
+    input.defaultCurrency !== undefined &&
+    input.defaultCurrency !== null &&
+    nextDefaultCurrency === null
+  ) {
+    throw new OrganizationSettingsError("Default currency is invalid.", 422);
+  }
+
   return prisma.$transaction(async (tx) => {
     const organization = await tx.organization.findUnique({
       where: {
@@ -1022,11 +1063,20 @@ export async function updateOrganizationSettings(input: {
 
     const resolvedFiscalYearStartMonth =
       nextFiscalYearStartMonth ?? organization.fiscalYearStartMonth;
+    const resolvedDefaultCurrency =
+      nextDefaultCurrency ?? organization.defaultCurrency;
+    const resolvedMultiCurrencyEnabled =
+      input.multiCurrencyEnabled === undefined ||
+      input.multiCurrencyEnabled === null
+        ? organization.multiCurrencyEnabled
+        : input.multiCurrencyEnabled;
 
     if (
       organization.name === nextName &&
       normalizeOrganizationDescription(organization.description) === nextDescription &&
-      organization.fiscalYearStartMonth === resolvedFiscalYearStartMonth
+      organization.fiscalYearStartMonth === resolvedFiscalYearStartMonth &&
+      organization.defaultCurrency === resolvedDefaultCurrency &&
+      organization.multiCurrencyEnabled === resolvedMultiCurrencyEnabled
     ) {
       return {
         changed: false,
@@ -1042,6 +1092,8 @@ export async function updateOrganizationSettings(input: {
         name: nextName,
         description: nextDescription,
         fiscalYearStartMonth: resolvedFiscalYearStartMonth,
+        defaultCurrency: resolvedDefaultCurrency,
+        multiCurrencyEnabled: resolvedMultiCurrencyEnabled,
       },
       select: organizationSettingsSelect,
     });
@@ -1062,6 +1114,12 @@ export async function updateOrganizationSettings(input: {
           ),
           ...(organization.fiscalYearStartMonth !== resolvedFiscalYearStartMonth
             ? ["fiscalYearStartMonth"]
+            : []),
+          ...(organization.defaultCurrency !== resolvedDefaultCurrency
+            ? ["defaultCurrency"]
+            : []),
+          ...(organization.multiCurrencyEnabled !== resolvedMultiCurrencyEnabled
+            ? ["multiCurrencyEnabled"]
             : []),
         ],
       },

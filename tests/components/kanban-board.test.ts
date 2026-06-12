@@ -212,7 +212,7 @@ function createUtopiaKanbanCards(): SavingCardPortfolio[] {
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
       currency: card.currency,
-      calculatedSavings: savings.savingsEUR,
+      calculatedSavings: savings.localSavings,
       calculatedSavingsUSD: savings.savingsUSD,
       savingDriver: card.savingDriver,
       implementationComplexity: card.implementationComplexity,

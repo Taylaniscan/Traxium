@@ -210,7 +210,7 @@ export function ExecutiveSavingsSummary({
               </Badge>
               {annualTarget > 0 ? (
                 <Badge tone="teal">
-                  Annual target {formatCurrency(annualTarget, "EUR")}
+                  Annual target {formatCurrency(annualTarget, "USD")}
                 </Badge>
               ) : null}
             </div>
@@ -220,22 +220,22 @@ export function ExecutiveSavingsSummary({
           <div className="grid gap-4 lg:grid-cols-4">
             <ExecutiveMetric
               label="Pipeline Savings"
-              value={formatCurrency(pipelineSavings, "EUR")}
+              value={formatCurrency(pipelineSavings, "USD")}
               detail={`${formatPlainNumber(portfolioScope)} initiatives currently in scope`}
             />
             <ExecutiveMetric
               label="Implemented Savings"
-              value={formatCurrency(realisedSavings, "EUR")}
+              value={formatCurrency(realisedSavings, "USD")}
               detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into implemented or captured delivery`}
             />
             <ExecutiveMetric
               label="Captured Savings"
-              value={formatCurrency(achievedSavings, "EUR")}
+              value={formatCurrency(achievedSavings, "USD")}
               detail={`${formatPercent(achievedCoverage)} of pipeline is fully locked in`}
             />
             <ExecutiveMetric
               label="Forecast"
-              value={formatCurrency(forecastSavings, "EUR")}
+              value={formatCurrency(forecastSavings, "USD")}
               detail={`${formatSignedCurrency(forecastDelta)} versus ${forecastComparisonLabel}`}
             />
           </div>
@@ -243,12 +243,12 @@ export function ExecutiveSavingsSummary({
           <div className="grid gap-4 border-t border-[var(--border)] pt-5 lg:grid-cols-2">
             <ExecutiveMetric
               label="In-Year Value (FY)"
-              value={formatCurrency(inYearValue, "EUR")}
+              value={formatCurrency(inYearValue, "USD")}
               detail="Prorated savings landing inside the current fiscal year across live initiatives."
             />
             <ExecutiveMetric
               label="Annualized Run-Rate"
-              value={formatCurrency(annualizedRunRate, "EUR")}
+              value={formatCurrency(annualizedRunRate, "USD")}
               detail="Full-year steady-state value once active savings are fully ramped."
             />
           </div>
@@ -345,7 +345,7 @@ export function ExecutiveSavingsSummary({
                 <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-[var(--muted-foreground)]">{row.label}</span>
                   <span className="font-semibold text-[var(--foreground)]">
-                    {formatCurrency(row.savings, "EUR")}
+                    {formatCurrency(row.savings, "USD")}
                   </span>
                 </div>
               )) : (
@@ -367,7 +367,7 @@ export function ExecutiveSavingsSummary({
           </CardHeader>
           <CardContent className="space-y-3">
             <OutlookLine>
-              {formatCurrency(pipelineSavings, "EUR")} sits in the active
+              {formatCurrency(pipelineSavings, "USD")} sits in the active
               savings pipeline across {formatPlainNumber(portfolioScope)} live
               initiatives.
             </OutlookLine>
@@ -384,11 +384,11 @@ export function ExecutiveSavingsSummary({
               <OutlookLine>
                 Forecast is {formatSignedCurrency(forecastSavings - annualTarget)}{" "}
                 against the current annual target of{" "}
-                {formatCurrency(annualTarget, "EUR")}.
+                {formatCurrency(annualTarget, "USD")}.
               </OutlookLine>
             ) : (
               <OutlookLine>
-                Forecast stands at {formatCurrency(forecastSavings, "EUR")} and
+                Forecast stands at {formatCurrency(forecastSavings, "USD")} and
                 is {formatSignedCurrency(forecastSavings - achievedSavings)}{" "}
                 against captured value.
               </OutlookLine>
@@ -577,12 +577,12 @@ function formatPercent(value: number) {
 
 function formatSignedCurrency(value: number) {
   if (!Number.isFinite(value) || value === 0) {
-    return formatCurrency(0, "EUR");
+    return formatCurrency(0, "USD");
   }
 
   return value > 0
-    ? `+${formatCurrency(value, "EUR")}`
-    : `-${formatCurrency(Math.abs(value), "EUR")}`;
+    ? `+${formatCurrency(value, "USD")}`
+    : `-${formatCurrency(Math.abs(value), "USD")}`;
 }
 
 function formatDateLabel(value: string) {

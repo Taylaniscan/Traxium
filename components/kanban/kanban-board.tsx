@@ -1181,7 +1181,7 @@ function KanbanColumn({
           </Badge>
         </div>
         <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
-          {formatCurrency(totalSavings, "EUR")}
+          {formatCurrency(totalSavings, "USD")}
         </p>
       </div>
 
@@ -1347,7 +1347,7 @@ function KanbanCardBody({
           <div className="flex items-center justify-between gap-3">
             <span className="text-[var(--muted-foreground)]">Savings</span>
             <span className="font-semibold text-[var(--foreground)]">
-              {formatCurrency(card.calculatedSavings, "EUR")}
+              {formatCurrency(card.calculatedSavings, "USD")}
             </span>
           </div>
           <div className="flex items-center justify-between gap-3">

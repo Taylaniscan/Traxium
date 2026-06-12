@@ -81,8 +81,8 @@ function applyColumnFormats(
   const currencyHeaders = new Set([
     "Baseline Price",
     "New Price",
+    "Reference Price",
     "Calculated Savings (Local)",
-    "Savings EUR",
     "Savings USD",
     "In-Year Value (FY)",
     "Annualized Run-Rate",
@@ -103,9 +103,11 @@ function applyColumnFormats(
       ];
 
       if (!cell) continue;
-      if (currencyHeaders.has(header)) cell.z = "#,##0.00";
+      // US currency: dollar sign, thousands separators, no cents.
+      if (currencyHeaders.has(header)) cell.z = "\"$\"#,##0";
       if (numberHeaders.has(header)) cell.z = "#,##0";
-      if (dateHeaders.has(header) && cell.t === "d") cell.z = "yyyy-mm-dd";
+      // US date format MM/DD/YYYY.
+      if (dateHeaders.has(header) && cell.t === "d") cell.z = "mm/dd/yyyy";
     }
   });
 }
@@ -150,14 +152,14 @@ function setSummarySheetLayout(worksheet: XLSX.WorkSheet) {
       }
     }
 
-    if (label.endsWith("(EUR)") && valueCell) {
-      valueCell.z = "#,##0.00";
+    if (label.endsWith("(USD)") && valueCell) {
+      valueCell.z = "\"$\"#,##0";
     }
     if (
       (label.includes("Update") || label.includes("Generated At")) &&
       valueCell?.t === "d"
     ) {
-      valueCell.z = "yyyy-mm-dd hh:mm";
+      valueCell.z = "mm/dd/yyyy hh:mm";
     }
   }
 }

@@ -163,6 +163,8 @@ model Organization {
   description          String?
   slug                 String    @unique
   fiscalYearStartMonth Int       @default(1)
+  defaultCurrency      Currency  @default(USD)
+  multiCurrencyEnabled Boolean   @default(false)
   workspaceTrialEndsAt DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -677,7 +679,7 @@ model AuditLog {
 model FxRate {
   id        String   @id @default(cuid())
   currency  Currency
-  rateToEUR Decimal  @db.Decimal(18, 8)
+  rateToUSD Decimal  @db.Decimal(18, 8)
   validFrom DateTime
   createdAt DateTime @default(now())
 }

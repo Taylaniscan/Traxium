@@ -214,7 +214,7 @@ export function VolumeSCurve({
                 contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
                 formatter={(value, name) => [
                   typeof value === "number" && Number.isFinite(value)
-                    ? formatCurrency(Math.round(value), "EUR")
+                    ? formatCurrency(Math.round(value), "USD")
                     : "No confirmed actual",
                   name === "forecastSaving" ? "Forecast" : "Actual",
                 ]}
@@ -263,7 +263,7 @@ export function VolumeSCurve({
                 contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
                 formatter={(value, name) => [
                   typeof value === "number" && Number.isFinite(value)
-                    ? formatCurrency(Math.round(value), "EUR")
+                    ? formatCurrency(Math.round(value), "USD")
                     : "No confirmed actual",
                   name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                 ]}

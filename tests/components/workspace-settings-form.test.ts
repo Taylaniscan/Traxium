@@ -116,6 +116,8 @@ const organization = {
   description: "Global procurement savings governance workspace.",
   slug: "atlas-procurement",
   fiscalYearStartMonth: 1,
+  defaultCurrency: "USD" as const,
+  multiCurrencyEnabled: false,
   createdAt: new Date("2026-03-20T09:00:00.000Z"),
   updatedAt: new Date("2026-03-26T12:00:00.000Z"),
 };
@@ -156,6 +158,8 @@ function mockFormState(input: {
     .mockReturnValueOnce([input.name ?? organization.name, vi.fn()])
     .mockReturnValueOnce([input.description ?? organization.description ?? "", vi.fn()])
     .mockReturnValueOnce([organization.fiscalYearStartMonth, vi.fn()])
+    .mockReturnValueOnce([organization.defaultCurrency, vi.fn()])
+    .mockReturnValueOnce([organization.multiCurrencyEnabled, vi.fn()])
     .mockReturnValueOnce([input.loading ?? false, vi.fn()])
     .mockReturnValueOnce([input.error ?? null, vi.fn()])
     .mockReturnValueOnce([input.notice ?? null, vi.fn()]);
@@ -237,6 +241,8 @@ describe("workspace settings form", () => {
         name: "Atlas Savings",
         description: "Updated pilot scope.",
         fiscalYearStartMonth: 1,
+        defaultCurrency: "USD",
+        multiCurrencyEnabled: false,
       }),
     });
     expect(refreshMock).toHaveBeenCalled();

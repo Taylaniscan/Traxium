@@ -1,4 +1,5 @@
 import {
+  Currency,
   EvidenceType,
   MembershipStatus,
   OrganizationRole,
@@ -128,6 +129,7 @@ export type UtopiaTraxPersistedSnapshot = {
     id: string;
     title: string;
     phase: Phase;
+    currency: Currency;
     impactType: SavingsImpactType;
     referencePrice: number | null;
     calculatedSavings: number;
@@ -596,6 +598,21 @@ export function validateUtopiaTraxPersistedSnapshot(
           costAvoidanceCards.length >= 2 &&
           costAvoidanceWithReference.length === costAvoidanceCards.length,
         `run-rate populated and in-year ≤ run-rate on all cards; ${costAvoidanceWithReference.length}/${costAvoidanceCards.length} cost-avoidance cards carry a reference price`
+      );
+    })(),
+    (() => {
+      const nonUsdCards = cards.filter(
+        (card) => card.currency !== Currency.USD
+      );
+      return makeCheck(
+        "usd-only",
+        "USD-only workspace (no EUR values)",
+        nonUsdCards.length === 0,
+        nonUsdCards.length === 0
+          ? `all ${cards.length} cards are USD`
+          : `${nonUsdCards.length} non-USD cards: ${nonUsdCards
+              .map((card) => card.title)
+              .join(", ")}`
       );
     })(),
     makeCheck(
