@@ -4,7 +4,7 @@
 
 This is the master Gap 1 release checklist for proving Traxium's real external provider flows before paid pilots. It joins the app-side tests, guarded provider scripts, preview browser proof, and minimal production smoke into one repeatable proof pack.
 
-Do not claim pass unless proof exists. A release note, buyer deck, or pilot handoff may only say a provider flow passed when the matching evidence has been captured in [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md) or in the linked release evidence folder.
+Do not claim pass unless proof exists. A release note, buyer deck, or pilot handoff may only say a provider flow passed when the matching evidence has been captured in [readiness-proof-log.md](readiness-proof-log.md) or in the linked release evidence folder.
 
 Provider-flow validation separates four evidence categories:
 
@@ -188,7 +188,7 @@ Do not include:
 
 ## Proof Log Template
 
-Copy this template into [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md) for each provider-flow validation run.
+Copy this template into [readiness-proof-log.md](readiness-proof-log.md) for each provider-flow validation run.
 
 ```text
 Date:

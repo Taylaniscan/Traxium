@@ -4,7 +4,11 @@ import {
   createAuthGuardErrorResponse,
   requireOrganization,
 } from "@/lib/auth";
-import { JobAdminError, getOrganizationJobsOverview } from "@/lib/jobs";
+import {
+  JobAdminError,
+  getJobRunnerHeartbeat,
+  getOrganizationJobsOverview,
+} from "@/lib/jobs";
 import { canManageOrganizationMembers } from "@/lib/organizations";
 import {
   captureException,
@@ -60,10 +64,13 @@ export async function GET(request: Request) {
       return jsonError("Forbidden.", 403);
     }
 
-    const overview = await getOrganizationJobsOverview(
-      user.activeOrganization.organizationId,
-      resolveTake(request)
-    );
+    const [overview, workerHeartbeat] = await Promise.all([
+      getOrganizationJobsOverview(
+        user.activeOrganization.organizationId,
+        resolveTake(request)
+      ),
+      getJobRunnerHeartbeat(),
+    ]);
 
     trackServerEvent({
       ...requestContext,
@@ -81,6 +88,7 @@ export async function GET(request: Request) {
       organizationId: user.activeOrganization.organizationId,
       summary: overview.summary,
       jobs: overview.jobs,
+      workerHeartbeat,
     });
   } catch (error) {
     const authResponse = createAuthGuardErrorResponse(error);

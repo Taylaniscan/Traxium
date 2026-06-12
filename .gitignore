@@ -10,3 +10,10 @@ prisma/dev.db-journal
 .env
 .env.local
 .env.*.local
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Playwright reports/artifacts (regenerated on each run)
+outputs/playwright-report/
+outputs/playwright-artifacts/

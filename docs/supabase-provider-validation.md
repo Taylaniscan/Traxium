@@ -2,7 +2,7 @@
 
 This document records the Step 31 validation contract for Supabase Auth and Storage. The local app tests prove route behavior, tenant checks, and URL construction; this provider check proves the configured Supabase project matches the app contract where the provider exposes enough read-only evidence.
 
-For release signoff, use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master Gap 1 checklist. This Supabase-specific document remains the detailed reference for Auth, redirect allow-list, private Storage, signed URL, and anon/public evidence-denial proof.
+For release signoff, use [provider-flow-validation.md](provider-flow-validation.md) as the master Gap 1 checklist. This Supabase-specific document remains the detailed reference for Auth, redirect allow-list, private Storage, signed URL, and anon/public evidence-denial proof.
 
 ## Read-Only Provider Check
 

@@ -1,6 +1,6 @@
 # Environment Setup
 
-Traxium uses a mixed server/client environment surface. Only `NEXT_PUBLIC_*` variables are allowed to flow into the browser bundle. All other secrets stay server-only and are read through [lib/env.ts](/Users/atlas/Documents/Traxium/lib/env.ts).
+Traxium uses a mixed server/client environment surface. Only `NEXT_PUBLIC_*` variables are allowed to flow into the browser bundle. All other secrets stay server-only and are read through [lib/env.ts](../lib/env.ts).
 
 ## Environments
 

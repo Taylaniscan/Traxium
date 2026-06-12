@@ -3,23 +3,10 @@ import { JobStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import {
   getRegisteredJobTypes,
-  registerJobHandlers,
   runJobLoop,
 } from "../lib/job-runner";
-import {
-  processInvitationEmailJob,
-  processPasswordRecoveryEmailJob,
-} from "../lib/auth-email";
-import {
-  processAnalyticsIdentifyJob,
-  processAnalyticsTrackJob,
-} from "../lib/analytics";
-import {
-  processObservabilityExceptionJob,
-  processObservabilityMessageJob,
-} from "../lib/observability";
+import { registerDefaultJobHandlers } from "../lib/job-handlers";
 import { getJobWorkerEnvironment } from "../lib/env";
-import { jobTypes } from "../lib/jobs";
 
 function logWorkerEvent(
   level: "info" | "warn" | "error",
@@ -112,15 +99,7 @@ async function runWorkerHealthCheck(input: {
 
 async function main() {
   process.env.JOB_WORKER = "true";
-  registerJobHandlers({
-    [jobTypes.INVITATION_EMAIL_DELIVERY]: processInvitationEmailJob,
-    [jobTypes.PASSWORD_RECOVERY_EMAIL_DELIVERY]:
-      processPasswordRecoveryEmailJob,
-    [jobTypes.ANALYTICS_TRACK]: processAnalyticsTrackJob,
-    [jobTypes.ANALYTICS_IDENTIFY]: processAnalyticsIdentifyJob,
-    [jobTypes.OBSERVABILITY_MESSAGE]: processObservabilityMessageJob,
-    [jobTypes.OBSERVABILITY_EXCEPTION]: processObservabilityExceptionJob,
-  });
+  registerDefaultJobHandlers();
 
   const { stopWhenIdle, maxJobs, idleDelayMs, organizationId, types } =
     getJobWorkerEnvironment();

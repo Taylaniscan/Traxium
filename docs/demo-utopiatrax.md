@@ -96,7 +96,7 @@ Classification improves review quality; it does not claim accounting recognition
 
 ## Paid Pilot Demo Flow
 
-Use this workspace with the [paid pilot buyer package](/Users/atlas/Documents/Traxium/docs/paid-pilot-buyer-package.md). The short buyer-meeting path is:
+Use this workspace with the [paid pilot buyer package](paid-pilot-buyer-package.md). The short buyer-meeting path is:
 
 1. Start on `/dashboard` with the finance-trusted portfolio story.
 2. Move to `/kanban` to show that pending approval work stays governed instead of jumping phases early.

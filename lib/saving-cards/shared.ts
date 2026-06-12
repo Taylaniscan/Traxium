@@ -47,11 +47,6 @@ export const savingCardDetailInclude = {
       supplier: true,
     },
   },
-  approvals: {
-    include: {
-      approver: true,
-    },
-  },
   phaseHistory: {
     include: {
       changedBy: true,

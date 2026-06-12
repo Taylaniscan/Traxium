@@ -2,7 +2,7 @@
 
 This document records the Step 32 validation contract for Stripe Billing. The app uses Stripe Billing APIs with subscription-mode Checkout Sessions for initial setup and the Stripe Customer Portal for self-service recovery.
 
-For release signoff, use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master Gap 1 checklist. This Stripe-specific document remains the detailed reference for catalog, Checkout, Portal, webhook, and billing recovery provider proof.
+For release signoff, use [provider-flow-validation.md](provider-flow-validation.md) as the master Gap 1 checklist. This Stripe-specific document remains the detailed reference for catalog, Checkout, Portal, webhook, and billing recovery provider proof.
 
 ## Provider Validation Commands
 

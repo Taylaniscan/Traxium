@@ -866,7 +866,6 @@ export type SavingCardWithRelations = Prisma.SavingCardGetPayload<{
     evidence: { include: { uploadedBy: { select: { id: true; name: true; email: true } } }; orderBy: { uploadedAt: "desc" } };
     alternativeSuppliers: { include: { supplier: true } };
     alternativeMaterials: { include: { material: true; supplier: true } };
-    approvals: { include: { approver: true } };
     phaseChangeRequests: { include: { requestedBy: true; approvals: { include: { approver: true } } } };
     phaseHistory: { orderBy: { createdAt: "desc" } };
     comments: { include: { author: true } };

@@ -689,7 +689,6 @@ describe("lib/data saving card flows", () => {
             },
           },
           comments: expect.any(Object),
-          approvals: expect.any(Object),
           phaseHistory: expect.any(Object),
           phaseChangeRequests: expect.any(Object),
         }),

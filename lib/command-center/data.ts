@@ -247,21 +247,22 @@ export async function getCommandCenterData(
       },
     },
   });
-  const recentDecisions = await prisma.approval.findMany({
+  const recentDecisions = await prisma.phaseChangeRequestApproval.findMany({
     where: {
       status: {
         not: ApprovalStatus.PENDING,
       },
-      savingCard: where,
+      phaseChangeRequest: {
+        savingCard: where,
+      },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { decidedAt: "desc" },
     take: 8,
     select: {
       id: true,
-      phase: true,
-      approved: true,
       status: true,
       comment: true,
+      decidedAt: true,
       createdAt: true,
       approver: {
         select: {
@@ -269,10 +270,15 @@ export async function getCommandCenterData(
           role: true,
         },
       },
-      savingCard: {
+      phaseChangeRequest: {
         select: {
-          id: true,
-          title: true,
+          requestedPhase: true,
+          savingCard: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
         },
       },
     },
@@ -449,14 +455,14 @@ export async function getCommandCenterData(
   }));
   const normalizedRecentDecisions: CommandCenterDecisionItem[] = recentDecisions.map((item) => ({
     approvalId: item.id,
-    savingCardId: item.savingCard.id,
-    savingCardTitle: item.savingCard.title,
-    phase: phaseLabels[item.phase],
+    savingCardId: item.phaseChangeRequest.savingCard.id,
+    savingCardTitle: item.phaseChangeRequest.savingCard.title,
+    phase: phaseLabels[item.phaseChangeRequest.requestedPhase],
     approverName: item.approver.name,
     approverRole: formatCommandCenterRoleLabel(item.approver.role),
     status: item.status,
-    approved: item.approved,
-    createdAt: item.createdAt.toISOString(),
+    approved: item.status === ApprovalStatus.APPROVED,
+    createdAt: (item.decidedAt ?? item.createdAt).toISOString(),
     comment: item.comment,
   }));
   const normalizedRecentActivity: CommandCenterActivityItem[] = recentActivity.map((item) => ({

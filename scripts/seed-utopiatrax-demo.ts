@@ -1815,7 +1815,6 @@ async function deleteWorkspaceDemoGraph(prisma: PrismaClient, organizationId: st
   await prisma.phaseChangeRequest.deleteMany({
     where: { savingCard: cardWhere },
   });
-  await prisma.approval.deleteMany({ where: { savingCard: cardWhere } });
   await prisma.auditLog.deleteMany({
     where: {
       OR: [{ organizationId }, { savingCard: cardWhere }],
@@ -2610,7 +2609,6 @@ async function clearSavingCardChildren(prisma: PrismaClient, savingCardId: strin
     where: { phaseChangeRequest: { savingCardId } },
   });
   await prisma.phaseChangeRequest.deleteMany({ where: { savingCardId } });
-  await prisma.approval.deleteMany({ where: { savingCardId } });
   await prisma.auditLog.deleteMany({ where: { savingCardId } });
   await prisma.phaseHistory.deleteMany({ where: { savingCardId } });
   await prisma.savingCardComment.deleteMany({ where: { savingCardId } });
@@ -2914,24 +2912,6 @@ async function seedSavingCardRelations(input: {
       ],
     });
 
-    await prisma.approval.createMany({
-      data: approverRoles.map((role) => {
-        const approver = getApproverByRole(users, role);
-
-        return {
-          savingCardId,
-          approverId: approver.id,
-          phase: requestedPhase,
-          approved: status === ApprovalStatus.APPROVED,
-          status,
-          comment:
-            status === ApprovalStatus.APPROVED
-              ? `Approved ${requestedPhase.toLowerCase()} phase for demo history.`
-              : "Rejected during validation; kept as demo governance signal.",
-          createdAt: addDays(requestedAt, 1),
-        };
-      }),
-    });
     approvalRecords += approverRoles.length;
   }
 

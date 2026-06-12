@@ -60,17 +60,17 @@ Current modules in the application include:
 
 The current first-buyer story is a guided paid pilot for 50-500 employee US manufacturing SMEs that need finance-trusted savings governance before a broader rollout decision.
 
-See [paid-pilot-buyer-package.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-buyer-package.md) for the landing-page promise, demo script, trust page needs, support expectations, export expectations, and explicit first-pilot exclusions. See [paid-pilot-offer-and-pricing.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-offer-and-pricing.md) for the paid-pilot offer, pricing hypothesis, and Stripe plan-name relationship.
+See [paid-pilot-buyer-package.md](docs/paid-pilot-buyer-package.md) for the landing-page promise, demo script, trust page needs, support expectations, export expectations, and explicit first-pilot exclusions. See [paid-pilot-offer-and-pricing.md](docs/paid-pilot-offer-and-pricing.md) for the paid-pilot offer, pricing hypothesis, and Stripe plan-name relationship.
 
-Qualified prospective buyers can request a founder-led paid pilot through the public `/pilot` route. The form stores a validated, rate-limited lead request with honeypot protection; it does not create a user, workspace, free trial, or billing subscription. The product and technical contract is documented in [paid-pilot-lead-capture-contract.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-lead-capture-contract.md).
+Qualified prospective buyers can request a founder-led paid pilot through the public `/pilot` route. The form stores a validated, rate-limited lead request with honeypot protection; it does not create a user, workspace, free trial, or billing subscription. The product and technical contract is documented in [paid-pilot-lead-capture-contract.md](docs/paid-pilot-lead-capture-contract.md).
 
 The public `/trust` route summarizes workspace isolation, roles, private evidence handling, Stripe-managed billing, import/export boundaries, provider-proof status, support, and paid-pilot exclusions. Detailed buyer artifacts are:
 
-- [trust-pack.md](/Users/atlas/Documents/Traxium/docs/trust-pack.md)
-- [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md)
-- [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md)
-- [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md)
-- [paid-pilot-security-review-checklist.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-security-review-checklist.md)
+- [trust-pack.md](docs/trust-pack.md)
+- [support-expectations.md](docs/support-expectations.md)
+- [data-export-offboarding.md](docs/data-export-offboarding.md)
+- [backup-restore-statement.md](docs/backup-restore-statement.md)
+- [paid-pilot-security-review-checklist.md](docs/paid-pilot-security-review-checklist.md)
 
 These documents describe paid-pilot controls and limitations. They are not compliance certifications, legal policies, or production provider-proof records.
 

@@ -20,6 +20,7 @@ function createBaseEnv(overrides: Record<string, string | undefined> = {}) {
     NEXT_PUBLIC_SUPABASE_URL: "https://localdev.supabase.co",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+    JOB_RUNNER_SECRET: "job-runner-secret",
     ...overrides,
   };
 }
@@ -170,6 +171,7 @@ describe("env configuration helpers", () => {
       hasDatabaseUrl: true,
       hasDirectUrl: true,
       hasServiceRoleKey: true,
+      hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
       hasServerAnalytics: false,
@@ -187,6 +189,7 @@ describe("env configuration helpers", () => {
       hasDatabaseUrl: true,
       hasDirectUrl: true,
       hasServiceRoleKey: true,
+      hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
       hasServerAnalytics: false,
@@ -256,6 +259,7 @@ describe("env configuration helpers", () => {
       hasDatabaseUrl: true,
       hasDirectUrl: true,
       hasServiceRoleKey: true,
+      hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
       hasServerAnalytics: false,

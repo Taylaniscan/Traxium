@@ -23,6 +23,7 @@ function createBillingEnv(
     DATABASE_URL: "postgresql://user:pass@localhost:5432/postgres",
     DIRECT_URL: "postgresql://user:pass@localhost:5432/postgres",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+    JOB_RUNNER_SECRET: "job-runner-secret",
     STRIPE_SECRET_KEY:
       "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
@@ -62,6 +63,7 @@ function createDeployEnv(
       role: "service_role",
       ref: projectRef,
     }),
+    JOB_RUNNER_SECRET: "job-runner-secret",
     STRIPE_SECRET_KEY:
       "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:

@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireOrganization } from "@/lib/auth";
-import { getOrganizationJobsOverview } from "@/lib/jobs";
+import {
+  getJobRunnerHeartbeat,
+  getOrganizationJobsOverview,
+  type JobRunnerHeartbeatStatus,
+} from "@/lib/jobs";
 import { canManageOrganizationMembers } from "@/lib/organizations";
 
 function WorkerCommandCard() {
@@ -21,7 +25,10 @@ function WorkerCommandCard() {
       <CardHeader>
         <CardTitle>Worker Commands</CardTitle>
         <CardDescription>
-          The web app only enqueues async work. Preview and production also need a separate worker process to deliver invitation emails, password recovery emails, analytics, and observability jobs.
+          The web app only enqueues async work. By default a Vercel cron hits{" "}
+          <span className="font-mono">/api/jobs/run</span> every 5 minutes to drain
+          the queue. These commands run the same logic as a dedicated worker process
+          for local development or self-hosted worker deployments.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -63,6 +70,59 @@ function WorkerCommandCard() {
   );
 }
 
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function WorkerStatusCard({
+  heartbeat,
+}: {
+  heartbeat: JobRunnerHeartbeatStatus | null;
+}) {
+  const stale = !heartbeat || heartbeat.stale;
+  const minutesAgo = heartbeat ? Math.round(heartbeat.ageMs / 60000) : null;
+
+  return (
+    <Card
+      className={
+        stale
+          ? "border-amber-300 bg-amber-50/70"
+          : "border-emerald-200 bg-emerald-50/60"
+      }
+    >
+      <CardHeader>
+        <CardTitle>Worker Liveness</CardTitle>
+        <CardDescription>
+          {heartbeat
+            ? `Last successful worker pass: ${formatTimestamp(
+                heartbeat.lastSuccessfulRunAt
+              )}${minutesAgo !== null ? ` (${minutesAgo} min ago)` : ""}.`
+            : "No worker pass has been recorded yet."}
+        </CardDescription>
+      </CardHeader>
+      {stale ? (
+        <CardContent>
+          <div className="rounded-2xl border border-amber-300 bg-amber-100/70 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">Worker may not be running.</p>
+            <p className="mt-1">
+              {heartbeat
+                ? "The last successful worker pass was more than 30 minutes ago."
+                : "No job-worker pass has ever been recorded."}{" "}
+              Confirm the Vercel cron (every 5 minutes hitting{" "}
+              <span className="font-mono">/api/jobs/run</span>) or a dedicated
+              worker process is running, or invitation and password-recovery
+              emails will not be delivered.
+            </p>
+          </div>
+        </CardContent>
+      ) : null}
+    </Card>
+  );
+}
+
 export default async function AdminJobsPage() {
   const user = await requireOrganization();
 
@@ -70,10 +130,10 @@ export default async function AdminJobsPage() {
     redirect("/dashboard");
   }
 
-  const overview = await getOrganizationJobsOverview(
-    user.activeOrganization.organizationId,
-    25
-  );
+  const [overview, workerHeartbeat] = await Promise.all([
+    getOrganizationJobsOverview(user.activeOrganization.organizationId, 25),
+    getJobRunnerHeartbeat(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -83,6 +143,8 @@ export default async function AdminJobsPage() {
           Monitor tenant-scoped async work, inspect recent failures, and safely retry eligible jobs without leaving the active organization boundary. The web app does not process queued work by itself, so a separate worker process must be deployed and kept healthy.
         </p>
       </div>
+
+      <WorkerStatusCard heartbeat={workerHeartbeat} />
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <AdminJobsPanel summary={overview.summary} jobs={overview.jobs} />

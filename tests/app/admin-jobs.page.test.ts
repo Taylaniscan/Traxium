@@ -16,6 +16,7 @@ const redirectMock = vi.hoisted(() =>
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const canManageOrganizationMembersMock = vi.hoisted(() => vi.fn());
 const getOrganizationJobsOverviewMock = vi.hoisted(() => vi.fn());
+const getJobRunnerHeartbeatMock = vi.hoisted(() => vi.fn());
 const adminJobsPanelMock = vi.hoisted(() =>
   vi.fn(
     ({
@@ -50,6 +51,7 @@ vi.mock("@/lib/organizations", () => ({
 
 vi.mock("@/lib/jobs", () => ({
   getOrganizationJobsOverview: getOrganizationJobsOverviewMock,
+  getJobRunnerHeartbeat: getJobRunnerHeartbeatMock,
 }));
 
 vi.mock("@/components/admin/admin-jobs-panel", () => ({
@@ -89,6 +91,13 @@ describe("admin jobs page", () => {
           type: "auth_email.invitation_delivery",
         },
       ],
+    });
+    getJobRunnerHeartbeatMock.mockResolvedValue({
+      lastSuccessfulRunAt: "2026-06-12T07:30:00.000Z",
+      processedJobs: 3,
+      durationMs: 1200,
+      ageMs: 60000,
+      stale: false,
     });
   });
 

@@ -1028,11 +1028,16 @@ function RecordSummaryRail({
   latestEvidenceUpload: Date | null;
   selectedAlternativeCount: number;
 }) {
-  const approvalStatusTone = pendingPhaseRequest ? "amber" : card.approvals.length ? "emerald" : "slate";
+  const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
+    request.approvals
+      .filter((approval) => approval.status !== "PENDING")
+      .map((approval) => ({ ...approval, requestedPhase: request.requestedPhase }))
+  );
+  const approvalStatusTone = pendingPhaseRequest ? "amber" : decidedApprovals.length ? "emerald" : "slate";
   const approvalStatusLabel = pendingPhaseRequest
     ? "Pending phase request"
-    : card.approvals.length
-      ? `${card.approvals.length} logged approval${card.approvals.length === 1 ? "" : "s"}`
+    : decidedApprovals.length
+      ? `${decidedApprovals.length} logged approval${decidedApprovals.length === 1 ? "" : "s"}`
       : "No logged approvals";
 
   return (
@@ -1127,6 +1132,12 @@ function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
 }
 
 function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
+  const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
+    request.approvals
+      .filter((approval) => approval.status !== "PENDING")
+      .map((approval) => ({ ...approval, requestedPhase: request.requestedPhase }))
+  );
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
@@ -1136,7 +1147,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
       <CardContent className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <Metric label="Phase Requests" value={String(card.phaseChangeRequests.length)} />
-          <Metric label="Approval Log" value={String(card.approvals.length)} />
+          <Metric label="Approval Log" value={String(decidedApprovals.length)} />
           <Metric label="Phase Events" value={String(card.phaseHistory.length)} />
         </div>
 
@@ -1163,11 +1174,11 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
         </WorkflowSection>
 
         <WorkflowSection title="Approval Ledger">
-          {card.approvals.length ? (
-            card.approvals.map((approval) => (
+          {decidedApprovals.length ? (
+            decidedApprovals.map((approval) => (
               <WorkflowEventCard
                 key={approval.id}
-                title={`${phaseLabels[approval.phase]} · ${approval.approver.name}`}
+                title={`${phaseLabels[approval.requestedPhase]} · ${approval.approver.name}`}
                 subtitle={approval.status.toLowerCase()}
                 detail={formatPhaseReferencesForDisplay(
                   approval.comment ?? "No comment"

@@ -830,7 +830,6 @@ const savingCardsSeed: Array<{
 async function clearExistingData() {
   await prisma.phaseChangeRequestApproval.deleteMany();
   await prisma.phaseChangeRequest.deleteMany();
-  await prisma.approval.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.phaseHistory.deleteMany();
@@ -1094,55 +1093,6 @@ function buildPhaseHistory(phase: Phase, users: IdLookup<UserKey>) {
   return history;
 }
 
-function buildApprovals(
-  savingCardId: string,
-  phase: Phase,
-  users: IdLookup<UserKey>
-) {
-  const approvals: Array<{
-    savingCardId: string;
-    approverId: string;
-    phase: Phase;
-    approved: boolean;
-    status: ApprovalStatus;
-    comment: string;
-  }> = [];
-
-  if (phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.sophie.id,
-      phase: Phase.VALIDATED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  if (phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.marco.id,
-      phase: Phase.REALISED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  if (phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.helen.id,
-      phase: Phase.ACHIEVED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  return approvals;
-}
 
 async function createPendingWorkflow(
   createdCards: Record<string, { id: string }>,
@@ -1313,11 +1263,6 @@ async function main() {
         uploadedById: users.luca.id,
       },
     });
-
-    const approvals = buildApprovals(created.id, card.phase, users);
-    if (approvals.length) {
-      await prisma.approval.createMany({ data: approvals });
-    }
   }
 
   await createPendingWorkflow(createdCards, users);

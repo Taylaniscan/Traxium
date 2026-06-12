@@ -7,7 +7,7 @@ This log records proof for each approved readiness step. No implementation step 
 - Current status: Provider script partial pass.
 - Automated coverage:
   - Local route and library tests already cover invitation creation/acceptance, password recovery/reset, billing Checkout/Portal/recovery permissions, Stripe webhook processing/idempotency, evidence upload/download tenant scope, import/export tenant scope, and job runner behavior.
-  - The new master checklist is [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md); it must be exercised before paid-pilot provider proof is claimed.
+  - The new master checklist is [provider-flow-validation.md](provider-flow-validation.md); it must be exercised before paid-pilot provider proof is claimed.
   - 2026-06-03 local command proof for this Gap 1 update: provider-flow docs/release tests passed, provider-adjacent API/worker tests passed, full `npm test` passed, and `npm run typecheck` passed.
 - Provider-script coverage:
   - `npm run stripe:validate` checks Stripe runtime mode, SDK/catalog configuration, Product/Price status, webhook-secret presence, and blocks webhook delivery proof until Stripe CLI/dashboard evidence exists.
@@ -24,8 +24,8 @@ This log records proof for each approved readiness step. No implementation step 
   - Stripe webhook delivery and Supabase Auth redirect allow-list proof still require provider dashboard/CLI evidence.
   - Invite email, password reset email, evidence upload/download, import/export, and worker processing still require controlled preview browser proof before paid-pilot signoff.
 - Next proof required:
-  - Run the exact command sequence from [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) in preview, record outputs with secrets redacted, then complete the manual preview checklist for controlled test users/workspaces.
-  - After preview passes, run only the safe production smoke checklist from [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) with controlled internal accounts and record the result here.
+  - Run the exact command sequence from [provider-flow-validation.md](provider-flow-validation.md) in preview, record outputs with secrets redacted, then complete the manual preview checklist for controlled test users/workspaces.
+  - After preview passes, run only the safe production smoke checklist from [provider-flow-validation.md](provider-flow-validation.md) with controlled internal accounts and record the result here.
 
 ## 2026-06-01T20:59:13Z - Planning Audit
 

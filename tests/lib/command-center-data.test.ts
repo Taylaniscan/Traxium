@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
-  approval: {
+  phaseChangeRequestApproval: {
     findMany: vi.fn(),
   },
   phaseChangeRequest: {
@@ -145,21 +145,23 @@ describe("command center data helpers", () => {
         },
       },
     ]);
-    prismaMock.approval.findMany.mockResolvedValueOnce([
+    prismaMock.phaseChangeRequestApproval.findMany.mockResolvedValueOnce([
       {
         id: "approval-1",
-        phase: Phase.VALIDATED,
-        approved: true,
         status: ApprovalStatus.APPROVED,
         comment: "Approved for demo.",
+        decidedAt: new Date("2026-04-02T00:00:00.000Z"),
         createdAt: new Date("2026-04-02T00:00:00.000Z"),
         approver: {
           name: "Mert Dulger",
           role: Role.FINANCIAL_CONTROLLER,
         },
-        savingCard: {
-          id: "card-1",
-          title: "PP Carrier dual-source negotiation",
+        phaseChangeRequest: {
+          requestedPhase: Phase.VALIDATED,
+          savingCard: {
+            id: "card-1",
+            title: "PP Carrier dual-source negotiation",
+          },
         },
       },
     ]);

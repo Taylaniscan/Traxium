@@ -23,6 +23,7 @@ function setCiLikeEnvironment(overrides: Record<string, string | undefined> = {}
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InByZXZpZXdjaSJ9.sig";
   process.env.SUPABASE_SERVICE_ROLE_KEY =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwicmVmIjoicHJldmlld2NpIn0.sig";
+  process.env.JOB_RUNNER_SECRET = "job-runner-secret";
   process.env.JOB_WORKER_ONCE = "true";
   process.env.JOB_WORKER_MAX_JOBS = "7";
   process.env.JOB_WORKER_IDLE_DELAY_MS = "1500";
@@ -58,6 +59,7 @@ describe("CI smoke contract", () => {
       hasDatabaseUrl: true,
       hasDirectUrl: true,
       hasServiceRoleKey: true,
+      hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
       hasServerAnalytics: false,

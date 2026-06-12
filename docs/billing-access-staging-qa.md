@@ -2,7 +2,7 @@
 
 This runbook is the manual and simulated release-validation pack for Traxium's subscription gating, billing recovery, and Stripe deploy safety behavior. Use it during preview signoff before production release. It is intentionally explicit so a teammate who did not author the feature can still validate it safely.
 
-Use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master Gap 1 provider-flow gate. This billing-access runbook is the detailed companion for blocked billing, recovery, multi-org, and Stripe access-state QA.
+Use [provider-flow-validation.md](provider-flow-validation.md) as the master Gap 1 provider-flow gate. This billing-access runbook is the detailed companion for blocked billing, recovery, multi-org, and Stripe access-state QA.
 
 ## Evidence Labels
 
@@ -255,14 +255,14 @@ Prepare these before manual testing:
 ### 26. Release docs match current billing gating
 
 - Precondition: open the billing/access and release docs in the repo.
-- User action: compare [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md), [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md), and [release-checklist.md](/Users/atlas/Documents/Traxium/docs/release-checklist.md).
+- User action: compare [subscription-gating-and-billing-recovery.md](subscription-gating-and-billing-recovery.md), [post-release-smoke-tests.md](post-release-smoke-tests.md), and [release-checklist.md](release-checklist.md).
 - Expected result: docs consistently describe blocked routes, recovery flow, and Stripe deploy safety.
 - Failure meaning: release verification will drift from real behavior.
 
 ### 27. Runtime and smoke docs mention billing-required scenario
 
 - Precondition: open runtime and smoke docs in the repo.
-- User action: review [runtime-baseline.md](/Users/atlas/Documents/Traxium/docs/runtime-baseline.md) and [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md).
+- User action: review [runtime-baseline.md](runtime-baseline.md) and [post-release-smoke-tests.md](post-release-smoke-tests.md).
 - Expected result: both docs explicitly call out billing-required validation.
 - Failure meaning: billing gating is easy to miss during release verification.
 
@@ -277,7 +277,7 @@ Prepare these before manual testing:
 
 Use these suites before manual staging work:
 
-- [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) for the master provider-flow proof log and release gate
+- [provider-flow-validation.md](provider-flow-validation.md) for the master provider-flow proof log and release gate
 - `npm run stripe:validate`
 - `npm run stripe:validate -- --exercise-provider-flows`
 - `tests/lib/billing-access.test.ts`

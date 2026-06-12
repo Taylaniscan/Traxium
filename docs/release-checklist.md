@@ -28,14 +28,14 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
 - Verify workflow changes keep the canonical contract aligned across `README.md`, `Project_Rules.md`, `Codex_Tasks.md`, routes, and tests when behavior changed.
 - Verify workflow and saving-card changes do not reintroduce direct phase mutation, skipped transitions, or a parallel legacy approval path.
 - Verify no server secret was moved into a `NEXT_PUBLIC_*` variable.
-- Verify `.env.example` and [environment-setup.md](/Users/atlas/Documents/Traxium/docs/environment-setup.md) still reflect the current config contract if env usage changed.
-- Verify [subscription-gating-and-billing-recovery.md](/Users/atlas/Documents/Traxium/docs/subscription-gating-and-billing-recovery.md) still matches the current access-state mapping, blocked-route contract, billing recovery flow, and Stripe deploy guard behavior if billing or auth guards changed.
-- Verify [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) still matches the real provider proof required for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook, evidence storage, import/export, and worker health when any provider-facing flow changes.
-- Verify [billing-access-staging-qa.md](/Users/atlas/Documents/Traxium/docs/billing-access-staging-qa.md) still matches the real blocked-billing, recovery, multi-org, and release-verification workflow before preview signoff.
+- Verify `.env.example` and [environment-setup.md](environment-setup.md) still reflect the current config contract if env usage changed.
+- Verify [subscription-gating-and-billing-recovery.md](subscription-gating-and-billing-recovery.md) still matches the current access-state mapping, blocked-route contract, billing recovery flow, and Stripe deploy guard behavior if billing or auth guards changed.
+- Verify [provider-flow-validation.md](provider-flow-validation.md) still matches the real provider proof required for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook, evidence storage, import/export, and worker health when any provider-facing flow changes.
+- Verify [billing-access-staging-qa.md](billing-access-staging-qa.md) still matches the real blocked-billing, recovery, multi-org, and release-verification workflow before preview signoff.
 
 ## Deploy Before Release
 
-- Complete the Gap 1 provider-flow gate in [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) and record proof in [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md). Do not claim provider proof unless the corresponding automated local, provider script, manual preview, or production smoke evidence exists.
+- Complete the Gap 1 provider-flow gate in [provider-flow-validation.md](provider-flow-validation.md) and record proof in [readiness-proof-log.md](readiness-proof-log.md). Do not claim provider proof unless the corresponding automated local, provider script, manual preview, or production smoke evidence exists.
 - Run the non-mutating provider validation subset in the target deploy environment:
   - `npm run providers:validate`
   - or, if running each command separately: `npm run stripe:validate`, `npm run supabase:validate`, and `npm run jobs:worker:healthcheck`
@@ -80,7 +80,7 @@ This checklist keeps PRs, merges, and deployments aligned with Traxium's CI qual
 - Confirm the release-validation workspace used for post-release smoke has seeded saving cards so `/dashboard` and `/kanban` can be verified as live portfolio surfaces instead of empty-state fallbacks.
 - Confirm the post-release smoke plan includes both:
   - `node --import tsx scripts/postdeploy-smoke.ts`
-  - the explicit dashboard and Kanban checks in [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md)
+  - the explicit dashboard and Kanban checks in [post-release-smoke-tests.md](post-release-smoke-tests.md)
 - If an authenticated release-validation session is available, export `POSTDEPLOY_SESSION_COOKIE` before the scripted smoke run so `/dashboard` and `/kanban` are checked in the deployed environment too.
 - Confirm release validation includes one safe workflow or saving-card mutation freshness check so `/dashboard`, `/kanban`, and saving-card surfaces agree after refresh and do not show stale or contradictory state.
 - Confirm a release-validation workflow rejection or blocked-move path still shows visible feedback when a safe non-production test card exists.
@@ -95,7 +95,7 @@ The GitHub Actions workflow uses secret-free, structurally valid env values so t
 
 If CI starts failing after an env contract change, update all of the following together:
 
-- [lib/env.ts](/Users/atlas/Documents/Traxium/lib/env.ts)
-- [.github/workflows/ci.yml](/Users/atlas/Documents/Traxium/.github/workflows/ci.yml)
-- [.env.example](/Users/atlas/Documents/Traxium/.env.example)
-- [environment-setup.md](/Users/atlas/Documents/Traxium/docs/environment-setup.md)
+- [lib/env.ts](../lib/env.ts)
+- [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+- [.env.example](../.env.example)
+- [environment-setup.md](environment-setup.md)

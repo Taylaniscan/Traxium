@@ -146,7 +146,7 @@ Current recorded status as of June 5, 2026:
 - A complete preview provider-flow checklist has not been recorded.
 - A production provider smoke pass has not been recorded.
 
-The authoritative proof record is [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md). Local tests and provider scripts must not be presented as a production security certification.
+The authoritative proof record is [readiness-proof-log.md](readiness-proof-log.md). Local tests and provider scripts must not be presented as a production security certification.
 
 ## Support Expectations For Paid Pilots
 
@@ -157,7 +157,7 @@ The authoritative proof record is [readiness-proof-log.md](/Users/atlas/Document
 - Provider outages may require coordination with Supabase, Stripe, Vercel, or another configured provider.
 - Paid-pilot support is not 24/7 support and does not include an enterprise SLA unless separately agreed in writing.
 
-The detailed boundary is in [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md).
+The detailed boundary is in [support-expectations.md](support-expectations.md).
 
 ## Data Export And Offboarding
 
@@ -168,7 +168,7 @@ The detailed boundary is in [support-expectations.md](/Users/atlas/Documents/Tra
 - There is no self-service permanent-deletion workflow or published retention schedule in the current product.
 - Any deletion request must be reviewed, scoped, and executed through an approved manual process. This trust pack is not a legal data-retention policy or DPA.
 
-See [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md) for the detailed checklist and limitations.
+See [data-export-offboarding.md](data-export-offboarding.md) for the detailed checklist and limitations.
 
 ## Backup And Restore
 
@@ -178,7 +178,7 @@ See [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export
 - Restore procedures and restore testing are manual pilot-stage operational work.
 - Formal recovery point objective (RPO) or recovery time objective (RTO) commitments are not currently offered during paid pilots.
 
-See [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md).
+See [backup-restore-statement.md](backup-restore-statement.md).
 
 ## Known Paid-Pilot Exclusions
 

@@ -209,12 +209,19 @@ export function SavingCardForm({
   const evidenceIssueCount = evidence.filter((item) => item.status === "error").length;
   const pendingPhaseRequest =
     card?.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
+  const decidedApprovalCount =
+    card?.phaseChangeRequests.reduce(
+      (total, request) =>
+        total +
+        request.approvals.filter((approval) => approval.status !== "PENDING").length,
+      0
+    ) ?? 0;
   const approvalStatus = getApprovalStatusLabel({
     isCreateMode,
     hasPendingRequest: Boolean(pendingPhaseRequest),
-    approvalCount: card?.approvals.length ?? 0,
+    approvalCount: decidedApprovalCount,
   });
-  const approvalStatusTone = pendingPhaseRequest ? "amber" : card?.approvals.length ? "emerald" : "slate";
+  const approvalStatusTone = pendingPhaseRequest ? "amber" : decidedApprovalCount ? "emerald" : "slate";
 
   const supplierHelper = buildMasterDataHelper({
     count: referenceData.suppliers.length,

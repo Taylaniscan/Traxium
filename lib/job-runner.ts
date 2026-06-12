@@ -39,6 +39,8 @@ export type RunJobLoopInput = ReserveNextJobInput & {
   maxJobs?: number;
   idleDelayMs?: number;
   stopWhenIdle?: boolean;
+  /** Wall-clock budget (ms). The loop stops before starting a job once exceeded. */
+  maxDurationMs?: number;
 };
 
 const jobHandlers = new Map<string, JobHandler>();
@@ -250,10 +252,30 @@ export async function runJobLoop(
     100,
     Math.trunc(input.idleDelayMs ?? 2_000) || 100
   );
+  const maxDurationMs =
+    input.maxDurationMs && input.maxDurationMs > 0
+      ? Math.trunc(input.maxDurationMs)
+      : null;
+  const startedAt = Date.now();
   let processedJobs = 0;
   let consecutiveIdlePolls = 0;
 
   while (processedJobs < maxJobs) {
+    if (maxDurationMs !== null && Date.now() - startedAt >= maxDurationMs) {
+      logJobRunnerEvent("info", "jobs.worker.duration_budget_reached", {
+        processedJobs,
+        maxJobs,
+        maxDurationMs,
+        organizationId: input.organizationId ?? null,
+        types: input.types ?? [],
+      });
+
+      return {
+        processedJobs,
+        idle: false,
+      };
+    }
+
     const result = await processNextJob(input);
 
     if (result.outcome === "idle") {

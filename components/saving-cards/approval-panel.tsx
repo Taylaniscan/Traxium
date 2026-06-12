@@ -43,8 +43,15 @@ export function ApprovalPanel({
     [card.phaseChangeRequests]
   );
   const decidedApprovalCount = useMemo(
-    () => card.approvals.filter((approval) => approval.status !== "PENDING").length,
-    [card.approvals]
+    () =>
+      card.phaseChangeRequests.reduce(
+        (total, request) =>
+          total +
+          request.approvals.filter((approval) => approval.status !== "PENDING")
+            .length,
+        0
+      ),
+    [card.phaseChangeRequests]
   );
 
   function getApprovalErrorMessage(status: number, apiMessage?: string) {

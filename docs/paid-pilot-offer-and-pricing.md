@@ -88,7 +88,7 @@ Pilot support should be explicit before kickoff.
 - Product fixes are prioritized by pilot impact.
 - Custom development is out of scope unless separately agreed after pilot learning.
 
-The buyer-facing support contract is [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md). It defines business-hours, email-based support, best-effort same-business-day critical attention, a one-business-day normal response target, provider-outage handling, and the no-enterprise-SLA boundary.
+The buyer-facing support contract is [support-expectations.md](support-expectations.md). It defines business-hours, email-based support, best-effort same-business-day critical attention, a one-business-day normal response target, provider-outage handling, and the no-enterprise-SLA boundary.
 
 Buyer responsibilities:
 
@@ -99,7 +99,7 @@ Buyer responsibilities:
 - Decide whether private evidence storage is in scope for the pilot environment.
 - Participate in weekly review and end-of-pilot decision.
 
-Before live data entry, use [paid-pilot-security-review-checklist.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-security-review-checklist.md) to agree users, roles, evidence scope, provider proof, billing ownership, support contacts, export, backup assumptions, and offboarding limitations.
+Before live data entry, use [paid-pilot-security-review-checklist.md](paid-pilot-security-review-checklist.md) to agree users, roles, evidence scope, provider proof, billing ownership, support contacts, export, backup assumptions, and offboarding limitations.
 
 ## Pricing Hypothesis
 
@@ -151,8 +151,8 @@ Recommended use:
 - Use `Request paid pilot` as the public homepage CTA and route qualified buyers to `/pilot`.
 - Keep `/request-demo` as a compatibility redirect to the same founder-led pilot request.
 - Treat lead submission as a fit-review request. Do not create a user, workspace, free trial, or Stripe subscription automatically.
-- Use `/trust` and [trust-pack.md](/Users/atlas/Documents/Traxium/docs/trust-pack.md) for the factual paid-pilot trust story.
-- Keep data export/offboarding and backup/restore limitations aligned with [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md) and [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md).
+- Use `/trust` and [trust-pack.md](trust-pack.md) for the factual paid-pilot trust story.
+- Keep data export/offboarding and backup/restore limitations aligned with [data-export-offboarding.md](data-export-offboarding.md) and [backup-restore-statement.md](backup-restore-statement.md).
 - Treat Stripe Checkout and Portal as billing handoff infrastructure, not as proof that pricing is self-serve.
 
 ## Decision Path After Pilot

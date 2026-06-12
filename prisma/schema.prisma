@@ -205,7 +205,6 @@ model User {
   memberships           OrganizationMembership[]
   sentInvitations       Invitation[]                  @relation("InvitationInvitedBy")
   stakeholderCards      SavingCardStakeholder[]
-  approvals             Approval[]
   comments              SavingCardComment[]
   notifications         Notification[]
   auditLogs             AuditLog[]
@@ -422,7 +421,6 @@ model SavingCard {
   alternativeSuppliers SavingCardAlternativeSupplier[]
   alternativeMaterials SavingCardAlternativeMaterial[]
   comments             SavingCardComment[]
-  approvals            Approval[]
   phaseChangeRequests  PhaseChangeRequest[]
   phaseHistory         PhaseHistory[]
   auditLogs            AuditLog[]
@@ -576,20 +574,6 @@ model SavingCardComment {
   author     User       @relation(fields: [authorId], references: [id])
 }
 
-model Approval {
-  id           String         @id @default(cuid())
-  savingCardId String
-  approverId   String
-  phase        Phase
-  approved     Boolean
-  status       ApprovalStatus @default(APPROVED)
-  comment      String?
-  createdAt    DateTime       @default(now())
-
-  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  approver   User       @relation(fields: [approverId], references: [id])
-}
-
 model PhaseChangeRequest {
   id                 String         @id @default(cuid())
   savingCardId       String
@@ -720,6 +704,17 @@ model Job {
   @@index([status, scheduledAt, createdAt])
   @@index([organizationId, status, scheduledAt])
   @@index([reservedAt])
+}
+
+// Singleton row recording the most recent successful job-worker pass (Vercel cron
+// or dedicated worker). Used to surface worker liveness on the admin jobs page.
+model JobRunnerHeartbeat {
+  id                  String   @id
+  lastSuccessfulRunAt DateTime
+  processedJobs       Int      @default(0)
+  durationMs          Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model ProductPlan {

@@ -39,15 +39,15 @@ Proof points the page may safely claim:
 
 Claims that require more proof before public use:
 
-- Production provider validation for Supabase Auth redirects, private storage, signed URLs, and service-role boundaries, recorded through [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md).
-- Production Stripe Checkout, Portal, webhook, and billing recovery proof, recorded through [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md).
+- Production provider validation for Supabase Auth redirects, private storage, signed URLs, and service-role boundaries, recorded through [provider-flow-validation.md](provider-flow-validation.md).
+- Production Stripe Checkout, Portal, webhook, and billing recovery proof, recorded through [provider-flow-validation.md](provider-flow-validation.md).
 - Published security or compliance claims beyond the implemented tenant isolation, RBAC, private storage, audit, and environment checks.
 
 The public request flow does not accept savings tracker attachments. Tracker review happens later through an agreed secure pilot process.
 
 ## Paid Pilot Offer
 
-Detailed commercial terms live in [paid-pilot-offer-and-pricing.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-offer-and-pricing.md). This section keeps the buyer-package summary aligned with that source.
+Detailed commercial terms live in [paid-pilot-offer-and-pricing.md](paid-pilot-offer-and-pricing.md). This section keeps the buyer-package summary aligned with that source.
 
 Pilot shape:
 
@@ -118,16 +118,16 @@ The public `/trust` page provides plain-language paid-pilot coverage for:
 - Rate limiting, quota checks, file type limits, and export handling.
 - Incident/support contact path and expected response posture.
 
-The page must remain explicit that local tests and provider scripts do not equal a complete preview or production provider pass. Environment-specific proof is tracked through [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) and [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md).
+The page must remain explicit that local tests and provider scripts do not equal a complete preview or production provider pass. Environment-specific proof is tracked through [provider-flow-validation.md](provider-flow-validation.md) and [readiness-proof-log.md](readiness-proof-log.md).
 
 The buyer-shareable package includes:
 
-- [trust-pack.md](/Users/atlas/Documents/Traxium/docs/trust-pack.md)
-- [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md)
-- [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md)
-- [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md)
-- [paid-pilot-security-review-checklist.md](/Users/atlas/Documents/Traxium/docs/paid-pilot-security-review-checklist.md)
-- [evidence-trust-contract.md](/Users/atlas/Documents/Traxium/docs/evidence-trust-contract.md)
+- [trust-pack.md](trust-pack.md)
+- [support-expectations.md](support-expectations.md)
+- [data-export-offboarding.md](data-export-offboarding.md)
+- [backup-restore-statement.md](backup-restore-statement.md)
+- [paid-pilot-security-review-checklist.md](paid-pilot-security-review-checklist.md)
+- [evidence-trust-contract.md](evidence-trust-contract.md)
 
 Do not claim SOC 2 certification, ISO 27001 certification, HIPAA compliance, 24/7 support, SSO/SAML, SCIM, ERP integration, accounting posting, custom approval builders, vendor risk scoring, contract lifecycle management, broad spend analytics, an enterprise SLA, or audited accounting recognition.
 
@@ -142,7 +142,7 @@ Paid-pilot support should be explicit:
 - Product fixes are prioritized by pilot impact; custom development is out of scope for the first pilot.
 - The buyer should provide one procurement owner, one finance reviewer, and one admin/security contact.
 
-The detailed support boundary is [support-expectations.md](/Users/atlas/Documents/Traxium/docs/support-expectations.md). Offboarding and recovery boundaries are documented in [data-export-offboarding.md](/Users/atlas/Documents/Traxium/docs/data-export-offboarding.md) and [backup-restore-statement.md](/Users/atlas/Documents/Traxium/docs/backup-restore-statement.md).
+The detailed support boundary is [support-expectations.md](support-expectations.md). Offboarding and recovery boundaries are documented in [data-export-offboarding.md](data-export-offboarding.md) and [backup-restore-statement.md](backup-restore-statement.md).
 
 ## Data Export Expectations
 

@@ -81,7 +81,7 @@ Evidence remains optional for first-card creation. A missing file is a warning, 
 
 Local tests prove the application route, tenant, path, bucket, signing TTL, quota, rate-limit, and audit contract. Preview or production Supabase configuration is separate proof.
 
-Before a paid pilot, validate the configured bucket is private, service-role signing works, anonymous/public reads fail, and the Auth redirect allow-list is correct. Record that proof in [supabase-provider-validation.md](/Users/atlas/Documents/Traxium/docs/supabase-provider-validation.md) and [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md).
+Before a paid pilot, validate the configured bucket is private, service-role signing works, anonymous/public reads fail, and the Auth redirect allow-list is correct. Record that proof in [supabase-provider-validation.md](supabase-provider-validation.md) and [readiness-proof-log.md](readiness-proof-log.md).
 
 ## No Overclaims
 

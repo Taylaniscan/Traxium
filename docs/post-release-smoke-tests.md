@@ -2,7 +2,7 @@
 
 Run these checks immediately after every preview signoff deployment and every production release. Keep the list short, but do not skip items that touch auth, onboarding, invitations, admin, observability, or jobs.
 
-Use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md) as the master provider-flow gate. This smoke list is the route-level companion; provider proof for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook delivery, evidence upload/download, import/export, and worker health belongs in [readiness-proof-log.md](/Users/atlas/Documents/Traxium/docs/readiness-proof-log.md).
+Use [provider-flow-validation.md](provider-flow-validation.md) as the master provider-flow gate. This smoke list is the route-level companion; provider proof for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook delivery, evidence upload/download, import/export, and worker health belongs in [readiness-proof-log.md](readiness-proof-log.md).
 
 1. Route-contract smoke:
    Export the current deployment URL to `POSTDEPLOY_BASE_URL`, then run `node --import tsx scripts/postdeploy-smoke.ts`.
@@ -99,5 +99,5 @@ Use [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-f
     - after Stripe recovery, `/settings/billing` returns the user to `/dashboard` once subscription sync is active again
 
 18. Production smoke provider proof:
-    For production, run only the safe checks listed in [provider-flow-validation.md](/Users/atlas/Documents/Traxium/docs/provider-flow-validation.md). Do not send real customer emails, charge real cards, upload customer evidence, delete data, or test webhooks on uncontrolled customer subscriptions.
+    For production, run only the safe checks listed in [provider-flow-validation.md](provider-flow-validation.md). Do not send real customer emails, charge real cards, upload customer evidence, delete data, or test webhooks on uncontrolled customer subscriptions.
     Expected: controlled production test admin can open `/dashboard`, `/admin/settings`, `/settings/billing`, open Stripe Portal and return, request password reset for a controlled test account, invite a controlled internal email, upload/download harmless evidence in an internal/test workspace, export an internal/test report, and pass `npm run jobs:worker:healthcheck`.

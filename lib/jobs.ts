@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RESERVATION_SCAN_ATTEMPTS = 5;
 const MAX_ERROR_LENGTH = 2_000;
+const JOB_RUNNER_HEARTBEAT_ID = "singleton";
+export const JOB_RUNNER_STALE_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_ADMIN_JOBS_TAKE = 20;
 const MAX_ADMIN_JOBS_TAKE = 50;
 const ADMIN_JOBS_CACHE_TTL_MS = 1_500;
@@ -742,5 +744,58 @@ export async function retryOrganizationJob(input: {
   return {
     changed: retry.count > 0,
     job: mapOrganizationAdminJob(retriedJob),
+  };
+}
+
+export type JobRunnerHeartbeatStatus = {
+  lastSuccessfulRunAt: string;
+  processedJobs: number;
+  durationMs: number;
+  ageMs: number;
+  stale: boolean;
+};
+
+/** Record a successful worker pass (Vercel cron or dedicated worker). */
+export async function recordJobRunnerHeartbeat(
+  input: { processedJobs: number; durationMs: number },
+  client: Pick<typeof prisma, "jobRunnerHeartbeat"> = prisma
+) {
+  const now = new Date();
+  const processedJobs = Math.max(0, Math.trunc(input.processedJobs) || 0);
+  const durationMs = Math.max(0, Math.trunc(input.durationMs) || 0);
+
+  await client.jobRunnerHeartbeat.upsert({
+    where: { id: JOB_RUNNER_HEARTBEAT_ID },
+    update: { lastSuccessfulRunAt: now, processedJobs, durationMs },
+    create: {
+      id: JOB_RUNNER_HEARTBEAT_ID,
+      lastSuccessfulRunAt: now,
+      processedJobs,
+      durationMs,
+    },
+  });
+}
+
+/** Read the last successful worker pass and whether it has gone stale (>30 min). */
+export async function getJobRunnerHeartbeat(
+  client: Pick<typeof prisma, "jobRunnerHeartbeat"> = prisma,
+  now: Date = new Date()
+): Promise<JobRunnerHeartbeatStatus | null> {
+  const heartbeat = await client.jobRunnerHeartbeat.findUnique({
+    where: { id: JOB_RUNNER_HEARTBEAT_ID },
+  });
+
+  if (!heartbeat) {
+    return null;
+  }
+
+  const ageMs = now.getTime() - heartbeat.lastSuccessfulRunAt.getTime();
+
+  return {
+    lastSuccessfulRunAt: heartbeat.lastSuccessfulRunAt.toISOString(),
+    processedJobs: heartbeat.processedJobs,
+    durationMs: heartbeat.durationMs,
+    ageMs,
+    stale: ageMs > JOB_RUNNER_STALE_THRESHOLD_MS,
   };
 }

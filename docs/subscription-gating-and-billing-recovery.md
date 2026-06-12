@@ -4,11 +4,11 @@ This guide explains how Traxium decides whether an organization can use the app,
 
 ## Source Of Truth
 
-- Subscription access state is resolved in [lib/billing/access.ts](/Users/atlas/Documents/Traxium/lib/billing/access.ts).
-- Guard enforcement lives in [lib/auth.ts](/Users/atlas/Documents/Traxium/lib/auth.ts).
-- The blocked billing UX lives in [app/billing-required/page.tsx](/Users/atlas/Documents/Traxium/app/billing-required/page.tsx).
-- Recovery actions flow through [app/billing/recover/route.ts](/Users/atlas/Documents/Traxium/app/billing/recover/route.ts), [app/api/billing/checkout/route.ts](/Users/atlas/Documents/Traxium/app/api/billing/checkout/route.ts), and [app/api/billing/portal/route.ts](/Users/atlas/Documents/Traxium/app/api/billing/portal/route.ts).
-- Production Stripe deploy safety lives in [lib/billing/config.ts](/Users/atlas/Documents/Traxium/lib/billing/config.ts), [scripts/check-env.ts](/Users/atlas/Documents/Traxium/scripts/check-env.ts), and [scripts/predeploy-check.ts](/Users/atlas/Documents/Traxium/scripts/predeploy-check.ts).
+- Subscription access state is resolved in [lib/billing/access.ts](../lib/billing/access.ts).
+- Guard enforcement lives in [lib/auth.ts](../lib/auth.ts).
+- The blocked billing UX lives in [app/billing-required/page.tsx](../app/billing-required/page.tsx).
+- Recovery actions flow through [app/billing/recover/route.ts](../app/billing/recover/route.ts), [app/api/billing/checkout/route.ts](../app/api/billing/checkout/route.ts), and [app/api/billing/portal/route.ts](../app/api/billing/portal/route.ts).
+- Production Stripe deploy safety lives in [lib/billing/config.ts](../lib/billing/config.ts), [scripts/check-env.ts](../scripts/check-env.ts), and [scripts/predeploy-check.ts](../scripts/predeploy-check.ts).
 
 ## How Access Is Determined
 
@@ -39,7 +39,7 @@ Important behavior:
 
 ### App pages
 
-- The authenticated app shell in [app/(app)/layout.tsx](/Users/atlas/Documents/Traxium/app/(app)/layout.tsx) calls `bootstrapCurrentUser()`.
+- The authenticated app shell in [app/(app)/layout.tsx](../app/(app)/layout.tsx) calls `bootstrapCurrentUser()`.
 - If the active organization is billing-blocked, the app redirects to `/billing-required`.
 - This means normal app pages such as `/dashboard`, `/saving-cards`, `/kanban`, `/reports`, `/timeline`, `/command-center`, and admin pages under `/admin/*` do not render while billing is blocked.
 
@@ -176,11 +176,11 @@ The deploy guard rejects combinations such as:
 
 When changing billing, auth guards, or Stripe env handling, update all of these together:
 
-- [lib/billing/access.ts](/Users/atlas/Documents/Traxium/lib/billing/access.ts)
-- [lib/auth.ts](/Users/atlas/Documents/Traxium/lib/auth.ts)
-- [app/billing-required/page.tsx](/Users/atlas/Documents/Traxium/app/billing-required/page.tsx)
-- [app/billing/recover/route.ts](/Users/atlas/Documents/Traxium/app/billing/recover/route.ts)
-- [lib/billing/config.ts](/Users/atlas/Documents/Traxium/lib/billing/config.ts)
-- [scripts/predeploy-check.ts](/Users/atlas/Documents/Traxium/scripts/predeploy-check.ts)
+- [lib/billing/access.ts](../lib/billing/access.ts)
+- [lib/auth.ts](../lib/auth.ts)
+- [app/billing-required/page.tsx](../app/billing-required/page.tsx)
+- [app/billing/recover/route.ts](../app/billing/recover/route.ts)
+- [lib/billing/config.ts](../lib/billing/config.ts)
+- [scripts/predeploy-check.ts](../scripts/predeploy-check.ts)
 - this guide
 - the regression tests covering billing access, billing-required UX, API `402` responses, and Stripe predeploy safety

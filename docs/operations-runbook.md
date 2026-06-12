@@ -5,12 +5,12 @@ This runbook is for release-day validation and post-release incidents across Tra
 ## First 15 Minutes After Release
 
 - Export the current deployment URL to `POSTDEPLOY_BASE_URL`, then run `node --import tsx scripts/postdeploy-smoke.ts`.
-- Run the manual checks in [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md).
+- Run the manual checks in [post-release-smoke-tests.md](post-release-smoke-tests.md).
 - Run `npm run jobs:worker:healthcheck` in the deployed worker environment before declaring the release healthy.
 - Keep these three admin surfaces open in an `OWNER` or `ADMIN` session for the active release-validation workspace:
-  - [admin/insights](/Users/atlas/Documents/Traxium/app/(app)/admin/insights/page.tsx)
-  - [admin/jobs](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx)
-  - [admin/settings](/Users/atlas/Documents/Traxium/app/(app)/admin/settings/page.tsx)
+  - [admin/insights](../app/(app)/admin/insights/page.tsx)
+  - [admin/jobs](../app/(app)/admin/jobs/page.tsx)
+  - [admin/settings](../app/(app)/admin/settings/page.tsx)
 
 ## Primary Triage Sources
 
@@ -45,44 +45,44 @@ This runbook is for release-day validation and post-release incidents across Tra
   - `analytics.track.failed`
   - `analytics.identify.failed`
 - Tenant-scoped operator UIs:
-  - [admin insights page](/Users/atlas/Documents/Traxium/app/(app)/admin/insights/page.tsx) for health metrics, activation signals, and recent admin actions
-  - [admin jobs page](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx) for queued/processing/failed/completed job visibility
-  - [admin settings page](/Users/atlas/Documents/Traxium/app/(app)/admin/settings/page.tsx) for recent admin audit entries
-  - [admin members page](/Users/atlas/Documents/Traxium/app/(app)/admin/members/page.tsx) for pending invites and role/member posture
+  - [admin insights page](../app/(app)/admin/insights/page.tsx) for health metrics, activation signals, and recent admin actions
+  - [admin jobs page](../app/(app)/admin/jobs/page.tsx) for queued/processing/failed/completed job visibility
+  - [admin settings page](../app/(app)/admin/settings/page.tsx) for recent admin audit entries
+  - [admin members page](../app/(app)/admin/members/page.tsx) for pending invites and role/member posture
 
 ## Auth Incident Flow
 
 - Check `/login`, `/forgot-password`, and `/reset-password` first. These should render without blank states or 5xxs.
-- Call [auth bootstrap](/Users/atlas/Documents/Traxium/app/api/auth/bootstrap/route.ts) without a session and confirm it returns `401` or `403`, never `500`.
+- Call [auth bootstrap](../app/api/auth/bootstrap/route.ts) without a session and confirm it returns `401` or `403`, never `500`.
 - If sign-in succeeds but routing is wrong, verify:
   - `NEXT_PUBLIC_APP_URL`
-  - Supabase Auth redirect configuration from [environment-setup.md](/Users/atlas/Documents/Traxium/docs/environment-setup.md)
+  - Supabase Auth redirect configuration from [environment-setup.md](environment-setup.md)
   - `auth.bootstrap.*` log events
 - If forgot-password succeeds but no email arrives, jump to the jobs flow below and inspect `auth_email.password_recovery_delivery` jobs.
 
 ## Onboarding Incident Flow
 
-- Check [onboarding page](/Users/atlas/Documents/Traxium/app/onboarding/page.tsx) and the APIs behind it:
+- Check [onboarding page](../app/onboarding/page.tsx) and the APIs behind it:
   - `/api/onboarding/workspace`
   - `/api/onboarding/sample-data`
 - If first-login users loop or fail to provision, search `auth.bootstrap.failed` and `auth.bootstrap.denied`.
-- If workspace creation succeeded but the user cannot proceed, verify the active organization state from the dashboard and the workspace readiness card on [admin root](/Users/atlas/Documents/Traxium/app/(app)/admin/page.tsx).
+- If workspace creation succeeded but the user cannot proceed, verify the active organization state from the dashboard and the workspace readiness card on [admin root](../app/(app)/admin/page.tsx).
 - If sample data looks missing, confirm the active organization was correct before loading and then re-open dashboard and admin readiness surfaces.
 
 ## Invitation Incident Flow
 
-- Check invitation creation from [invitations API](/Users/atlas/Documents/Traxium/app/api/invitations/route.ts) and the invite token resolution path:
+- Check invitation creation from [invitations API](../app/api/invitations/route.ts) and the invite token resolution path:
   - `/api/invitations/[token]`
   - `/api/invitations/[token]/accept`
   - `/api/invitations/[token]/complete`
-- Use [admin members](/Users/atlas/Documents/Traxium/app/(app)/admin/members/page.tsx) to confirm the invite appears under pending invitations.
-- If resend fails, inspect [admin resend route](/Users/atlas/Documents/Traxium/app/api/admin/invitations/[invitationId]/resend/route.ts) logs.
-- If the invite exists but delivery did not happen, open [admin jobs](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx) and look for `auth_email.invitation_delivery` failures before retrying.
+- Use [admin members](../app/(app)/admin/members/page.tsx) to confirm the invite appears under pending invitations.
+- If resend fails, inspect [admin resend route](../app/api/admin/invitations/[invitationId]/resend/route.ts) logs.
+- If the invite exists but delivery did not happen, open [admin jobs](../app/(app)/admin/jobs/page.tsx) and look for `auth_email.invitation_delivery` failures before retrying.
 
 ## Admin / RBAC Incident Flow
 
-- Use [admin members](/Users/atlas/Documents/Traxium/app/(app)/admin/members/page.tsx) to validate member list, role changes, removals, and pending invite posture for the active workspace only.
-- Use [admin settings](/Users/atlas/Documents/Traxium/app/(app)/admin/settings/page.tsx) to confirm workspace updates and recent audit rows.
+- Use [admin members](../app/(app)/admin/members/page.tsx) to validate member list, role changes, removals, and pending invite posture for the active workspace only.
+- Use [admin settings](../app/(app)/admin/settings/page.tsx) to confirm workspace updates and recent audit rows.
 - Relevant APIs for direct checks:
   - `/api/admin/members`
   - `/api/admin/members/[membershipId]`
@@ -93,7 +93,7 @@ This runbook is for release-day validation and post-release incidents across Tra
 
 ## Observability / Analytics Incident Flow
 
-- Open [admin insights](/Users/atlas/Documents/Traxium/app/(app)/admin/insights/page.tsx). This is the fastest tenant-scoped read on activation, recent admin actions, invitation velocity, and error signals.
+- Open [admin insights](../app/(app)/admin/insights/page.tsx). This is the fastest tenant-scoped read on activation, recent admin actions, invitation velocity, and error signals.
 - Search logs for:
   - `admin.insights.read.failed`
   - `observability.enqueue.failed`
@@ -111,7 +111,7 @@ This runbook is for release-day validation and post-release incidents across Tra
 
 - Confirm the separate worker process is deployed. The web application enqueues jobs, but it does not clear the queue.
 - Run `npm run jobs:worker:healthcheck` in the worker environment first. If this fails, treat the issue as worker deployment or configuration breakage before debugging the web app.
-- Open [admin jobs](/Users/atlas/Documents/Traxium/app/(app)/admin/jobs/page.tsx) and inspect:
+- Open [admin jobs](../app/(app)/admin/jobs/page.tsx) and inspect:
   - queued vs processing trend
   - fresh failed rows
   - retryable jobs
@@ -139,7 +139,7 @@ This runbook is for release-day validation and post-release incidents across Tra
 
 - Code rollback:
   - Redeploy the previous known-good Vercel deployment or commit.
-  - Re-run `scripts/postdeploy-smoke.ts` and the manual checks in [post-release-smoke-tests.md](/Users/atlas/Documents/Traxium/docs/post-release-smoke-tests.md).
+  - Re-run `scripts/postdeploy-smoke.ts` and the manual checks in [post-release-smoke-tests.md](post-release-smoke-tests.md).
 - Migration caution:
   - If `npm run release:migrate` already ran, never answer by using `prisma migrate dev`.
   - Roll back code only when the migrated schema is backward-compatible with the previous app build.
