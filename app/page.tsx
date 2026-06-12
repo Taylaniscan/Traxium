@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const pilotProofPoints = [
   {
     label: "One paid-pilot workspace",
-    detail: "Create live saving cards with buyers, suppliers, materials, plants, categories, and business units.",
+    detail: "Create live saving cards with buyers, suppliers, materials, categories, and optional sites.",
   },
   {
     label: "Finance-reviewed workflow",
@@ -47,12 +47,12 @@ function ProductSnapshot() {
 
       <div className="grid gap-3 py-4 sm:grid-cols-3">
         <div className="rounded-md border p-3">
-          <p className="text-xs text-muted-foreground">Total cards</p>
-          <p className="mt-1 text-2xl font-semibold">25</p>
+          <p className="text-xs text-muted-foreground">In-Year Value</p>
+          <p className="mt-1 text-2xl font-semibold">$2.4M</p>
         </div>
         <div className="rounded-md border p-3">
-          <p className="text-xs text-muted-foreground">Pending actions</p>
-          <p className="mt-1 text-2xl font-semibold">7</p>
+          <p className="text-xs text-muted-foreground">Annualized Run-Rate</p>
+          <p className="mt-1 text-2xl font-semibold">$3.1M</p>
         </div>
         <div className="rounded-md border p-3">
           <p className="text-xs text-muted-foreground">Finance locked</p>
@@ -122,12 +122,11 @@ export default async function HomePage() {
               Paid pilot package for 50-500 employee US manufacturing SMEs
             </p>
             <h1 className="max-w-3xl text-3xl font-semibold sm:text-5xl">
-              Finance-trusted savings governance for US manufacturing SMEs.
+              Stop defending your savings numbers.
             </h1>
             <p className="max-w-2xl text-lg text-muted-foreground">
-              Traxium gives SME procurement and finance teams one governed savings
-              register for saving cards, evidence, approvals, open actions,
-              portfolio views, and controller-ready export.
+              Track procurement savings with finance approval, evidence, and an
+              audit trail — without the Excel chaos.
             </p>
 
             <div className="flex flex-wrap gap-3">
@@ -145,6 +144,22 @@ export default async function HomePage() {
                 See UtopiaTrax demo
               </Link>
             </div>
+
+            {/*
+              TODO: Embed the 3-minute product demo video here.
+              Replace this placeholder with the responsive video embed once recorded
+              (see docs/demo-utopiatrax.md for the demo script).
+              Example:
+              <div className="aspect-video w-full overflow-hidden rounded-lg border">
+                <iframe src="<demo-video-url>" title="Traxium product demo" className="h-full w-full" allowFullScreen />
+              </div>
+            */}
+            <div
+              className="flex aspect-video w-full max-w-xl items-center justify-center rounded-lg border border-dashed bg-surface-elevated text-sm text-muted-foreground"
+              aria-label="Product demo video placeholder"
+            >
+              3-minute product demo video coming soon
+            </div>
           </div>
 
           <ProductSnapshot />
@@ -154,10 +169,10 @@ export default async function HomePage() {
       <section className="border-b">
         <div className="mx-auto max-w-6xl px-6 py-12">
           <div className="max-w-2xl space-y-3">
-            <h2 className="text-2xl font-semibold">What pilot buyers can prove</h2>
+            <h2 className="text-2xl font-semibold">The paid pilot offer</h2>
             <p className="text-muted-foreground">
-              The first pilot is designed to validate governed savings work with a
-              focused team before wider rollout decisions.
+              A focused, founder-led pilot that proves finance-trusted savings
+              governance before a wider rollout decision.
             </p>
           </div>
 
@@ -168,6 +183,21 @@ export default async function HomePage() {
                 <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
               </article>
             ))}
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/pilot"
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-5 py-3 text-sm font-medium !text-white"
+            >
+              Request paid pilot
+            </Link>
+            <Link
+              href="/trust"
+              className="inline-flex min-h-11 items-center justify-center rounded-md border bg-surface px-5 py-3 text-sm font-medium"
+            >
+              Review trust &amp; security
+            </Link>
           </div>
         </div>
       </section>

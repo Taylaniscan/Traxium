@@ -137,28 +137,29 @@ The validator prints the current database ID so the route can be opened directly
 /saving-cards/<showcase-card-id>
 ```
 
-## 3-Minute Outcome Demo
+## 3-Minute Demo Script
 
-1. **Dashboard:** “Here is the finance-trusted portfolio: total savings, phase mix, category exposure, finance controls, and delivery outlook.”
-2. **Kanban:** “Here is governed phase discipline. Pending requests stay on the approved phase until the required people decide.”
-3. **Showcase card:** “Here are the commercial assumptions, savings classification, evidence, alternative source, finance review, and delivery history behind one number.”
-4. **Open Actions:** “Here is what procurement and finance need to decide next.”
-5. **Reports:** “Here is the controller review view and the reconciled five-sheet workbook export.”
+Run this exact order. It moves from portfolio outcome to a single defensible number to finance control to the controller export.
+
+1. **Dashboard (`/dashboard`)** — “Here is the finance-trusted portfolio: In-Year Value vs Annualized Run-Rate, phase mix, category exposure, and finance controls.” Anchor on the in-year vs run-rate split.
+2. **One saving card (`/saving-cards/<showcase-card-id>`)** — open the showcase card. Walk the commercial assumptions (baseline, new price, volume, savings classification) and the attached evidence. “This is the number, and here is the proof behind it.”
+3. **Phase-change request** — from the card, request the next phase (e.g., Finance Validated). “Nothing moves without a routed approval; the card stays on its approved phase until the required people decide.”
+4. **Finance approval + lock** — switch to the Finance Reviewer, approve the request in the **Action Center (`/command-center`)**, then apply the finance lock on the card. “Finance approves, then locks the validated assumptions so the numbers can’t drift.”
+5. **Controller XLSX export (`/reports`)** — export the reconciled five-sheet controller workbook. “Finance gets a controller-ready workbook with reconciled assumptions, phase counts, finance locks, and evidence coverage — in USD.”
 
 ## 10-Minute All-Feature Demo
 
-1. `/dashboard` — portfolio value, phase mix, category mix, target/forecast context.
-2. `/saving-cards` — 25-card governed register with owners, suppliers, materials, phases, and classifications.
-3. `/kanban` — multiple populated phases and pending-request metadata.
+1. `/dashboard` — portfolio value, In-Year Value vs Annualized Run-Rate, phase mix, category mix, forecast context.
+2. `/saving-cards` (Savings Register) — 25-card governed register with owners, suppliers, materials, phases, and classifications.
+3. `/kanban` (Board) — multiple populated phases and pending-request metadata.
 4. `/saving-cards/<showcase-card-id>` — assumptions, alternatives, evidence, history, and results.
-5. `/open-actions` as Finance Reviewer — assigned approvals.
-6. `/open-actions?view=all` as Owner — workspace-wide queue.
-7. `/command-center` — executive approvals, overdue work, locked cases, risks, and recent decisions.
-8. `/timeline` — implementation timing, then Volume S-Curve.
-9. `/reports` — executive summary, classification breakdown, evidence coverage, and the five-sheet controller-review export.
-10. `/admin/members` — four realistic roles.
-11. `/admin/settings` — workspace identity, billing posture, and activity.
-12. `/settings/billing` — non-blocking access state only when billing is useful to the conversation.
+5. `/command-center` (Action Center) as Finance Reviewer — assigned approvals at the top, executive approvals, overdue work, locked cases, risks, and recent decisions below.
+6. `/command-center?view=all` as Owner — workspace-wide open-action queue.
+7. `/reports/timeline` — implementation timing, then Volume S-Curve.
+8. `/reports` — executive summary, classification breakdown, evidence coverage, and the five-sheet controller-review export.
+9. `/admin/members` — four realistic roles.
+10. `/admin/settings` — workspace identity, billing posture, and activity.
+11. `/settings/billing` — non-blocking access state only when billing is useful to the conversation.
 
 ## Screens Not To Show If Incomplete
 

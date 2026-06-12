@@ -151,13 +151,14 @@ function getActivationModel(readiness: WorkspaceReadiness | null) {
     {
       key: "plants",
       label: "Plants",
-      description: "Useful for site-level savings reporting.",
+      description:
+        "Optional. New workspaces include a default Main Plant; add more for site-level savings reporting.",
       ready: plantCount > 0,
     },
     {
       key: "business-units",
       label: "Business units",
-      description: "Useful for division-level portfolio reviews.",
+      description: "Optional. Useful for division-level portfolio reviews.",
       ready: businessUnitCount > 0,
     },
     {

@@ -166,6 +166,9 @@ function createTransactionMock() {
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    plant: {
+      create: vi.fn(),
+    },
     organizationMembership: {
       upsert: vi.fn(),
     },

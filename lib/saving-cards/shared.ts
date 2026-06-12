@@ -329,6 +329,26 @@ async function resolveOrCreatePlant(
   });
 }
 
+async function resolveOptionalPlant(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreatePlant(tx, organizationId, { id: value?.id, name });
+}
+
+async function resolveOptionalBusinessUnit(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreateBusinessUnit(tx, organizationId, { id: value?.id, name });
+}
+
 async function resolveOrCreateBuyer(
   tx: Prisma.TransactionClient,
   organizationId: string,
@@ -390,8 +410,8 @@ export async function resolveMasterData(
     payload.alternativeMaterial
   );
   const category = await resolveOrCreateCategory(tx, organizationId, payload.category);
-  const plant = await resolveOrCreatePlant(tx, organizationId, payload.plant);
-  const businessUnit = await resolveOrCreateBusinessUnit(
+  const plant = await resolveOptionalPlant(tx, organizationId, payload.plant);
+  const businessUnit = await resolveOptionalBusinessUnit(
     tx,
     organizationId,
     payload.businessUnit
@@ -402,7 +422,7 @@ export async function resolveMasterData(
     data: {
       userId: actorId,
       action: "master_data.resolved",
-      detail: `Resolved supplier ${supplier.id}, material ${material.id}, alternative supplier ${alternativeSupplier?.id ?? "none"}, alternative material ${alternativeMaterial?.id ?? "none"}, category ${category.id}, plant ${plant.id}, business unit ${businessUnit.id}, buyer ${buyer.id}`,
+      detail: `Resolved supplier ${supplier.id}, material ${material.id}, alternative supplier ${alternativeSupplier?.id ?? "none"}, alternative material ${alternativeMaterial?.id ?? "none"}, category ${category.id}, plant ${plant?.id ?? "none"}, business unit ${businessUnit?.id ?? "none"}, buyer ${buyer.id}`,
     },
   });
 
@@ -412,8 +432,8 @@ export async function resolveMasterData(
     alternativeSupplierId: alternativeSupplier?.id ?? null,
     alternativeMaterialId: alternativeMaterial?.id ?? null,
     categoryId: category.id,
-    plantId: plant.id,
-    businessUnitId: businessUnit.id,
+    plantId: plant?.id ?? null,
+    businessUnitId: businessUnit?.id ?? null,
     buyerId: buyer.id,
   };
 }

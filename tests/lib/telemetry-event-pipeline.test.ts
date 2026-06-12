@@ -222,6 +222,9 @@ function createTransactionMock() {
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    plant: {
+      create: vi.fn(),
+    },
     organizationMembership: {
       findUnique: vi.fn(),
       count: vi.fn(),

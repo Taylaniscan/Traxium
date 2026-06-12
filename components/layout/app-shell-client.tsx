@@ -7,7 +7,6 @@ import type { Role } from "@prisma/client";
 import {
   ArrowUpRight,
   Bell,
-  CalendarRange,
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
@@ -15,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
-  PanelsTopLeft,
   Settings,
   Table2,
   UserRound,
@@ -26,15 +24,15 @@ import { Button } from "@/components/ui/button";
 import { APP_NAME, roleLabels } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
+const ACTION_CENTER_HREF = "/command-center";
+
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/saving-cards", label: "Saving Cards", icon: Table2 },
-  { href: "/kanban", label: "Kanban", icon: KanbanSquare },
-  { href: "/timeline", label: "Timeline", icon: CalendarRange },
-  { href: "/command-center", label: "Command Center", icon: PanelsTopLeft },
+  { href: "/saving-cards", label: "Savings Register", icon: Table2 },
+  { href: "/kanban", label: "Board", icon: KanbanSquare },
+  { href: ACTION_CENTER_HREF, label: "Action Center", icon: Bell },
   { href: "/reports", label: "Reports", icon: FileSpreadsheet },
   { href: "/admin/settings", label: "Workspace Settings", icon: Settings },
-  { href: "/open-actions", label: "Open Actions", icon: Bell },
 ] as const;
 
 type AppShellClientProps = {
@@ -146,7 +144,7 @@ export function AppShellClient({
           router.push("/kanban");
           break;
         case "o":
-          router.push("/open-actions");
+          router.push(ACTION_CENTER_HREF);
           break;
         default:
           return;
@@ -249,7 +247,7 @@ export function AppShellClient({
                         {item.label}
                       </span>
                     </span>
-                    {item.href === "/open-actions" && visiblePendingApprovalCount > 0 && collapsed ? (
+                    {item.href === ACTION_CENTER_HREF && visiblePendingApprovalCount > 0 && collapsed ? (
                       <span
                         className={cn(
                           "absolute right-3 top-3 inline-flex items-center justify-center rounded-full bg-[#f43f5e] text-[10px] font-semibold text-white",
@@ -261,7 +259,7 @@ export function AppShellClient({
                       </span>
                     ) : null}
                     <span className={cn("flex items-center gap-2", collapsed && "hidden")}>
-                      {item.href === "/open-actions" && visiblePendingApprovalCount > 0 ? (
+                      {item.href === ACTION_CENTER_HREF && visiblePendingApprovalCount > 0 ? (
                         <span
                           className={cn(
                             "inline-flex items-center justify-center rounded-full bg-[#f43f5e] text-[10px] font-semibold text-white",

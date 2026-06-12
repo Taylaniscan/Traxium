@@ -11,10 +11,16 @@ const requireUserMock = vi.hoisted(() => vi.fn());
 const getCommandCenterDataMock = vi.hoisted(() => vi.fn());
 const getCommandCenterFilterOptionsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const getPendingApprovalsMock = vi.hoisted(() => vi.fn());
+const getPendingPhaseChangeRequestsMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/command-center/command-center-client", () => ({
   CommandCenterClient: CommandCenterClientMock,
+}));
+
+vi.mock("@/components/open-actions/open-actions-list", () => ({
+  OpenActionsList: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -25,6 +31,8 @@ vi.mock("@/lib/data", () => ({
   getCommandCenterData: getCommandCenterDataMock,
   getCommandCenterFilterOptions: getCommandCenterFilterOptionsMock,
   getWorkspaceReadiness: getWorkspaceReadinessMock,
+  getPendingApprovals: getPendingApprovalsMock,
+  getPendingPhaseChangeRequests: getPendingPhaseChangeRequestsMock,
 }));
 
 vi.mock("@/lib/observability", () => ({
@@ -67,11 +75,20 @@ describe("command center page", () => {
       suppliers: [],
     });
     getWorkspaceReadinessMock.mockResolvedValue(null);
+    getPendingApprovalsMock.mockResolvedValue([]);
+    getPendingPhaseChangeRequestsMock.mockResolvedValue([]);
   });
 
+  // children: [SectionHeading, <section open-actions>, <section command-center>]
+  // Returns the CommandCenterClient element (loose typing mirrors JSX prop access).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function getClientElement(page: any): any {
+    return page.props.children[2].props.children;
+  }
+
   it("passes successful command center payloads through to the client", async () => {
-    const page = await CommandCenterPage();
-    const clientElement = page.props.children[1];
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
 
     expect(clientElement).toMatchObject({
       type: CommandCenterClientMock,
@@ -97,8 +114,8 @@ describe("command center page", () => {
     });
     getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
 
-    const page = await CommandCenterPage();
-    const clientElement = page.props.children[1];
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
 
     expect(clientElement.props.initialData.kpis.activeProjects).toBe(23);
     expect(clientElement.props.initialData.pendingApprovalQueue).not.toHaveLength(0);
@@ -114,8 +131,8 @@ describe("command center page", () => {
       new Error("Filter lookup failed.")
     );
 
-    const page = await CommandCenterPage();
-    const clientElement = page.props.children[1];
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
 
     expect(clientElement).toMatchObject({
       type: CommandCenterClientMock,

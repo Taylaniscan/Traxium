@@ -439,7 +439,7 @@ async function createInitialOrganization(
     }
   }
 
-  return tx.organization.create({
+  const organization = await tx.organization.create({
     data: organizationCreateData,
     select: {
       id: true,
@@ -449,6 +449,18 @@ async function createInitialOrganization(
       updatedAt: true,
     },
   });
+
+  // Seed a default plant so card creation never requires plant setup first.
+  // Plant/business unit are optional on saving cards; this provides a sensible default.
+  await tx.plant.create({
+    data: {
+      organizationId: organization.id,
+      name: "Main Plant",
+      region: "US",
+    },
+  });
+
+  return organization;
 }
 
 async function canPersistWorkspaceTrialEnd(tx: OrganizationWriteClient) {

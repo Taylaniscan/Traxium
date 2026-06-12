@@ -375,8 +375,8 @@ model SavingCard {
   alternativeMaterialId         String?
   alternativeMaterialManualName String?
   categoryId                    String
-  plantId                       String
-  businessUnitId                String
+  plantId                       String?
+  businessUnitId                String?
   buyerId                       String
   baselinePrice                 Decimal                 @db.Decimal(18, 4)
   newPrice                      Decimal                 @db.Decimal(18, 4)
@@ -410,8 +410,8 @@ model SavingCard {
   alternativeSupplier Supplier?    @relation("AlternativeScenarioSupplier", fields: [alternativeSupplierId], references: [id])
   alternativeMaterial Material?    @relation("AlternativeScenarioMaterial", fields: [alternativeMaterialId], references: [id])
   category            Category     @relation(fields: [categoryId], references: [id])
-  plant               Plant        @relation(fields: [plantId], references: [id])
-  businessUnit        BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  plant               Plant?       @relation(fields: [plantId], references: [id])
+  businessUnit        BusinessUnit? @relation(fields: [businessUnitId], references: [id])
   buyer               Buyer        @relation(fields: [buyerId], references: [id])
 
   forecasts            MaterialConsumptionForecast[]

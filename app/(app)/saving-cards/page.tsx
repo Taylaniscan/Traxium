@@ -168,7 +168,7 @@ export default async function SavingCardsPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <SectionHeading title="Saving Cards" />
+        <SectionHeading title="Savings Register" />
           <Link href="/saving-cards/new">
             <Button>Create Saving Card</Button>
           </Link>

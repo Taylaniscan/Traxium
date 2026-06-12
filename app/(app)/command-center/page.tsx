@@ -1,19 +1,105 @@
 export const dynamic = "force-dynamic";
 
 import { CommandCenterClient } from "@/components/command-center/command-center-client";
+import { OpenActionsList } from "@/components/open-actions/open-actions-list";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
 import {
   getCommandCenterData,
   getCommandCenterFilterOptions,
+  getPendingApprovals,
+  getPendingPhaseChangeRequests,
   getWorkspaceReadiness,
 } from "@/lib/data";
 import { captureException } from "@/lib/observability";
+import { roleLabels } from "@/lib/constants";
 import type {
   CommandCenterData,
   CommandCenterFilterOptions,
   WorkspaceReadiness,
 } from "@/lib/types";
+
+type ActionCenterView = "mine" | "all";
+
+function normalizeActionCenterView(value?: string | string[]): ActionCenterView {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  return normalized === "all" ? "all" : "mine";
+}
+
+async function loadActionQueueState(input: {
+  organizationId: string;
+  userId: string;
+  view: ActionCenterView;
+}) {
+  try {
+    if (input.view === "all") {
+      const requests = await getPendingPhaseChangeRequests(input.organizationId);
+      return {
+        actions: requests.map((request) => {
+          const pendingApproverRoles = [
+            ...new Set(
+              request.approvals.map((approval) => roleLabels[approval.approver.role])
+            ),
+          ];
+          const canDecide = request.approvals.some(
+            (approval) => approval.approverId === input.userId
+          );
+
+          return {
+            id: request.id,
+            requestId: request.id,
+            savingCardId: request.savingCard.id,
+            savingCardTitle: request.savingCard.title,
+            requestedBy: request.requestedBy.name,
+            requestedAt: request.createdAt.toISOString(),
+            currentPhase: request.currentPhase,
+            requestedPhase: request.requestedPhase,
+            comment: request.comment ?? null,
+            canDecide,
+            pendingApproverSummary:
+              pendingApproverRoles.length > 0
+                ? `${request.approvals.length} pending approver${request.approvals.length === 1 ? "" : "s"} · ${pendingApproverRoles.join(", ")}`
+                : "Pending approval",
+          };
+        }),
+      };
+    }
+
+    const approvals = await getPendingApprovals(input.userId, input.organizationId);
+    return {
+      actions: approvals.map((approval) => ({
+        id: approval.id,
+        requestId: approval.phaseChangeRequest.id,
+        savingCardId: approval.phaseChangeRequest.savingCard.id,
+        savingCardTitle: approval.phaseChangeRequest.savingCard.title,
+        requestedBy: approval.phaseChangeRequest.requestedBy.name,
+        requestedAt: approval.phaseChangeRequest.createdAt.toISOString(),
+        currentPhase: approval.phaseChangeRequest.currentPhase,
+        requestedPhase: approval.phaseChangeRequest.requestedPhase,
+        comment: approval.phaseChangeRequest.comment ?? null,
+        canDecide: true,
+        pendingApproverSummary: "Assigned to you",
+      })),
+    };
+  } catch (error) {
+    captureException(error, {
+      event: "action_center.page.actions_load_failed",
+      route: "/command-center",
+      organizationId: input.organizationId,
+      userId: input.userId,
+      payload: {
+        resource:
+          input.view === "all"
+            ? "pending_phase_change_requests"
+            : "pending_approvals",
+        degradedRender: true,
+        fallback: "empty_actions_list",
+        view: input.view,
+      },
+    });
+    return { actions: [] };
+  }
+}
 
 const EMPTY_COMMAND_CENTER_DATA: CommandCenterData = {
   filters: {},
@@ -144,8 +230,15 @@ async function loadCommandCenterReadinessState(input: {
   }
 }
 
-export default async function CommandCenterPage() {
+export default async function CommandCenterPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ view?: string | string[] }>;
+}) {
   const user = await requireUser();
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const view = normalizeActionCenterView(resolvedSearchParams.view);
+
   const { initialData, dataError } = await loadCommandCenterDataState({
     organizationId: user.organizationId,
     userId: user.id,
@@ -160,28 +253,50 @@ export default async function CommandCenterPage() {
       organizationId: user.organizationId,
       userId: user.id,
     });
+  const { actions } = await loadActionQueueState({
+    organizationId: user.organizationId,
+    userId: user.id,
+    view,
+  });
+
+  const viewOptions = [
+    { label: "My Open Actions", href: "/command-center", active: view === "mine" },
+    { label: "All Open Actions", href: "/command-center?view=all", active: view === "all" },
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <SectionHeading
-        title="Command Center"
-        subtitle="A focused operating view for approvals, blockers, finance-controlled records, and the portfolio context behind them."
+        title="Action Center"
+        subtitle="One place for what needs your attention — pending approvals and open workflow actions, plus the portfolio context behind them."
         action={
           <a href="/api/export" className={SERVER_OUTLINE_BUTTON_CLASS}>
             Export workbook
           </a>
         }
       />
-      <CommandCenterClient
-        initialData={initialData}
-        filterOptions={filterOptions}
-        readiness={workspaceReadiness}
-        loadState={{
-          dataError,
-          filterOptionsError,
-          readinessError,
-        }}
-      />
+
+      <section className="space-y-4" aria-label="Open actions">
+        <OpenActionsList
+          actions={actions}
+          readiness={workspaceReadiness}
+          view={view}
+          viewOptions={viewOptions}
+        />
+      </section>
+
+      <section className="space-y-4" aria-label="Portfolio command center">
+        <CommandCenterClient
+          initialData={initialData}
+          filterOptions={filterOptions}
+          readiness={workspaceReadiness}
+          loadState={{
+            dataError,
+            filterOptionsError,
+            readinessError,
+          }}
+        />
+      </section>
     </div>
   );
 }

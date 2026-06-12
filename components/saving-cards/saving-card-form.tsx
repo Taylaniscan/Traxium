@@ -107,6 +107,11 @@ export function SavingCardForm({
   const router = useRouter();
   const multiCurrencyEnabled = currencyMode?.multiCurrencyEnabled ?? false;
   const workspaceDefaultCurrency = currencyMode?.defaultCurrency ?? "USD";
+  // Pre-fill new cards with the workspace default plant ("Main Plant") when present.
+  const defaultPlant =
+    mode === "create"
+      ? referenceData.plants.find((plant) => plant.name === "Main Plant") ?? null
+      : null;
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +151,12 @@ export function SavingCardForm({
     alternativeSupplier: existingValue(card?.alternativeSupplierId, card?.alternativeSupplier?.name ?? card?.alternativeSupplierManualName),
     alternativeMaterial: existingValue(card?.alternativeMaterialId, card?.alternativeMaterial?.name ?? card?.alternativeMaterialManualName),
     category: existingValue(card?.categoryId, card?.category.name),
-    plant: existingValue(card?.plantId, card?.plant.name),
-    businessUnit: existingValue(card?.businessUnitId, card?.businessUnit.name),
+    plant: card
+      ? existingValue(card.plantId, card.plant?.name)
+      : defaultPlant
+        ? existingValue(defaultPlant.id, defaultPlant.name)
+        : existingValue(undefined, undefined),
+    businessUnit: existingValue(card?.businessUnitId, card?.businessUnit?.name),
     buyer: existingValue(card?.buyerId, card?.buyer.name),
     baselinePrice: String(card?.baselinePrice ?? ""),
     newPrice: String(card?.newPrice ?? ""),
@@ -331,8 +340,6 @@ export function SavingCardForm({
       { label: "Current Supplier", value: form.supplier.name },
       { label: "Current Material", value: form.material.name },
       { label: "Category", value: form.category.name },
-      { label: "Plant", value: form.plant.name },
-      { label: "Business Unit", value: form.businessUnit.name },
       { label: "Buyer", value: form.buyer.name },
     ].find((field) => !field.value.trim());
 
@@ -904,20 +911,26 @@ export function SavingCardForm({
               <>
                 <SectionBlock title="What happens next?" description="Add impact dates and the short business case. Create the card first. Then attach evidence and request finance validation.">
                   <div className="grid gap-5 lg:grid-cols-2">
-                    <CreatableMasterDataField
-                      label="Plant"
-                      items={referenceData.plants}
-                      value={form.plant}
-                      onChange={(plant) => setForm({ ...form, plant })}
-                      helper={plantHelper}
-                    />
-                    <CreatableMasterDataField
-                      label="Business Unit"
-                      items={referenceData.businessUnits}
-                      value={form.businessUnit}
-                      onChange={(businessUnit) => setForm({ ...form, businessUnit })}
-                      helper={businessUnitHelper}
-                    />
+                    <SubsectionPanel title="Optional details" description="Plant and business unit are optional. New cards default to the workspace plant, and unassigned cards group as “Unassigned.”">
+                      <div className="grid gap-5">
+                        <CreatableMasterDataField
+                          label="Plant"
+                          labelSuffix={<OptionalLabelText />}
+                          items={referenceData.plants}
+                          value={form.plant}
+                          onChange={(plant) => setForm({ ...form, plant })}
+                          helper={plantHelper}
+                        />
+                        <CreatableMasterDataField
+                          label="Business Unit"
+                          labelSuffix={<OptionalLabelText />}
+                          items={referenceData.businessUnits}
+                          value={form.businessUnit}
+                          onChange={(businessUnit) => setForm({ ...form, businessUnit })}
+                          helper={businessUnitHelper}
+                        />
+                      </div>
+                    </SubsectionPanel>
                     <SubsectionPanel title="Execution Timeline" description="When the initiative work starts and ends.">
                       <div className="grid gap-5">
                         <Field

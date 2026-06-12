@@ -39,8 +39,9 @@ describe("home page", () => {
     const page = await HomePage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
+    expect(markup).toContain("Stop defending your savings numbers.");
     expect(markup).toContain(
-      "Finance-trusted savings governance for US manufacturing SMEs."
+      "Track procurement savings with finance approval, evidence, and an"
     );
     expect(markup).toContain(
       "Paid pilot package for 50-500 employee US manufacturing SMEs"
@@ -50,11 +51,15 @@ describe("home page", () => {
     expect(markup).toContain("Finance-reviewed workflow");
     expect(markup).toContain("Private evidence trail");
     expect(markup).toContain("Controller-ready export");
-    expect(markup).toContain("Total cards");
+    expect(markup).toContain("In-Year Value");
+    expect(markup).toContain("Annualized Run-Rate");
     expect(markup).toContain("Finance locked");
-    expect(markup).toContain(">25</p>");
     expect(markup).toContain(">5</p>");
     expect(markup).toContain("No SSO/SAML, ERP connector");
+    // Internal module names must not leak into marketing copy.
+    expect(markup).not.toContain("Command Center");
+    expect(markup).not.toContain("Kanban");
+    expect(markup).not.toContain("Timeline");
     expect(markup).toContain("href=\"/login\"");
     expect(markup).toContain("Trust &amp; security");
     expect(markup).toContain("href=\"/trust\"");

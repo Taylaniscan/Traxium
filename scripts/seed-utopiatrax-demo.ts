@@ -156,6 +156,8 @@ export type UtopiaTraxDatasetSummary = {
   userCount: number;
   evidenceCount: number;
   alternativeCount: number;
+  costAvoidanceCardCount: number;
+  midYearImpactStartCount: number;
   volumeProfileCount: number;
   pendingPhaseRequestCount: number;
   expectedPendingOpenActions: number;
@@ -1592,6 +1594,9 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
     Object.values(SavingsBudgetImpact).map((value) => [value, 0])
   ) as Record<SavingsBudgetImpact, number>;
 
+  let costAvoidanceCardCount = 0;
+  let midYearImpactStartCount = 0;
+
   for (const card of UTOPIATRAX_SAVING_CARDS) {
     phaseCounts[card.phase] += 1;
     savingTypeCounts[card.savingType] += 1;
@@ -1599,6 +1604,15 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
     recurrenceCounts[card.impactRecurrence] += 1;
     budgetImpactCounts[card.budgetImpact] += 1;
     categoriesRepresented.add(card.categoryName);
+
+    // Mitigated-increase / cost-avoidance cards carry a reference price.
+    if (card.referencePrice !== undefined) {
+      costAvoidanceCardCount += 1;
+    }
+    // Mid-year impact starts are any start that is not January 1.
+    if (!card.impactStart.endsWith("-01-01")) {
+      midYearImpactStartCount += 1;
+    }
 
     if (!categoryNames.has(card.categoryName)) {
       unknownCategoryCards.push(card.title);
@@ -1620,6 +1634,8 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
       0
     ),
     alternativeCount: UTOPIATRAX_SAVING_CARDS.filter((card) => card.alternative).length,
+    costAvoidanceCardCount,
+    midYearImpactStartCount,
     volumeProfileCount: UTOPIATRAX_SAVING_CARDS.filter((card) => card.volumeProfile)
       .length,
     pendingPhaseRequestCount: UTOPIATRAX_PENDING_PHASE_REQUESTS.length,
@@ -1700,6 +1716,18 @@ export function validateUtopiaTraxDemoDataset() {
   if (summary.alternativeCount < 8) {
     errors.push(
       `Expected alternatives for at least 8 cards, found ${summary.alternativeCount}.`
+    );
+  }
+
+  if (summary.costAvoidanceCardCount < 2) {
+    errors.push(
+      `Expected at least 2 cost-avoidance/mitigated-increase cards with a reference price, found ${summary.costAvoidanceCardCount}.`
+    );
+  }
+
+  if (summary.midYearImpactStartCount < 3) {
+    errors.push(
+      `Expected several mid-year impact starts, found ${summary.midYearImpactStartCount}.`
     );
   }
 

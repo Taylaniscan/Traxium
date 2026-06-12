@@ -393,8 +393,8 @@ export function SavingCardDetailWorkspace({
                   <Metric label="Phase" value={phaseLabels[card.phase]} />
                   <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
                   <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
-                  <Metric label="Business Unit" value={card.businessUnit.name} />
-                  <Metric label="Plant" value={card.plant.name} />
+                  <Metric label="Business Unit" value={card.businessUnit?.name ?? "Unassigned"} />
+                  <Metric label="Plant" value={card.plant?.name ?? "Unassigned"} />
                 </DetailSection>
               </div>
             </CardContent>
@@ -1085,8 +1085,8 @@ function RecordSummaryRail({
         <RailSection title="Ownership & Scope">
           <RailRow label="Buyer" value={card.buyer.name} />
           <RailRow label="Category" value={card.category.name} />
-          <RailRow label="Business Unit" value={card.businessUnit.name} />
-          <RailRow label="Plant" value={card.plant.name} />
+          <RailRow label="Business Unit" value={card.businessUnit?.name ?? "Unassigned"} />
+          <RailRow label="Plant" value={card.plant?.name ?? "Unassigned"} />
         </RailSection>
 
         <RailSection title="Evidence & Scenario">
