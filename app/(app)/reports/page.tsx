@@ -150,12 +150,20 @@ export default async function ReportsPage() {
         title="Reports"
         subtitle="Executive savings review plus a controller-ready workbook with reconciled assumptions, workflow status, finance locks, and evidence coverage."
         action={
-          <a
-            href="/reports/timeline"
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-          >
-            Timeline view
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/monthly-close"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+            >
+              Monthly close
+            </a>
+            <a
+              href="/reports/timeline"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+            >
+              Timeline view
+            </a>
+          </div>
         }
       />
       <ExecutiveSavingsSummary

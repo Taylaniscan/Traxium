@@ -30,6 +30,12 @@ const prismaMock = vi.hoisted(() => ({
   auditLog: {
     create: vi.fn(),
   },
+  materialConsumptionForecast: {
+    findMany: vi.fn(() => Promise.resolve([])),
+  },
+  materialConsumptionActual: {
+    findMany: vi.fn(() => Promise.resolve([])),
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -59,6 +65,19 @@ vi.mock("@/lib/export/controller-workbook", () => ({
     "Evidence Types",
     "Last Evidence Upload Date",
     "Finance Lock Status",
+  ],
+  controllerActualsReconciliationColumns: [
+    "Saving Card Title",
+    "Currency",
+    "Period",
+    "Forecast Qty",
+    "Actual Qty",
+    "Variance Qty",
+    "Invoice Ref",
+    "Unit Saving (Local)",
+    "Forecast Value (Local)",
+    "Actual Value (Local)",
+    "Actual Value (USD)",
   ],
   importTemplateColumns: [
     "Title",
@@ -100,6 +119,7 @@ vi.mock("xlsx", () => ({
   utils: {
     json_to_sheet: jsonToSheetMock,
     aoa_to_sheet: aoaToSheetMock,
+    sheet_add_aoa: vi.fn(),
     book_new: bookNewMock,
     book_append_sheet: appendSheetMock,
     encode_cell: ({ r, c }: { r: number; c: number }) =>
@@ -180,6 +200,7 @@ describe("export route", () => {
           "Finance Lock Status": "Locked",
         },
       ],
+      actualsReconciliationRows: [],
       reconciliation: {
         activeCardCount: 1,
         activeSavings: 100000,
@@ -194,6 +215,9 @@ describe("export route", () => {
         },
         evidenceCoveragePercent: 100,
         financeLockedSavings: 100000,
+        actualsForecastValueUSD: 0,
+        actualsActualValueUSD: 0,
+        actualsVarianceUSD: 0,
       },
     });
     jsonToSheetMock.mockImplementation(() => ({}));
@@ -260,6 +284,7 @@ describe("export route", () => {
           slug: "atlas-procurement",
         },
       },
+      actuals: expect.any(Map),
     });
     expect(appendSheetMock.mock.calls.map((call) => call[2])).toEqual([
       "Portfolio Summary",
@@ -267,6 +292,7 @@ describe("export route", () => {
       "Data Dictionary",
       "Import Template",
       "Evidence Summary",
+      "Actuals Reconciliation",
     ]);
     expect(writeAuditEventMock).toHaveBeenCalledWith(prismaMock, {
       organizationId: "org-1",

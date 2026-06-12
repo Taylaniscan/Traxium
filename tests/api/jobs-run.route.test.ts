@@ -4,9 +4,14 @@ const getJobRunnerSecretMock = vi.hoisted(() => vi.fn());
 const registerDefaultJobHandlersMock = vi.hoisted(() => vi.fn());
 const runJobLoopMock = vi.hoisted(() => vi.fn());
 const recordJobRunnerHeartbeatMock = vi.hoisted(() => vi.fn());
+const enqueueDueMonthlyCloseRemindersMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/env", () => ({
   getJobRunnerSecret: getJobRunnerSecretMock,
+}));
+
+vi.mock("@/lib/monthly-close-reminder", () => ({
+  enqueueDueMonthlyCloseReminders: enqueueDueMonthlyCloseRemindersMock,
 }));
 
 vi.mock("@/lib/job-handlers", () => ({
@@ -41,6 +46,10 @@ describe("/api/jobs/run", () => {
     getJobRunnerSecretMock.mockReturnValue(SECRET);
     runJobLoopMock.mockResolvedValue({ processedJobs: 3, idle: true });
     recordJobRunnerHeartbeatMock.mockResolvedValue(undefined);
+    enqueueDueMonthlyCloseRemindersMock.mockResolvedValue({
+      due: false,
+      enqueued: 0,
+    });
   });
 
   it("rejects a request with no secret", async () => {

@@ -3,9 +3,14 @@ import { NextResponse } from "next/server";
 import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
 import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
-import { buildControllerWorkbookModel } from "@/lib/export/controller-workbook";
+import {
+  buildControllerWorkbookModel,
+  type ControllerActualsByCard,
+} from "@/lib/export/controller-workbook";
 import { renderControllerWorkbookXlsx } from "@/lib/export/controller-workbook-xlsx";
 import { prisma } from "@/lib/prisma";
+import { buildTenantOwnedRelationWhere } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -31,11 +36,63 @@ export async function GET(request: Request) {
       getSavingCards(user),
       getWorkspaceReadiness(user),
     ]);
+
+    // Load per-card forecast/actual volume series for the actuals-reconciliation
+    // sheet, tenant-scoped through the saving-card relation.
+    const cardIds = cards.map((card) => card.id);
+    const [forecasts, actualEntries] = cardIds.length
+      ? await Promise.all([
+          prisma.materialConsumptionForecast.findMany({
+            where: buildTenantOwnedRelationWhere("savingCard", user.organizationId, {
+              id: { in: cardIds },
+            }),
+            select: { savingCardId: true, period: true, forecastQty: true },
+            orderBy: { period: "asc" },
+          }),
+          prisma.materialConsumptionActual.findMany({
+            where: buildTenantOwnedRelationWhere("savingCard", user.organizationId, {
+              id: { in: cardIds },
+            }),
+            select: {
+              savingCardId: true,
+              period: true,
+              actualQty: true,
+              invoiceRef: true,
+            },
+            orderBy: { period: "asc" },
+          }),
+        ])
+      : [[], []];
+
+    const actuals: ControllerActualsByCard = new Map();
+    const ensureSeries = (cardId: string) => {
+      let series = actuals.get(cardId);
+      if (!series) {
+        series = { forecasts: [], actuals: [] };
+        actuals.set(cardId, series);
+      }
+      return series;
+    };
+    for (const forecast of forecasts) {
+      ensureSeries(forecast.savingCardId).forecasts.push({
+        period: forecast.period,
+        forecastQty: toNumber(forecast.forecastQty),
+      });
+    }
+    for (const actual of actualEntries) {
+      ensureSeries(actual.savingCardId).actuals.push({
+        period: actual.period,
+        actualQty: toNumber(actual.actualQty),
+        invoiceRef: actual.invoiceRef,
+      });
+    }
+
     const generatedAt = new Date();
     const model = buildControllerWorkbookModel({
       cards,
       generatedAt,
       workspaceReadiness,
+      actuals,
     });
     const buffer = renderControllerWorkbookXlsx({
       model,
@@ -60,6 +117,7 @@ export async function GET(request: Request) {
           "Data Dictionary",
           "Import Template",
           "Evidence Summary",
+          "Actuals Reconciliation",
         ],
       },
     });

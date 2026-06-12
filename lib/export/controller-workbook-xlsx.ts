@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 import {
+  controllerActualsReconciliationColumns,
   controllerSavingCardColumns,
   evidenceSummaryColumns,
   importTemplateColumns,
@@ -192,6 +193,24 @@ export function createControllerWorkbook(input: {
       cellDates: true,
     }
   );
+  const actualsReconciliationSheet =
+    model.actualsReconciliationRows.length > 0
+      ? XLSX.utils.json_to_sheet(model.actualsReconciliationRows, {
+          header: [...controllerActualsReconciliationColumns],
+        })
+      : XLSX.utils.aoa_to_sheet([[...controllerActualsReconciliationColumns]]);
+  // Append the estimate-vs-actual USD totals two rows below the detail table.
+  XLSX.utils.sheet_add_aoa(
+    actualsReconciliationSheet,
+    [
+      [],
+      ["Estimate vs. Actual (USD)", "", "Value"],
+      ["Forecast value to date (USD)", "", model.reconciliation.actualsForecastValueUSD],
+      ["Actual value to date (USD)", "", model.reconciliation.actualsActualValueUSD],
+      ["Variance (USD)", "", model.reconciliation.actualsVarianceUSD],
+    ],
+    { origin: -1 }
+  );
   const workbook = XLSX.utils.book_new();
 
   workbook.Props = {
@@ -236,12 +255,27 @@ export function createControllerWorkbook(input: {
     evidenceSummaryColumns,
     model.evidenceSummaryRows.length
   );
+  setTableSheetLayout(
+    actualsReconciliationSheet,
+    controllerActualsReconciliationColumns,
+    {
+      "Saving Card Title": 34,
+      "Forecast Value (Local)": 20,
+      "Actual Value (Local)": 20,
+      "Actual Value (USD)": 18,
+    }
+  );
 
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Portfolio Summary");
   XLSX.utils.book_append_sheet(workbook, savingCardsSheet, "Saving Cards");
   XLSX.utils.book_append_sheet(workbook, dataDictionarySheet, "Data Dictionary");
   XLSX.utils.book_append_sheet(workbook, importTemplateSheet, "Import Template");
   XLSX.utils.book_append_sheet(workbook, evidenceSummarySheet, "Evidence Summary");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    actualsReconciliationSheet,
+    "Actuals Reconciliation"
+  );
 
   return workbook;
 }

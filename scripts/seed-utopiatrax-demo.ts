@@ -159,6 +159,8 @@ export type UtopiaTraxDatasetSummary = {
   costAvoidanceCardCount: number;
   midYearImpactStartCount: number;
   volumeProfileCount: number;
+  volumeActualsThroughLastMonthCount: number;
+  volumeMissingLastMonthCount: number;
   pendingPhaseRequestCount: number;
   expectedPendingOpenActions: number;
   phaseCounts: Record<Phase, number>;
@@ -1638,6 +1640,14 @@ export function getUtopiaTraxDatasetSummary(): UtopiaTraxDatasetSummary {
     midYearImpactStartCount,
     volumeProfileCount: UTOPIATRAX_SAVING_CARDS.filter((card) => card.volumeProfile)
       .length,
+    // Mirrors the seed rule: "behind" cards intentionally omit the last completed
+    // month's actuals; on-track/ahead cards are reconciled through it.
+    volumeActualsThroughLastMonthCount: UTOPIATRAX_SAVING_CARDS.filter(
+      (card) => card.volumeProfile && card.volumeProfile !== "behind"
+    ).length,
+    volumeMissingLastMonthCount: UTOPIATRAX_SAVING_CARDS.filter(
+      (card) => card.volumeProfile === "behind"
+    ).length,
     pendingPhaseRequestCount: UTOPIATRAX_PENDING_PHASE_REQUESTS.length,
     expectedPendingOpenActions: getUtopiaTraxExpectedPendingOpenActionCount(),
     phaseCounts,
@@ -1728,6 +1738,20 @@ export function validateUtopiaTraxDemoDataset() {
   if (summary.midYearImpactStartCount < 3) {
     errors.push(
       `Expected several mid-year impact starts, found ${summary.midYearImpactStartCount}.`
+    );
+  }
+
+  // The Monthly Close ritual needs a visible mix for the last completed month:
+  // some cards fully reconciled and some still missing that month's actuals.
+  if (summary.volumeActualsThroughLastMonthCount < 1) {
+    errors.push(
+      "Expected at least one volume card reconciled through the last completed month."
+    );
+  }
+
+  if (summary.volumeMissingLastMonthCount < 1) {
+    errors.push(
+      "Expected at least one volume card missing the last completed month's actuals."
     );
   }
 
@@ -3038,7 +3062,15 @@ async function seedSavingCardRelations(input: {
     const dates = resolveProjectDates(card);
     const periods = monthRange(dates.impactStartDate, dates.impactEndDate);
     const forecastQty = card.annualVolume / periods.length;
-    const actualCutoff = new Date("2026-04-01T00:00:00.000Z");
+    // Track actuals against the real calendar so the Monthly Close ritual (which
+    // defaults to the last completed month) always shows a meaningful mix:
+    // on-track/ahead cards are fully reconciled through the last completed month,
+    // while "behind" cards are intentionally missing that latest month's actuals.
+    const lastCompletedMonth = startOfUtcMonth(addUtcMonths(new Date(), -1));
+    const actualsThroughMonth =
+      card.volumeProfile === "behind"
+        ? startOfUtcMonth(addUtcMonths(lastCompletedMonth, -1))
+        : lastCompletedMonth;
 
     for (const [index, period] of periods.entries()) {
       await prisma.materialConsumptionForecast.create({
@@ -3057,7 +3089,7 @@ async function seedSavingCardRelations(input: {
       });
       volumeForecastRows += 1;
 
-      if (period.getTime() < actualCutoff.getTime()) {
+      if (period.getTime() <= actualsThroughMonth.getTime()) {
         const multiplier =
           card.volumeProfile === "behind"
             ? 0.86

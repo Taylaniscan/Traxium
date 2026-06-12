@@ -43,6 +43,7 @@ export const jobTypes = {
   ANALYTICS_IDENTIFY: "analytics.identify",
   OBSERVABILITY_MESSAGE: "observability.message",
   OBSERVABILITY_EXCEPTION: "observability.exception",
+  MONTHLY_CLOSE_REMINDER: "monthly_close.reminder",
 } as const;
 
 export type JobPayload = Record<string, unknown>;

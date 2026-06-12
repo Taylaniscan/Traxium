@@ -550,6 +550,7 @@ export type SavingCardPortfolio = Prisma.SavingCardGetPayload<{
 }>;
 
 export const dashboardCardSelect = {
+  id: true,
   title: true,
   phase: true,
   savingType: true,
@@ -559,6 +560,9 @@ export const dashboardCardSelect = {
   categoryId: true,
   baselinePrice: true,
   newPrice: true,
+  referencePrice: true,
+  currency: true,
+  fxRate: true,
   annualVolume: true,
   calculatedSavings: true,
   annualizedRunRate: true,
@@ -602,6 +606,11 @@ export type DashboardCardSummary = Prisma.SavingCardGetPayload<{
 
 export type DashboardData = {
   cards: DashboardCardSummary[];
+  annualTarget?: number;
+  capturedActuals?: {
+    actualizedUSD: number;
+    cardsWithActuals: number;
+  };
 };
 
 export type WorkspaceIdentity = {

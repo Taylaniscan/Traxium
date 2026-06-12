@@ -118,6 +118,13 @@ describe("UtopiaTrax demo seed dataset", () => {
     const summary = getUtopiaTraxDatasetSummary();
 
     expect(summary.volumeProfileCount).toBeGreaterThanOrEqual(12);
+    // Monthly Close needs both reconciled and still-open cards for the last month.
+    expect(summary.volumeActualsThroughLastMonthCount).toBeGreaterThan(0);
+    expect(summary.volumeMissingLastMonthCount).toBeGreaterThan(0);
+    expect(
+      summary.volumeActualsThroughLastMonthCount +
+        summary.volumeMissingLastMonthCount
+    ).toBe(summary.volumeProfileCount);
     expect(summary.pendingPhaseRequestCount).toBe(5);
     expect(summary.expectedPendingOpenActions).toBe(7);
     expect(summary.expectedPendingOpenActions).toBe(

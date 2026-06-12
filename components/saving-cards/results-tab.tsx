@@ -359,6 +359,40 @@ export function ResultsTab({
           />
         </CardContent>
         <CardContent className="border-t border-[var(--border)] pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            Estimate vs. actual {data.summary.hasData ? "" : "(no actuals entered yet)"}
+          </p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Estimated value to date</p>
+              <p className="mt-1 text-lg font-semibold">
+                {formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Actual to date</p>
+              <p className="mt-1 text-lg font-semibold">
+                {formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Variance</p>
+              <p
+                className={
+                  data.summary.ytdVarianceSaving >= 0
+                    ? "mt-1 text-lg font-semibold text-emerald-600"
+                    : "mt-1 text-lg font-semibold text-rose-600"
+                }
+              >
+                {formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
+                {data.summary.ytdVariancePercent !== null
+                  ? ` (${data.summary.ytdVariancePercent >= 0 ? "+" : ""}${Math.round(data.summary.ytdVariancePercent)}%)`
+                  : ""}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+        <CardContent className="border-t border-[var(--border)] pt-4">
           <div className="flex flex-wrap gap-2">
             <Badge tone="neutral">{savingTypeLabels[savingType]}</Badge>
             <Badge tone="neutral">{savingsImpactTypeLabels[impactType]}</Badge>

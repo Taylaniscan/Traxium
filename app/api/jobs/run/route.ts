@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getJobRunnerSecret } from "@/lib/env";
 import { registerDefaultJobHandlers } from "@/lib/job-handlers";
 import { runJobLoop } from "@/lib/job-runner";
+import { enqueueDueMonthlyCloseReminders } from "@/lib/monthly-close-reminder";
 import { recordJobRunnerHeartbeat } from "@/lib/jobs";
 import {
   captureException,
@@ -76,6 +77,18 @@ async function handleRun(request: Request) {
   }
 
   registerDefaultJobHandlers();
+
+  // Scheduled fan-out: enqueue monthly-close reminders on the 1st of the month
+  // (idempotent + day-gated, so every other pass is a no-op). A failure here must
+  // not block the job loop, so it is captured and swallowed.
+  try {
+    await enqueueDueMonthlyCloseReminders();
+  } catch (error) {
+    captureException(error, {
+      ...requestContext,
+      event: "jobs.run.monthly_close_enqueue_failed",
+    });
+  }
 
   const startedAt = Date.now();
   try {

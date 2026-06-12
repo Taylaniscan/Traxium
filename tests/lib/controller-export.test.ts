@@ -255,6 +255,7 @@ describe("controller workbook model", () => {
       "Data Dictionary",
       "Import Template",
       "Evidence Summary",
+      "Actuals Reconciliation",
     ]);
     expect(
       XLSX.utils.sheet_to_json(workbook.Sheets["Saving Cards"])

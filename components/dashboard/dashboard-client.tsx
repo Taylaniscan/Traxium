@@ -577,6 +577,16 @@ export function DashboardClient({
     metrics,
     annualTarget,
   });
+  const capturedActuals = data.capturedActuals;
+  const capturedActualizedNote =
+    capturedActuals && capturedActuals.cardsWithActuals > 0
+      ? ` Actual to date: ${formatCurrency(
+          Math.round(capturedActuals.actualizedUSD),
+          "USD"
+        )} across ${capturedActuals.cardsWithActuals} captured card${
+          capturedActuals.cardsWithActuals === 1 ? "" : "s"
+        } with confirmed actuals.`
+      : "";
   const recentAchievements = [...data.cards]
     .filter((card) => {
       if (card.phase !== "ACHIEVED") {
@@ -772,7 +782,7 @@ export function DashboardClient({
           <KpiCard
             label="Captured Value"
             value={formatCurrency(executiveMetrics.achievedValue, "USD")}
-            description="Savings impact confirmed and no longer dependent on future conversion."
+            description={`Estimated savings impact confirmed and no longer dependent on future conversion.${capturedActualizedNote}`}
             tone="success"
             delta={
               <MetricDelta

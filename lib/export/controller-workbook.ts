@@ -14,8 +14,10 @@ import {
   savingsImpactTypeLabels,
   savingsImpactTypes,
 } from "@/lib/constants";
+import { resolveUnitSaving } from "@/lib/calculations";
 import { getEvidenceStatus, isFinanceEvidenceReviewPhase } from "@/lib/evidence";
 import { evidenceTypeLabels } from "@/lib/evidence-config";
+import { monthKey } from "@/lib/monthly-close";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 
 export type ControllerWorkbookCell = string | number | Date;
@@ -59,6 +61,20 @@ export const controllerSavingCardColumns = [
   "Business Case / Notes",
 ] as const;
 
+export const controllerActualsReconciliationColumns = [
+  "Saving Card Title",
+  "Currency",
+  "Period",
+  "Forecast Qty",
+  "Actual Qty",
+  "Variance Qty",
+  "Invoice Ref",
+  "Unit Saving (Local)",
+  "Forecast Value (Local)",
+  "Actual Value (Local)",
+  "Actual Value (USD)",
+] as const;
+
 export const evidenceSummaryColumns = [
   "Saving Card Title",
   "Phase",
@@ -93,6 +109,15 @@ export const importTemplateColumns = [
   "Business Case / Notes",
 ] as const;
 
+/** Per-card period series used to build the actuals-reconciliation sheet. */
+export type ControllerActualsByCard = Map<
+  string,
+  {
+    forecasts: Array<{ period: Date; forecastQty: number }>;
+    actuals: Array<{ period: Date; actualQty: number; invoiceRef: string | null }>;
+  }
+>;
+
 export type ControllerWorkbookModel = {
   generatedAt: Date;
   reportingCurrency: "USD";
@@ -101,6 +126,7 @@ export type ControllerWorkbookModel = {
   dataDictionaryRows: ControllerWorkbookCell[][];
   importTemplateRows: ControllerWorkbookRow[];
   evidenceSummaryRows: ControllerWorkbookRow[];
+  actualsReconciliationRows: ControllerWorkbookRow[];
   reconciliation: {
     activeCardCount: number;
     activeSavings: number;
@@ -109,6 +135,9 @@ export type ControllerWorkbookModel = {
     phaseCounts: Record<Phase, number>;
     evidenceCoveragePercent: number;
     financeLockedSavings: number;
+    actualsForecastValueUSD: number;
+    actualsActualValueUSD: number;
+    actualsVarianceUSD: number;
   };
 };
 
@@ -534,12 +563,143 @@ function buildEvidenceSummaryRows(
   }));
 }
 
+// Effective USD-per-local ratio implied by the card's stored savings totals, so the
+// actuals sheet reconciles to the same USD basis as the rest of the workbook without
+// needing a separate FX field.
+function getUsdRatio(card: SavingCardPortfolio) {
+  if (card.currency === "USD") {
+    return 1;
+  }
+  const local = normalizeNumber(card.calculatedSavings);
+  if (local === 0) {
+    return 1;
+  }
+  return normalizeNumber(card.calculatedSavingsUSD) / local;
+}
+
+export function buildActualsReconciliationRows(
+  cards: SavingCardPortfolio[],
+  actuals: ControllerActualsByCard
+): ControllerWorkbookRow[] {
+  const rows: ControllerWorkbookRow[] = [];
+
+  for (const card of cards) {
+    const series = actuals.get(card.id);
+    if (!series) {
+      continue;
+    }
+
+    const unitSaving = resolveUnitSaving({
+      baselinePrice: normalizeNumber(card.baselinePrice),
+      newPrice: normalizeNumber(card.newPrice),
+      impactType: card.impactType,
+      referencePrice:
+        card.referencePrice === null || card.referencePrice === undefined
+          ? null
+          : normalizeNumber(card.referencePrice),
+    });
+    const usdRatio = getUsdRatio(card);
+
+    const forecastByPeriod = new Map<string, number>();
+    for (const forecast of series.forecasts) {
+      forecastByPeriod.set(monthKey(forecast.period), forecast.forecastQty);
+    }
+    const actualByPeriod = new Map<
+      string,
+      { actualQty: number; invoiceRef: string | null }
+    >();
+    for (const actual of series.actuals) {
+      actualByPeriod.set(monthKey(actual.period), {
+        actualQty: actual.actualQty,
+        invoiceRef: actual.invoiceRef,
+      });
+    }
+
+    const periodKeys = [
+      ...new Set([...forecastByPeriod.keys(), ...actualByPeriod.keys()]),
+    ].sort();
+
+    for (const periodKey of periodKeys) {
+      const hasForecast = forecastByPeriod.has(periodKey);
+      const actual = actualByPeriod.get(periodKey);
+      const forecastQty = forecastByPeriod.get(periodKey) ?? 0;
+      const hasActual = Boolean(actual);
+      const actualQty = actual?.actualQty ?? 0;
+
+      const forecastValueLocal = forecastQty * unitSaving;
+      const actualValueLocal = actualQty * unitSaving;
+      const actualValueUsd = actualValueLocal * usdRatio;
+
+      rows.push({
+        "Saving Card Title": card.title,
+        Currency: card.currency,
+        Period: periodKey,
+        "Forecast Qty": hasForecast ? forecastQty : "",
+        "Actual Qty": hasActual ? actualQty : "",
+        "Variance Qty": hasActual ? actualQty - forecastQty : "",
+        "Invoice Ref": actual?.invoiceRef ?? "",
+        "Unit Saving (Local)": unitSaving,
+        "Forecast Value (Local)": hasForecast ? forecastValueLocal : "",
+        "Actual Value (Local)": hasActual ? actualValueLocal : 0,
+        "Actual Value (USD)": hasActual ? actualValueUsd : 0,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function summarizeActualsReconciliation(
+  cards: SavingCardPortfolio[],
+  actuals: ControllerActualsByCard
+) {
+  let actualsForecastValueUSD = 0;
+  let actualsActualValueUSD = 0;
+
+  for (const card of cards) {
+    const series = actuals.get(card.id);
+    if (!series) {
+      continue;
+    }
+    const unitSaving = resolveUnitSaving({
+      baselinePrice: normalizeNumber(card.baselinePrice),
+      newPrice: normalizeNumber(card.newPrice),
+      impactType: card.impactType,
+      referencePrice:
+        card.referencePrice === null || card.referencePrice === undefined
+          ? null
+          : normalizeNumber(card.referencePrice),
+    });
+    const usdRatio = getUsdRatio(card);
+
+    for (const forecast of series.forecasts) {
+      actualsForecastValueUSD += forecast.forecastQty * unitSaving * usdRatio;
+    }
+    for (const actual of series.actuals) {
+      actualsActualValueUSD += actual.actualQty * unitSaving * usdRatio;
+    }
+  }
+
+  return {
+    actualsForecastValueUSD,
+    actualsActualValueUSD,
+    actualsVarianceUSD: actualsActualValueUSD - actualsForecastValueUSD,
+  };
+}
+
 export function buildControllerWorkbookModel(input: {
   cards: SavingCardPortfolio[];
   generatedAt: Date;
   workspaceReadiness: WorkspaceReadiness;
+  actuals?: ControllerActualsByCard;
 }): ControllerWorkbookModel {
   const summary = buildPortfolioSummaryRows(input);
+  const actualsReconciliationRows = input.actuals
+    ? buildActualsReconciliationRows(input.cards, input.actuals)
+    : [];
+  const actualsTotals = input.actuals
+    ? summarizeActualsReconciliation(input.cards, input.actuals)
+    : { actualsForecastValueUSD: 0, actualsActualValueUSD: 0, actualsVarianceUSD: 0 };
 
   return {
     generatedAt: input.generatedAt,
@@ -549,6 +709,10 @@ export function buildControllerWorkbookModel(input: {
     dataDictionaryRows: buildDataDictionaryRows(),
     importTemplateRows: buildImportTemplateRows(),
     evidenceSummaryRows: buildEvidenceSummaryRows(input.cards),
-    reconciliation: summary.reconciliation,
+    actualsReconciliationRows,
+    reconciliation: {
+      ...summary.reconciliation,
+      ...actualsTotals,
+    },
   };
 }
