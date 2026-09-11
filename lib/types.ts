@@ -427,21 +427,33 @@ export type AuthGuardOptions = {
 export const savingCardPortfolioSelect = {
   id: true,
   title: true,
+  description: true,
   savingType: true,
+  impactType: true,
+  impactRecurrence: true,
+  budgetImpact: true,
   phase: true,
   supplierId: true,
   materialId: true,
   categoryId: true,
+  plantId: true,
   businessUnitId: true,
   buyerId: true,
   alternativeSupplierManualName: true,
   alternativeMaterialManualName: true,
   baselinePrice: true,
   newPrice: true,
+  referencePrice: true,
   annualVolume: true,
+  volumeUnit: true,
   currency: true,
   calculatedSavings: true,
   calculatedSavingsUSD: true,
+  annualizedRunRate: true,
+  annualizedRunRateUSD: true,
+  inYearValue: true,
+  inYearValueUSD: true,
+  frequency: true,
   savingDriver: true,
   implementationComplexity: true,
   qualificationStatus: true,
@@ -450,6 +462,17 @@ export const savingCardPortfolioSelect = {
   impactStartDate: true,
   impactEndDate: true,
   financeLocked: true,
+  cancellationReason: true,
+  createdAt: true,
+  updatedAt: true,
+  evidence: {
+    select: {
+      id: true,
+      evidenceType: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   supplier: {
     select: {
       id: true,
@@ -486,6 +509,12 @@ export const savingCardPortfolioSelect = {
       name: true,
     },
   },
+  plant: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
   businessUnit: {
     select: {
       id: true,
@@ -506,6 +535,14 @@ export const savingCardPortfolioSelect = {
     },
     orderBy: { createdAt: "desc" as const },
   },
+  phaseHistory: {
+    select: {
+      toPhase: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
 } satisfies Prisma.SavingCardSelect;
 
 export type SavingCardPortfolio = Prisma.SavingCardGetPayload<{
@@ -513,18 +550,39 @@ export type SavingCardPortfolio = Prisma.SavingCardGetPayload<{
 }>;
 
 export const dashboardCardSelect = {
+  id: true,
   title: true,
   phase: true,
+  savingType: true,
+  impactType: true,
+  impactRecurrence: true,
+  budgetImpact: true,
   categoryId: true,
   baselinePrice: true,
   newPrice: true,
+  referencePrice: true,
+  currency: true,
+  fxRate: true,
   annualVolume: true,
   calculatedSavings: true,
+  annualizedRunRate: true,
+  annualizedRunRateUSD: true,
+  inYearValue: true,
+  inYearValueUSD: true,
   frequency: true,
   savingDriver: true,
   implementationComplexity: true,
   qualificationStatus: true,
   impactStartDate: true,
+  impactEndDate: true,
+  evidence: {
+    select: {
+      id: true,
+      evidenceType: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   category: {
     select: {
       name: true,
@@ -548,11 +606,17 @@ export type DashboardCardSummary = Prisma.SavingCardGetPayload<{
 
 export type DashboardData = {
   cards: DashboardCardSummary[];
+  annualTarget?: number;
+  capturedActuals?: {
+    actualizedUSD: number;
+    cardsWithActuals: number;
+  };
 };
 
 export type WorkspaceIdentity = {
   id: string;
   name: string;
+  description?: string | null;
   slug: string;
   createdAt: Date;
   updatedAt: Date;
@@ -682,6 +746,60 @@ export type CommandCenterQualificationPoint = {
   savings: number;
 };
 
+export type CommandCenterPendingApprovalItem = {
+  requestId: string;
+  savingCardId: string;
+  savingCardTitle: string;
+  currentPhase: string;
+  requestedPhase: string;
+  requestedByName: string;
+  requestedByRole: string;
+  createdAt: string;
+  ageDays: number;
+  isOverdue: boolean;
+  pendingApproverCount: number;
+  pendingApproverRoles: string[];
+  savings: number;
+  financeLocked: boolean;
+};
+
+export type CommandCenterAttentionItem = {
+  savingCardId: string;
+  title: string;
+  phase: string;
+  buyerName: string;
+  categoryName: string;
+  dateLabel: string;
+  dateValue: string;
+  ageDays: number;
+  savings: number;
+  financeLocked: boolean;
+};
+
+export type CommandCenterDecisionItem = {
+  approvalId: string;
+  savingCardId: string;
+  savingCardTitle: string;
+  phase: string;
+  approverName: string;
+  approverRole: string;
+  status: string;
+  approved: boolean;
+  createdAt: string;
+  comment: string | null;
+};
+
+export type CommandCenterActivityItem = {
+  savingCardId: string;
+  savingCardTitle: string;
+  phase: string;
+  buyerName: string;
+  categoryName: string;
+  updatedAt: string;
+  financeLocked: boolean;
+  savings: number;
+};
+
 export type CommandCenterData = {
   filters: CommandCenterFilters;
   kpis: CommandCenterKpis;
@@ -690,6 +808,11 @@ export type CommandCenterData = {
   topSuppliers: CommandCenterTopSupplier[];
   savingsByRiskLevel: CommandCenterRiskPoint[];
   savingsByQualificationStatus: CommandCenterQualificationPoint[];
+  pendingApprovalQueue?: CommandCenterPendingApprovalItem[];
+  overdueItems?: CommandCenterAttentionItem[];
+  financeLockedItems?: CommandCenterAttentionItem[];
+  recentDecisions?: CommandCenterDecisionItem[];
+  recentActivity?: CommandCenterActivityItem[];
 };
 
 export type CommandCenterApiError = {
@@ -749,10 +872,9 @@ export type SavingCardWithRelations = Prisma.SavingCardGetPayload<{
     businessUnit: true;
     buyer: true;
     stakeholders: { include: { user: true } };
-    evidence: true;
+    evidence: { include: { uploadedBy: { select: { id: true; name: true; email: true } } }; orderBy: { uploadedAt: "desc" } };
     alternativeSuppliers: { include: { supplier: true } };
     alternativeMaterials: { include: { material: true; supplier: true } };
-    approvals: { include: { approver: true } };
     phaseChangeRequests: { include: { requestedBy: true; approvals: { include: { approver: true } } } };
     phaseHistory: { orderBy: { createdAt: "desc" } };
     comments: { include: { author: true } };

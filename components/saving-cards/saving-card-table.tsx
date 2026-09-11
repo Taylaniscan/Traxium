@@ -3,22 +3,38 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Search } from "lucide-react";
-import { PhaseBadge, PhaseDot } from "@/components/ui/phase-badge";
+import { PhaseBadge, PhaseDot, getPhaseVisuals } from "@/components/ui/phase-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { phaseLabels, phases } from "@/lib/constants";
+import { Badge } from "@/components/ui/badge";
+import {
+  phaseLabels,
+  phases,
+  savingTypeLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
+import { getEvidenceStatus } from "@/lib/evidence";
 
 export function SavingCardTable({
   cards,
   readiness,
+  scope = "all",
+  viewOptions = [],
 }: {
   cards: SavingCardPortfolio[];
   readiness?: WorkspaceReadiness | null;
+  scope?: "all" | "mine" | "approvals";
+  viewOptions?: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
 }) {
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
@@ -37,7 +53,8 @@ export function SavingCardTable({
 
       const haystack = [
         card.title,
-        card.savingType,
+        savingTypeLabels[card.savingType],
+        savingsImpactTypeLabels[card.impactType],
         card.category.name,
         card.buyer.name,
         card.supplier.name,
@@ -51,9 +68,9 @@ export function SavingCardTable({
   }, [cards, phaseFilter, search]);
 
   const activeFilters = Boolean(search.trim() || phaseFilter);
-  const totalSavings = filteredCards.reduce((sum, card) => sum + card.calculatedSavings, 0);
+  const totalSavings = filteredCards.reduce((sum, card) => sum + toNumber(card.calculatedSavings), 0);
   const lockedCount = filteredCards.filter((card) => card.financeLocked).length;
-  const realisedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
+  const capturedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
   const totalLockedCount = cards.filter((card) => card.financeLocked).length;
   const configuredCollections = readiness?.masterData.filter((item) => item.ready).length ?? 0;
   const workflowCoverageReady = readiness?.workflowCoverage.filter((item) => item.ready).length ?? 0;
@@ -61,31 +78,83 @@ export function SavingCardTable({
     cards.length > 0 && (cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
   const nextActions = buildPortfolioNextActions(readiness, cards.length);
 
+  const scopeTitle =
+    scope === "mine"
+      ? "My Cards"
+      : scope === "approvals"
+        ? "My Approvals"
+        : "All Cards";
+  const scopeDescription =
+    scope === "mine"
+      ? "Cards where you are assigned as a stakeholder."
+      : scope === "approvals"
+        ? "Cards currently waiting on your approval."
+        : "Portfolio-wide view of all saving cards in the workspace.";
+  const emptyState = getSavingCardScopeEmptyState(scope);
+
   if (!cards.length) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
-          <div className="text-4xl" aria-hidden="true">
-            📋
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-[var(--foreground)]">
-              Henüz saving card yok
-            </h2>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              İlk tasarruf inisiyatifinizi ekleyerek başlayın.
-            </p>
-          </div>
-          <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
-            İlk İnisiyatifi Ekle
-          </Link>
-        </CardContent>
-      </Card>
+      <div className="space-y-5">
+        {viewOptions.length ? (
+          <ViewScopeCard
+            title="Card Views"
+            description={scopeDescription}
+            options={viewOptions}
+          />
+        ) : null}
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+            {/* Friendly geometric empty-state illustration in the soft phase tints */}
+            <svg
+              aria-hidden="true"
+              width="120"
+              height="84"
+              viewBox="0 0 120 84"
+              fill="none"
+            >
+              <rect x="8" y="40" width="22" height="36" rx="6" fill="var(--phase-proposed-soft)" stroke="var(--phase-proposed)" strokeWidth="2" />
+              <rect x="38" y="24" width="22" height="52" rx="6" fill="var(--phase-validated-soft)" stroke="var(--phase-validated)" strokeWidth="2" />
+              <rect x="68" y="32" width="22" height="44" rx="6" fill="var(--phase-implemented-soft)" stroke="var(--phase-implemented)" strokeWidth="2" />
+              <rect x="98" y="12" width="14" height="64" rx="6" fill="var(--phase-captured-soft)" stroke="var(--phase-captured)" strokeWidth="2" />
+              <circle cx="20" cy="18" r="7" fill="var(--primary-soft)" stroke="var(--primary-action)" strokeWidth="2" />
+            </svg>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-[var(--foreground)]">
+                {emptyState.title}
+              </h2>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {emptyState.description}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link href="/saving-cards/new" className={buttonVariants({ size: "sm" })}>
+                Add First Initiative
+              </Link>
+              {scope !== "all" ? (
+                <Link
+                  href="/saving-cards"
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  View All Cards
+                </Link>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-5">
+      {viewOptions.length ? (
+        <ViewScopeCard
+          title="Card Views"
+          description={scopeDescription}
+          options={viewOptions}
+        />
+      ) : null}
+
       {showRampUpState ? (
         <PortfolioRampUpCard
           readiness={readiness}
@@ -100,9 +169,9 @@ export function SavingCardTable({
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle>Portfolio Controls</CardTitle>
+            <CardTitle>{scopeTitle} Controls</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase across the live workspace register.
+              Search by title, buyer, category, supplier, or saving type, and filter by workflow phase within the current card view.
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 p-2">
@@ -142,9 +211,9 @@ export function SavingCardTable({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile label="Portfolio Savings" value={formatCurrency(Math.round(totalSavings), "EUR")} />
+        <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "USD")} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
-        <SummaryTile label="Realised or Achieved" value={String(realisedCount)} />
+        <SummaryTile label="Implemented or Captured" value={String(capturedCount)} />
       </div>
 
       {!filteredCards.length ? (
@@ -181,9 +250,13 @@ export function SavingCardTable({
       <Card>
         <CardHeader className="flex flex-row items-end justify-between gap-4">
           <div>
-            <CardTitle>Saving Cards</CardTitle>
+            <CardTitle>{scopeTitle}</CardTitle>
             <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
-              Operational register of all initiatives, with phase, owner, supplier, and finance controls.
+              {scope === "mine"
+                ? "Stakeholder-assigned initiatives that belong to your day-to-day portfolio."
+                : scope === "approvals"
+                  ? "Initiatives that currently need your approval attention."
+                  : "Operational register of all initiatives, with phase, owner, supplier, and finance controls."}
             </p>
           </div>
         </CardHeader>
@@ -193,7 +266,10 @@ export function SavingCardTable({
               <Link
                 key={card.id}
                 href={`/saving-cards/${card.id}`}
-                className="flex flex-col gap-4 rounded-[10px] border border-[rgba(99,102,241,0.1)] bg-white px-4 py-4 transition-shadow hover:shadow-[0_2px_8px_rgba(79,70,229,0.12)] lg:flex-row lg:items-center lg:justify-between"
+                className={cn(
+                  "card-interactive flex flex-col gap-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-4 py-5 hover:bg-[var(--primary-soft)] lg:flex-row lg:items-center lg:justify-between",
+                  getPhaseVisuals(card.phase).rowAccentClassName
+                )}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -211,15 +287,26 @@ export function SavingCardTable({
                     {card.category.name} · {card.supplier.name} · {card.buyer.name}
                   </p>
                   <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-                    {card.savingType} · {formatDate(card.impactStartDate)} to{" "}
-                    {formatDate(card.impactEndDate)}
+                    {savingTypeLabels[card.savingType]} · {savingsImpactTypeLabels[card.impactType]} ·{" "}
+                    {formatDate(card.impactStartDate)} to {formatDate(card.impactEndDate)}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge tone={getEvidenceTone(card.phase, card.evidence.length)}>
+                      {getEvidenceStatus(card.phase, card.evidence.length)}
+                    </Badge>
+                    {card.evidence.length ? (
+                      <Badge tone="slate">
+                        {card.evidence.length} evidence file
+                        {card.evidence.length === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
-                    <p className="text-base font-semibold text-[var(--foreground)]">
-                      {formatCurrency(Math.round(card.calculatedSavings), "EUR")}
+                    <p className="text-numeric text-base font-semibold">
+                      {formatCurrency(Math.round(toNumber(card.calculatedSavings)), "USD")}
                     </p>
                     <p className="text-[12px] text-[var(--muted-foreground)]">
                       {card.currency} basis
@@ -236,6 +323,80 @@ export function SavingCardTable({
   );
 }
 
+function getEvidenceTone(
+  phase: SavingCardPortfolio["phase"],
+  evidenceCount: number
+): "emerald" | "amber" | "rose" | "slate" {
+  const status = getEvidenceStatus(phase, evidenceCount);
+
+  if (status === "Evidence attached") return "emerald";
+  if (status === "Missing evidence") return "rose";
+  if (status === "Evidence recommended") return "amber";
+  return "slate";
+}
+
+function ViewScopeCard({
+  title,
+  description,
+  options,
+}: {
+  title: string;
+  description: string;
+  options: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => (
+            <Link
+              key={option.href}
+              href={option.href}
+              aria-current={option.active ? "page" : undefined}
+              className={buttonVariants({
+                variant: option.active ? "default" : "outline",
+                size: "sm",
+              })}
+            >
+              {option.label}
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getSavingCardScopeEmptyState(scope: "all" | "mine" | "approvals") {
+  switch (scope) {
+    case "mine":
+      return {
+        title: "No cards assigned to you yet",
+        description:
+          "Saving cards where you are listed as a stakeholder will appear here.",
+      };
+    case "approvals":
+      return {
+        title: "No cards need your approval right now",
+        description:
+          "Cards with pending phase-change approvals assigned to you will appear here.",
+      };
+    default:
+      return {
+        title: "No saving cards yet",
+        description: "Start by adding your first savings initiative.",
+      };
+  }
+}
+
 function PortfolioLaunchMetric({
   label,
   value,
@@ -246,7 +407,7 @@ function PortfolioLaunchMetric({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-4 text-[var(--foreground)]">
       <p className="text-[11px] text-[var(--muted-foreground)]">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
@@ -329,7 +490,7 @@ function PortfolioRampUpCard({
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="bg-white">
+    <Card className="bg-[var(--surface)]">
       <CardContent className="p-5">
         <p className="text-[1.7rem] font-semibold tracking-[-0.03em]">{value}</p>
         <p className="mt-2 text-[12px] text-[var(--muted-foreground)]">{label}</p>

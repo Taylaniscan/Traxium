@@ -3,6 +3,11 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  stripeBillingOptionalEnvKeys,
+  stripeBillingOptionalServerEnvKeys,
+  stripeBillingRequiredEnvKeys,
+} from "@/lib/billing/config";
 import { assertPredeployConfiguration } from "@/scripts/predeploy-check";
 
 function readProjectFile(relativePath: string) {
@@ -60,6 +65,21 @@ describe("release safety consistency", () => {
       expect(envExample).toContain(`${requiredKey}=`);
     }
 
+    for (const stripeKey of [
+      ...stripeBillingOptionalEnvKeys,
+      ...stripeBillingOptionalServerEnvKeys,
+      ...stripeBillingRequiredEnvKeys,
+    ]) {
+      expect(envExample).toMatch(new RegExp(`^${stripeKey}=$`, "m"));
+    }
+
+    expect(envExample).toContain(
+      "Each plan requires one Stripe Product ID and one licensed"
+    );
+    expect(envExample).not.toMatch(/^STRIPE_SECRET_KEY=sk_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_WEBHOOK_SECRET=whsec_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_[A-Z_]+_PRODUCT_ID=prod_/mu);
+    expect(envExample).not.toMatch(/^STRIPE_[A-Z_]+_PRICE_ID=price_/mu);
     expect(envExample).not.toMatch(/\[(?:PROJECT-REF|PASSWORD|REGION)\]/u);
     expect(envExample).not.toMatch(/\[YOUR_[A-Z_]+\]/u);
   });
@@ -126,6 +146,9 @@ describe("release safety consistency", () => {
     const environmentSetup = readProjectFile("docs/environment-setup.md");
     const releaseChecklist = readProjectFile("docs/release-checklist.md");
     const deploymentStrategy = readProjectFile("docs/deployment-strategy.md");
+    const providerFlowValidation = readProjectFile(
+      "docs/provider-flow-validation.md"
+    );
     const billingAccessGuide = readProjectFile(
       "docs/subscription-gating-and-billing-recovery.md"
     );
@@ -133,6 +156,9 @@ describe("release safety consistency", () => {
     const operationsRunbook = readProjectFile("docs/operations-runbook.md");
     const smokeTests = readProjectFile("docs/post-release-smoke-tests.md");
     const runtimeBaseline = readProjectFile("docs/runtime-baseline.md");
+    const packageJson = JSON.parse(readProjectFile("package.json")) as {
+      scripts?: Record<string, string>;
+    };
 
     expect(nextConfig).not.toMatch(/\benv\s*:/u);
     expect(nextConfig).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
@@ -153,9 +179,24 @@ describe("release safety consistency", () => {
     expect(releaseChecklist).toContain("npm run db:validate");
     expect(releaseChecklist).toContain("npm run test");
     expect(releaseChecklist).toContain("npm run build");
+    expect(releaseChecklist).toContain("provider-flow-validation.md");
+    expect(releaseChecklist).toContain("readiness-proof-log.md");
+    expect(releaseChecklist).toContain("npm run providers:validate");
+    expect(releaseChecklist).toContain("npm run stripe:validate");
+    expect(releaseChecklist).toContain("npm run supabase:validate");
+    expect(releaseChecklist).toContain("npm run jobs:worker:healthcheck");
+    expect(releaseChecklist).toContain("Do not claim provider proof");
     expect(releaseChecklist).toContain("STRIPE_SECRET_KEY");
     expect(releaseChecklist).toContain("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
-    expect(releaseChecklist).toContain("STRIPE_GROWTH_METERED_PRICE_ID");
+    expect(releaseChecklist).toContain(
+      "optional Stripe plan catalog values are present only when the live plan uses metered recurring pricing"
+    );
+    expect(environmentSetup).toContain(
+      "Metered Stripe price IDs are optional unless a plan also has a metered recurring Stripe Price"
+    );
+    expect(deploymentStrategy).toContain(
+      "Metered Stripe price ids are optional unless a live plan also has metered recurring pricing."
+    );
     expect(releaseChecklist).toContain("dashboard and Kanban changes include both focused regression tests");
     expect(releaseChecklist).toContain("POSTDEPLOY_SESSION_COOKIE");
     expect(releaseChecklist).toContain("/dashboard");
@@ -164,6 +205,8 @@ describe("release safety consistency", () => {
       "subscription-gating-and-billing-recovery.md"
     );
     expect(deploymentStrategy).toContain("npm run predeploy");
+    expect(deploymentStrategy).toContain("provider-flow-validation.md");
+    expect(deploymentStrategy).toContain("npm run providers:validate");
     expect(deploymentStrategy).toContain("npm run release:verify");
     expect(deploymentStrategy).toContain("npm run release:migrate");
     expect(deploymentStrategy).toContain("prisma migrate deploy");
@@ -209,6 +252,23 @@ describe("release safety consistency", () => {
     expect(smokeTests).toContain("/billing-required");
     expect(smokeTests).toContain("/api/auth/bootstrap");
     expect(smokeTests).toContain("/settings/billing");
+    expect(smokeTests).toContain("provider-flow-validation.md");
+    expect(smokeTests).toContain("Production smoke provider proof");
+    expect(providerFlowValidation).toContain("Provider Flow Matrix");
+    expect(providerFlowValidation).toContain("Proof Log Template");
+    expect(providerFlowValidation).toContain("Hard Blockers");
+    expect(providerFlowValidation).toContain("Do not claim pass unless proof exists");
+    expect(providerFlowValidation).not.toContain("TODO");
+    expect(providerFlowValidation).not.toContain("TBD");
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run stripe:validate"
+    );
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run supabase:validate"
+    );
+    expect(packageJson.scripts?.["providers:validate"]).toContain(
+      "npm run jobs:worker:healthcheck"
+    );
     expect(runtimeBaseline).toContain("Verified Automated Coverage");
     expect(runtimeBaseline).toContain("Pending Manual Verification");
     expect(runtimeBaseline).toContain("Saving-card create");

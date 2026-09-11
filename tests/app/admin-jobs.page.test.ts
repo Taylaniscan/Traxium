@@ -16,6 +16,7 @@ const redirectMock = vi.hoisted(() =>
 const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const canManageOrganizationMembersMock = vi.hoisted(() => vi.fn());
 const getOrganizationJobsOverviewMock = vi.hoisted(() => vi.fn());
+const getJobRunnerHeartbeatMock = vi.hoisted(() => vi.fn());
 const adminJobsPanelMock = vi.hoisted(() =>
   vi.fn(
     ({
@@ -50,6 +51,7 @@ vi.mock("@/lib/organizations", () => ({
 
 vi.mock("@/lib/jobs", () => ({
   getOrganizationJobsOverview: getOrganizationJobsOverviewMock,
+  getJobRunnerHeartbeat: getJobRunnerHeartbeatMock,
 }));
 
 vi.mock("@/components/admin/admin-jobs-panel", () => ({
@@ -90,6 +92,13 @@ describe("admin jobs page", () => {
         },
       ],
     });
+    getJobRunnerHeartbeatMock.mockResolvedValue({
+      lastSuccessfulRunAt: "2026-06-12T07:30:00.000Z",
+      processedJobs: 3,
+      durationMs: 1200,
+      ageMs: 60000,
+      stale: false,
+    });
   });
 
   it("renders tenant-scoped job health for the active organization", async () => {
@@ -116,8 +125,10 @@ describe("admin jobs page", () => {
     expect(markup).toContain("Job Health");
     expect(markup).toContain("jobs-panel");
     expect(markup).toContain("Worker Commands");
+    expect(markup).toContain("separate worker process");
     expect(markup).toContain("npm run jobs:worker");
     expect(markup).toContain("npm run jobs:worker:once");
+    expect(markup).toContain("npm run jobs:worker:healthcheck");
     expect(markup).toContain("data-job-count=\"1\"");
     expect(markup).toContain("data-failed-count=\"1\"");
   });

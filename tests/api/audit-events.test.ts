@@ -109,6 +109,15 @@ describe("audit event helpers", () => {
                 "invite.resent",
                 "workspace.updated",
                 "onboarding.workspace_created",
+                "phase_change.requested",
+                "phase_change.approved",
+                "phase_change.rejected",
+                "phase_change.completed",
+                "evidence.uploaded",
+                "evidence.downloaded",
+                "saving_cards.imported",
+                "saving_cards.import_failed",
+                "controller_workbook.exported",
               ],
             },
           },
@@ -122,6 +131,15 @@ describe("audit event helpers", () => {
                 "invite.resent",
                 "workspace.updated",
                 "onboarding.workspace_created",
+                "phase_change.requested",
+                "phase_change.approved",
+                "phase_change.rejected",
+                "phase_change.completed",
+                "evidence.uploaded",
+                "evidence.downloaded",
+                "saving_cards.imported",
+                "saving_cards.import_failed",
+                "controller_workbook.exported",
                 "membership.role_updated",
                 "membership.removed",
                 "invitation.created",
@@ -175,5 +193,46 @@ describe("audit event helpers", () => {
         take: 10,
       })
     );
+  });
+
+  it("surfaces organization-scoped workflow decision events in the activity feed", async () => {
+    mockPrisma.auditLog.findMany.mockResolvedValueOnce([
+      {
+        id: "audit-workflow-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        targetUserId: null,
+        targetEntityId: "request-1",
+        eventType: "phase_change.completed",
+        action: "phase_change.completed",
+        detail: "Phase changed from IDEA to VALIDATED",
+        payload: null,
+        createdAt: new Date("2026-04-13T12:30:00.000Z"),
+        user: {
+          id: "approver-1",
+          name: "Finance Approver",
+          email: "finance@example.com",
+        },
+      },
+    ]);
+
+    const events = await listAuditEventsForOrganization(DEFAULT_ORGANIZATION_ID);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "audit-workflow-1",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        eventType: "phase_change.completed",
+        action: "phase_change.completed",
+        actorUserId: "approver-1",
+        targetEntityId: "request-1",
+        actor: {
+          id: "approver-1",
+          name: "Finance Approver",
+          email: "finance@example.com",
+        },
+      }),
+    ]);
   });
 });

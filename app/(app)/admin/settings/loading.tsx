@@ -26,7 +26,7 @@ export default function AdminSettingsLoadingPage() {
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <LoadingCard title="Workspace Identity" />
-        <LoadingCard title="Recent Admin Activity" />
+        <LoadingCard title="Recent Workspace Activity" />
       </div>
     </div>
   );

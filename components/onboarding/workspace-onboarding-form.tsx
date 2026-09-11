@@ -10,6 +10,7 @@ import {
   captureException,
   trackClientEvent,
 } from "@/lib/observability";
+import { Textarea } from "@/components/ui/textarea";
 
 type WorkspaceOnboardingFormProps = {
   userName: string;
@@ -24,6 +25,7 @@ export function WorkspaceOnboardingForm({
   userName,
 }: WorkspaceOnboardingFormProps) {
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const submissionInFlightRef = useRef(false);
@@ -45,7 +47,10 @@ export function WorkspaceOnboardingForm({
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          description: description.trim() || null,
+        }),
       });
 
       if (!response.ok) {
@@ -59,7 +64,7 @@ export function WorkspaceOnboardingForm({
             },
             "warn"
           );
-          window.location.assign("/dashboard");
+          window.location.assign("/onboarding");
           return;
         }
 
@@ -80,7 +85,7 @@ export function WorkspaceOnboardingForm({
         return;
       }
 
-      window.location.assign("/dashboard");
+      window.location.assign("/onboarding");
     } catch (submissionError) {
       captureException(submissionError, {
         event: "onboarding.workspace.failed",
@@ -97,55 +102,144 @@ export function WorkspaceOnboardingForm({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <Card className="w-full max-w-lg shadow-sm">
-        <CardHeader>
-          <CardTitle>Create your first workspace</CardTitle>
-          <CardDescription>
-            Start with the workspace name only. You can add your first
-            initiative, load sample data, or invite teammates from the
-            dashboard right after this step.
-          </CardDescription>
-        </CardHeader>
+    <main className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
+        <Card className="shadow-sm">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full border border-[rgba(37,99,235,0.16)] bg-[rgba(37,99,235,0.08)] px-3 py-1 text-xs font-semibold tracking-[0.12em] text-[var(--info)]">
+                Guided setup
+              </span>
+              <span className="inline-flex rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-xs font-semibold tracking-[0.12em] text-[var(--muted-foreground)]">
+                Step 1 of 7
+              </span>
+            </div>
+            <CardTitle>Create your first workspace</CardTitle>
+            <CardDescription>
+              This workspace is where your procurement savings initiatives, evidence, approvals, and reports will live.
+            </CardDescription>
+          </CardHeader>
 
-        <CardContent>
-          <div className="mb-6 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-            Signed in as <span className="font-medium text-slate-900">{userName}</span>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="workspace-name">Workspace name</Label>
-              <Input
-                id="workspace-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="organization"
-                required
-              />
-              <p className="text-sm text-slate-500">
-                This becomes the first organization for your account and sets
-                your active workspace context. The rest of the setup can wait
-                until you land on the dashboard.
-              </p>
+          <CardContent>
+            <div className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
+              Signed in as <span className="font-medium text-[var(--foreground)]">{userName}</span>
             </div>
 
-            {error ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
+            <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                    Progress
+                  </p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight">14%</p>
+                </div>
+                <div className="text-right text-sm text-[var(--muted-foreground)]">
+                  Naming the workspace unlocks the rest of the guided setup.
+                </div>
               </div>
-            ) : null}
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--muted)]">
+                <div className="h-full w-[14%] rounded-full bg-[var(--primary)]" />
+              </div>
+            </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading || !name.trim()}
-            >
-              {loading ? "Creating workspace..." : "Create workspace"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="workspace-name">Workspace name</Label>
+                <Input
+                  id="workspace-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="organization"
+                  required
+                />
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  This becomes the first organization for your account and sets your active workspace context for the rest of the setup wizard.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workspace-description">Short description</Label>
+                <Textarea
+                  id="workspace-description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  maxLength={240}
+                  rows={4}
+                  placeholder="Example: US manufacturing savings pilot for direct materials."
+                />
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Keep this practical. A short purpose helps admins and new teammates understand the workspace later.
+                </p>
+              </div>
+
+              {error ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || !name.trim()}
+              >
+                {loading ? "Creating workspace..." : "Create workspace"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>What happens next</CardTitle>
+            <CardDescription>
+              The onboarding wizard keeps the first-value path visible after this first step, so setup feels like progress instead of admin overhead.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[
+              "Workspace basics",
+              "Business structure and master data",
+              "Team coverage",
+              "Create first saving card",
+              "Evidence and finance trust",
+              "Dashboard and reporting",
+              "Finish or continue later",
+            ].map((step, index) => (
+              <div
+                key={step}
+                className={`rounded-2xl border px-4 py-4 ${
+                  index === 0
+                    ? "border-[rgba(37,99,235,0.2)] bg-[rgba(37,99,235,0.06)]"
+                    : "border-[var(--border)] bg-[var(--surface)]"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${
+                      index === 0
+                        ? "border-[rgba(37,99,235,0.2)] bg-[var(--surface)] text-[var(--info)]"
+                        : "border-[var(--border)] bg-[var(--muted)]/55 text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {index + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {step}
+                    </p>
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      {index === 0
+                        ? "Current step"
+                        : "Available in the guided setup right after workspace creation"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </main>
   );
 }

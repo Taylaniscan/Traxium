@@ -11,6 +11,7 @@ import { phases, phaseLabels } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
 
 const ROW_HEIGHT = 84;
 const PROJECT_COLUMN_WIDTH = 280;
@@ -32,37 +33,43 @@ const phaseStyles: Record<
     chip: string;
     progress: string;
     track: string;
+    dot: string;
   }
 > = {
   IDEA: {
-    bar: "bg-slate-300 text-slate-800",
-    chip: "bg-slate-100 text-slate-700 ring-slate-200",
-    progress: "bg-slate-500/60",
-    track: "bg-slate-200"
+    bar: "bg-[var(--phase-proposed-soft)] border-[var(--phase-proposed)] text-[var(--text-primary)]",
+    chip: "bg-[var(--phase-proposed-soft)] text-[var(--phase-proposed-text)] ring-transparent",
+    progress: "bg-[var(--phase-proposed)] opacity-25",
+    track: "bg-[var(--phase-proposed-soft)]",
+    dot: "bg-[var(--phase-proposed)]"
   },
   VALIDATED: {
-    bar: "bg-blue-500 text-white",
-    chip: "bg-blue-50 text-blue-700 ring-blue-200",
-    progress: "bg-blue-800/35",
-    track: "bg-blue-100"
+    bar: "bg-[var(--phase-validated-soft)] border-[var(--phase-validated)] text-[var(--text-primary)]",
+    chip: "bg-[var(--phase-validated-soft)] text-[var(--phase-validated-text)] ring-transparent",
+    progress: "bg-[var(--phase-validated)] opacity-25",
+    track: "bg-[var(--phase-validated-soft)]",
+    dot: "bg-[var(--phase-validated)]"
   },
   REALISED: {
-    bar: "bg-orange-500 text-white",
-    chip: "bg-orange-50 text-orange-700 ring-orange-200",
-    progress: "bg-amber-800/35",
-    track: "bg-orange-100"
+    bar: "bg-[var(--phase-implemented-soft)] border-[var(--phase-implemented)] text-[var(--text-primary)]",
+    chip: "bg-[var(--phase-implemented-soft)] text-[var(--phase-implemented-text)] ring-transparent",
+    progress: "bg-[var(--phase-implemented)] opacity-25",
+    track: "bg-[var(--phase-implemented-soft)]",
+    dot: "bg-[var(--phase-implemented)]"
   },
   ACHIEVED: {
-    bar: "bg-emerald-500 text-white",
-    chip: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    progress: "bg-emerald-700/35",
-    track: "bg-emerald-100"
+    bar: "bg-[var(--phase-captured-soft)] border-[var(--phase-captured)] text-[var(--text-primary)]",
+    chip: "bg-[var(--phase-captured-soft)] text-[var(--phase-captured-text)] ring-transparent",
+    progress: "bg-[var(--phase-captured)] opacity-25",
+    track: "bg-[var(--phase-captured-soft)]",
+    dot: "bg-[var(--phase-captured)]"
   },
   CANCELLED: {
-    bar: "bg-rose-500 text-white",
-    chip: "bg-rose-50 text-rose-700 ring-rose-200",
-    progress: "bg-rose-800/35",
-    track: "bg-rose-100"
+    bar: "bg-[var(--phase-canceled-soft)] border-[var(--phase-canceled)] text-[var(--text-primary)]",
+    chip: "bg-[var(--phase-canceled-soft)] text-[var(--phase-canceled-text)] ring-transparent",
+    progress: "bg-[var(--phase-canceled)] opacity-25",
+    track: "bg-[var(--phase-canceled-soft)]",
+    dot: "bg-[var(--phase-canceled)]"
   }
 };
 
@@ -138,7 +145,7 @@ export function TimelineBoard({
       .sort((a, b) => {
         const startDiff = new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
         if (startDiff !== 0) return startDiff;
-        return b.calculatedSavings - a.calculatedSavings;
+        return toNumber(b.calculatedSavings) - toNumber(a.calculatedSavings);
       });
   }, [cards, state]);
 
@@ -165,7 +172,7 @@ export function TimelineBoard({
   if (!cards.length) {
     return (
       <div className="space-y-6">
-        <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
+        <Card className="border-0 bg-[linear-gradient(135deg,var(--primary-action)_0%,var(--phase-implemented)_120%)] text-white">
           <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-cyan-100">
@@ -184,10 +191,10 @@ export function TimelineBoard({
                   Create first saving card
                 </Link>
                 <Link
-                  href="/admin"
+                  href="/admin/settings"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
-                    "border-white/20 bg-white/10 text-white hover:bg-white/20"
+                    "border-white/20 bg-white/10 text-white hover:bg-[var(--surface)]/20"
                   )}
                 >
                   Review setup
@@ -240,7 +247,7 @@ export function TimelineBoard({
               />
               <TimelinePromise
                 title="Pipeline progression"
-                description="The timeline highlights which savings are still in pipeline, realised, or already achieved."
+                description="The timeline highlights which savings are still in pipeline, realized, or already achieved."
               />
               <TimelinePromise
                 title="Portfolio filtering"
@@ -452,14 +459,14 @@ export function TimelineBoard({
           <div className="flex flex-wrap gap-2 text-[12px]">
             {phases.map((phase) => (
               <span key={phase} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ring-1 ${phaseStyles[phase].chip}`}>
-                <span className={`h-2.5 w-2.5 rounded-full ${phaseStyles[phase].bar.split(" ")[0]}`} />
+                <span className={`h-2.5 w-2.5 rounded-full ${phaseStyles[phase].dot}`} />
                 {phaseLabels[phase]}
               </span>
             ))}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-            <div className="rounded-[24px] border border-[var(--border)] bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+            <div className="rounded-[24px] border border-[var(--border)] bg-[var(--surface)]">
               <div className="max-h-[70vh] overflow-auto scroll-smooth">
                 <div className="min-w-fit">
                   <div className="sticky top-0 z-30 grid bg-[var(--card)]/95 backdrop-blur-sm" style={{ gridTemplateColumns: `${PROJECT_COLUMN_WIDTH}px ${gridWidth}px` }}>
@@ -470,7 +477,7 @@ export function TimelineBoard({
                     <div className="relative grid border-b border-[var(--border)]" style={{ gridTemplateColumns: `repeat(${segments.length}, minmax(${segmentWidth}px, 1fr))` }}>
                       {currentMonthHighlight ? (
                         <div
-                          className="pointer-events-none absolute inset-y-0 bg-blue-100/60"
+                          className="pointer-events-none absolute inset-y-0 bg-[var(--primary-soft-strong)]"
                           style={{ left: toPercentStyle(currentMonthHighlight.left), width: toPercentStyle(currentMonthHighlight.width) }}
                         />
                       ) : null}
@@ -482,10 +489,10 @@ export function TimelineBoard({
                       ))}
                       {todayPosition >= 0 && todayPosition <= 100 ? (
                         <div
-                          className="pointer-events-none absolute inset-y-0 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.18)]"
+                          className="pointer-events-none absolute inset-y-0 w-px bg-[var(--phase-canceled)] shadow-[0_0_0_1px_rgba(239,68,68,0.18)]"
                           style={{ left: toPercentStyle(todayPosition) }}
                         >
-                          <span className="absolute left-1 top-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-semibold text-white">
+                          <span className="absolute left-1 top-2 rounded-full bg-[var(--phase-canceled)] px-2 py-1 text-[10px] font-semibold text-white">
                             Today
                           </span>
                         </div>
@@ -508,7 +515,7 @@ export function TimelineBoard({
                     </div>
 
                     <div
-                      className="relative bg-white"
+                      className="relative bg-[var(--surface)]"
                       style={{
                         height: `${gridHeight}px`,
                         backgroundImage: buildGridBackground(segmentWidth),
@@ -517,13 +524,13 @@ export function TimelineBoard({
                     >
                       {currentMonthHighlight ? (
                         <div
-                          className="pointer-events-none absolute inset-y-0 bg-blue-100/45"
+                          className="pointer-events-none absolute inset-y-0 bg-[var(--primary-soft)]"
                           style={{ left: toPercentStyle(currentMonthHighlight.left), width: toPercentStyle(currentMonthHighlight.width) }}
                         />
                       ) : null}
 
                       {todayPosition >= 0 && todayPosition <= 100 ? (
-                        <div className="pointer-events-none absolute inset-y-0 z-10 w-px bg-red-500/80" style={{ left: toPercentStyle(todayPosition) }} />
+                        <div className="pointer-events-none absolute inset-y-0 z-10 w-px bg-[var(--phase-canceled)]" style={{ left: toPercentStyle(todayPosition) }} />
                       ) : null}
 
                       {visibleCards.map((card, index) => {
@@ -542,7 +549,7 @@ export function TimelineBoard({
                           <div key={card.id} className="group absolute left-0 right-0" style={{ top: `${barTop}px`, height: `${barHeight}px` }}>
                             <div
                               tabIndex={0}
-                              className={`peer absolute rounded-[14px] border border-white/45 shadow-[0_10px_22px_rgba(15,23,42,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${phaseStyle.bar}`}
+                              className={`peer absolute rounded-[14px] border shadow-[var(--shadow-card)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${phaseStyle.bar}`}
                               style={{
                                 left: toPercentStyle(barLeft),
                                 width: toPercentStyle(Math.max(barRight - barLeft, 1.6)),
@@ -554,14 +561,14 @@ export function TimelineBoard({
                               </div>
                               <div className="relative flex h-full items-center justify-between gap-3 px-3">
                                 {barPixelWidth >= 92 ? (
-                                  <p className="truncate text-[11px] font-semibold opacity-95">
-                                    {formatCurrency(Math.round(card.calculatedSavings), card.currency)}
+                                  <p className="text-numeric truncate text-[11px] font-semibold">
+                                    {formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)}
                                   </p>
                                 ) : (
-                                  <span className="h-2.5 w-2.5 rounded-full bg-white/75" aria-hidden="true" />
+                                  <span className={`h-2.5 w-2.5 rounded-full ${phaseStyle.dot}`} aria-hidden="true" />
                                 )}
                                 {barPixelWidth >= 230 ? (
-                                  <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold">
+                                  <span className="rounded-full bg-[var(--surface)] px-2 py-1 text-[10px] font-semibold shadow-[var(--shadow-card)]">
                                     {phaseLabels[card.phase]}
                                   </span>
                                 ) : null}
@@ -569,7 +576,7 @@ export function TimelineBoard({
                             </div>
 
                             <div
-                              className={`pointer-events-none absolute top-3 h-[16px] rounded-full border border-dashed border-white/70 ${phaseStyle.track}`}
+                              className={`pointer-events-none absolute top-3 h-[16px] rounded-full border border-dashed border-[var(--border)] ${phaseStyle.track}`}
                               style={{
                                 left: toPercentStyle(impactLeft),
                                 width: toPercentStyle(Math.max(impactRight - impactLeft, 1.2)),
@@ -578,13 +585,13 @@ export function TimelineBoard({
                               }}
                             />
 
-                            <div className="pointer-events-none absolute left-0 top-[-144px] z-30 w-72 rounded-2xl border border-slate-200 bg-white p-4 text-[12px] text-slate-700 opacity-0 shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100">
+                            <div className="pointer-events-none absolute left-0 top-[-144px] z-30 w-72 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-[12px] text-[var(--text-secondary)] opacity-0 shadow-[var(--shadow-pop)] transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100">
                               <div className="space-y-1">
-                                <p className="font-semibold text-slate-900">{card.title}</p>
+                                <p className="font-semibold text-[var(--foreground)]">{card.title}</p>
                                 <p>{card.supplier.name} · {card.material.name}</p>
                               </div>
                               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                                <TooltipRow label="Saving" value={formatCurrency(Math.round(card.calculatedSavings), card.currency)} />
+                                <TooltipRow label="Saving" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
                                 <TooltipRow label="Phase" value={phaseLabels[card.phase]} />
                                 <TooltipRow label="Owner" value={card.buyer.name} />
                                 <TooltipRow
@@ -673,8 +680,8 @@ function LookupSelect({
 function TooltipRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] text-slate-500">{label}</p>
-      <p className="mt-1 text-slate-800">{value}</p>
+      <p className="text-[10px] text-[var(--muted-foreground)]">{label}</p>
+      <p className="mt-1 text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -816,7 +823,7 @@ function getOffsetPercent(timestamp: number, timelineStart: number, totalRange: 
 
 function buildGridBackground(segmentWidth: number) {
   return [
-    `repeating-linear-gradient(to right, rgba(148,163,184,0.18), rgba(148,163,184,0.18) 1px, transparent 1px, transparent ${segmentWidth}px)`,
+    `repeating-linear-gradient(to right, var(--chart-grid), var(--chart-grid) 1px, transparent 1px, transparent ${segmentWidth}px)`,
     `repeating-linear-gradient(to bottom, rgba(226,232,240,0.85), rgba(226,232,240,0.85) 1px, transparent 1px, transparent ${ROW_HEIGHT}px)`
   ].join(", ");
 }

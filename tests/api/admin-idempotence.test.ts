@@ -274,7 +274,7 @@ describe("admin idempotence routes", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("returns a safe success when a revoked invitation is cancelled again", async () => {
+  it("returns a safe success when a revoked invitation is canceled again", async () => {
     tx.invitation.findUnique.mockResolvedValueOnce(createInvitationRecord());
 
     const response = await revokeInvitationRoute(new Request("http://localhost"), {
@@ -284,7 +284,7 @@ describe("admin idempotence routes", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      message: "Invitation was already cancelled.",
+      message: "Invitation was already canceled.",
       invitation: {
         id: "invite-1",
         organizationId: DEFAULT_ORGANIZATION_ID,

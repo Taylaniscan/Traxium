@@ -98,8 +98,8 @@ describe("postdeploy smoke contract", () => {
           expectedStatuses: [200],
           expectedBodyIncludes: expect.arrayContaining([
             "Kanban Board",
-            "Idea",
-            "Validated",
+            "Proposed",
+            "Finance Validated",
           ]),
           expectedBodyExcludes: expect.arrayContaining([
             "No board activity yet",
@@ -222,13 +222,13 @@ describe("postdeploy smoke contract", () => {
           return createResponse(200, {
             body: [
               "Kanban Board",
-              "Idea",
-              "Validated",
-              "Realised",
-              "Achieved",
-              "Cancelled",
+              "Proposed",
+              "Finance Validated",
+              "Implemented",
+              "Captured",
+              "Canceled",
               "Pending approval",
-              "Card remains in Idea until approval completes.",
+              "Card remains in Proposed until approval completes.",
             ].join(" "),
           });
         }
@@ -314,7 +314,7 @@ describe("postdeploy smoke contract", () => {
 
       if (url.pathname === "/kanban") {
         return createResponse(200, {
-          body: "Kanban Board Idea Validated Realised Achieved Cancelled",
+          body: "Kanban Board Proposed Finance Validated Implemented Captured Canceled",
         });
       }
 

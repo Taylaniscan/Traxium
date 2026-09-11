@@ -1,11 +1,16 @@
 import React from "react";
 import { OrganizationRole, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxPortfolioCards,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const DashboardClientMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
 const getDashboardDataMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/dashboard/dashboard-client", () => ({
   DashboardClient: DashboardClientMock,
@@ -20,6 +25,10 @@ vi.mock("@/lib/data", () => ({
   getWorkspaceReadiness: getWorkspaceReadinessMock,
 }));
 
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
+}));
+
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 import DashboardPage from "@/app/(app)/dashboard/page";
@@ -27,7 +36,6 @@ import DashboardPage from "@/app/(app)/dashboard/page";
 describe("dashboard page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     requireUserMock.mockResolvedValue({
       id: "user-1",
       role: Role.GLOBAL_CATEGORY_LEADER,
@@ -65,6 +73,24 @@ describe("dashboard page", () => {
     });
   });
 
+  it("passes a populated UtopiaTrax portfolio without an empty dashboard payload", async () => {
+    const cards = createUtopiaTraxPortfolioCards();
+    const readiness = createUtopiaTraxReadiness();
+    getDashboardDataMock.mockResolvedValue({
+      cards,
+      annualTarget: 1075000,
+    });
+    getWorkspaceReadinessMock.mockResolvedValue(readiness);
+
+    const page = await DashboardPage();
+    const dashboardClientElement = page.props.children[1];
+
+    expect(dashboardClientElement.props.data.cards).toHaveLength(25);
+    expect(dashboardClientElement.props.data.annualTarget).toBe(1075000);
+    expect(dashboardClientElement.props.readiness).toEqual(readiness);
+    expect(dashboardClientElement.props.loadState.dataError).toBeNull();
+  });
+
   it("surfaces dashboard data failures as a user-visible client load state instead of silently masking them", async () => {
     getDashboardDataMock.mockRejectedValue(new Error("Dashboard query failed."));
 
@@ -83,5 +109,14 @@ describe("dashboard page", () => {
         },
       },
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "dashboard.page.data_load_failed",
+        route: "/dashboard",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
   });
 });

@@ -438,7 +438,7 @@ export async function revokeOrganizationInvitation(input: {
       actorUserId: input.actor.id,
       targetEntityId: updatedInvitation.id,
       eventType: auditEventTypes.INVITE_REVOKED,
-      detail: "Cancelled a pending invitation.",
+      detail: "Canceled a pending invitation.",
       payload: {
         invitationRole: updatedInvitation.role,
         status: updatedInvitation.status,
@@ -705,6 +705,18 @@ export async function acceptOrganizationInvitation(input: {
 
     if (!acceptedInvitation) {
       throw new InvitationError("Invitation not found.", 404);
+    }
+
+    if (acceptedInvitation.invitedByUserId !== input.userId) {
+      await tx.notification.create({
+        data: {
+          organizationId: invitation.organizationId,
+          userId: acceptedInvitation.invitedByUserId,
+          title: "Invitation accepted",
+          message: `${acceptedInvitation.email} joined the workspace.`,
+          href: "/admin/members",
+        },
+      });
     }
 
     trackedInvitationId = acceptedInvitation.id;

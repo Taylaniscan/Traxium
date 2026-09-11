@@ -1,4 +1,4 @@
-import { Prisma, Role } from "@prisma/client";
+import { Currency, Prisma, Role } from "@prisma/client";
 import type {
   InvitationStatus,
   MembershipStatus,
@@ -12,6 +12,9 @@ import {
 } from "@/lib/audit";
 import { analyticsEventNames, trackEvent } from "@/lib/analytics";
 import { getScopedCachedValue } from "@/lib/cache";
+import { isDevelopmentEnvironment } from "@/lib/env";
+import { writeStructuredLog } from "@/lib/logger";
+import { captureException } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
 import type {
   ActiveOrganizationContext,
@@ -32,6 +35,7 @@ const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
 const ADMIN_ORGANIZATION_ROLE: OrganizationRole = "ADMIN";
 const OWNER_ORGANIZATION_ROLE: OrganizationRole = "OWNER";
 const DEFAULT_FIRST_LOGIN_USER_ROLE: Role = "TACTICAL_BUYER";
+const DEFAULT_WORKSPACE_TRIAL_DAYS = 14;
 
 const activeOrganizationContextUserSelect = {
   activeOrganizationId: true,
@@ -129,6 +133,9 @@ const organizationSettingsSelect = {
   name: true,
   description: true,
   slug: true,
+  fiscalYearStartMonth: true,
+  defaultCurrency: true,
+  multiCurrencyEnabled: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.OrganizationSelect;
@@ -270,6 +277,9 @@ export type OrganizationSettingsSummary = {
   name: string;
   description: string | null;
   slug: string;
+  fiscalYearStartMonth: number;
+  defaultCurrency: Currency;
+  multiCurrencyEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -389,15 +399,48 @@ async function createUniqueOrganizationSlug(
 
 async function createInitialOrganization(
   tx: OrganizationWriteClient,
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ) {
   const slug = await createUniqueOrganizationSlug(tx, workspaceName);
+  const shouldPersistWorkspaceTrialEnd = await canPersistWorkspaceTrialEnd(tx);
+  const description = normalizeOrganizationDescription(workspaceDescription);
+  const organizationCreateData: {
+    name: string;
+    slug: string;
+    description?: string;
+    workspaceTrialEndsAt?: Date;
+  } = {
+    name: workspaceName,
+    slug,
+  };
 
-  return tx.organization.create({
-    data: {
-      name: workspaceName,
-      slug,
-    },
+  if (description) {
+    organizationCreateData.description = description;
+  }
+
+  if (shouldPersistWorkspaceTrialEnd) {
+    const workspaceTrialEndsAt = new Date();
+    workspaceTrialEndsAt.setDate(
+      workspaceTrialEndsAt.getDate() + DEFAULT_WORKSPACE_TRIAL_DAYS
+    );
+    organizationCreateData.workspaceTrialEndsAt = workspaceTrialEndsAt;
+  } else {
+    if (isDevelopmentEnvironment()) {
+      writeStructuredLog("warn", {
+        event: "workspace.onboarding.workspace_trial_fallback_used",
+        message:
+          "workspaceTrialEndsAt is not available in the current development database yet. Creating the workspace without the trial column.",
+        payload: {
+          fallback: "organization_create_without_workspace_trial_ends_at_preflight",
+          workspaceSlug: slug,
+        },
+      });
+    }
+  }
+
+  const organization = await tx.organization.create({
+    data: organizationCreateData,
     select: {
       id: true,
       name: true,
@@ -406,6 +449,40 @@ async function createInitialOrganization(
       updatedAt: true,
     },
   });
+
+  // Seed a default plant so card creation never requires plant setup first.
+  // Plant/business unit are optional on saving cards; this provides a sensible default.
+  await tx.plant.create({
+    data: {
+      organizationId: organization.id,
+      name: "Main Plant",
+      region: "US",
+    },
+  });
+
+  return organization;
+}
+
+async function canPersistWorkspaceTrialEnd(tx: OrganizationWriteClient) {
+  if (!isDevelopmentEnvironment()) {
+    return true;
+  }
+
+  if (
+    (await tx.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'Organization'
+          AND column_name = 'workspaceTrialEndsAt'
+      ) AS "exists"
+    `))[0]?.exists
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 async function createInitialOwnerMembership(
@@ -516,9 +593,27 @@ function mapOrganizationSettings(
     name: organization.name,
     description: organization.description,
     slug: organization.slug,
+    fiscalYearStartMonth: organization.fiscalYearStartMonth,
+    defaultCurrency: organization.defaultCurrency,
+    multiCurrencyEnabled: organization.multiCurrencyEnabled,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };
+}
+
+function normalizeDefaultCurrency(value: unknown): Currency | null {
+  if (value === Currency.USD || value === Currency.EUR) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeFiscalYearStartMonth(value: number | null | undefined) {
+  const month = Math.trunc(Number(value));
+  if (!Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return month;
 }
 
 function formatOrganizationRoleLabel(role: OrganizationRole) {
@@ -534,9 +629,34 @@ function normalizeOrganizationDescription(value: string | null | undefined) {
   return normalized ? normalized : null;
 }
 
+function captureWorkspaceOnboardingStepFailure(input: {
+  event:
+    | "onboarding.workspace.user_lookup_failed"
+    | "onboarding.workspace.organization_create_failed"
+    | "onboarding.workspace.membership_create_failed"
+    | "onboarding.workspace.user_update_failed"
+    | "onboarding.workspace.audit_write_failed"
+    | "onboarding.workspace.first_login_user_create_failed";
+  error: unknown;
+  userId?: string;
+  organizationId?: string;
+  payload?: Record<string, unknown>;
+}) {
+  captureException(input.error, {
+    event: input.event,
+    userId: input.userId ?? null,
+    organizationId: input.organizationId ?? null,
+    payload: {
+      workflow: "initial_workspace_onboarding",
+      ...input.payload,
+    },
+  });
+}
+
 export async function createInitialWorkspaceForUser(
   userId: string,
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ): Promise<InitialWorkspaceResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(workspaceName);
 
@@ -545,10 +665,25 @@ export async function createInitialWorkspaceForUser(
   }
 
   return prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: initialWorkspaceUserSelect,
-    });
+    let user: InitialWorkspaceUserRecord | null;
+
+    try {
+      user = await tx.user.findUnique({
+        where: { id: userId },
+        select: initialWorkspaceUserSelect,
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.user_lookup_failed",
+        error,
+        userId,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
     if (!user) {
       throw new WorkspaceOnboardingError("User not found.", 404);
@@ -560,29 +695,93 @@ export async function createInitialWorkspaceForUser(
       return mapInitialWorkspaceResult(existingMembership);
     }
 
-    const organization = await createInitialOrganization(tx, normalizedWorkspaceName);
-    const membership = await createInitialOwnerMembership(tx, userId, organization.id);
+    let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
-    await tx.user.update({
-      where: { id: userId },
-      data: {
+    try {
+      organization = await createInitialOrganization(
+        tx,
+        normalizedWorkspaceName,
+        workspaceDescription
+      );
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.organization_create_failed",
+        error,
+        userId,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
+
+    let membership: Awaited<ReturnType<typeof createInitialOwnerMembership>>;
+
+    try {
+      membership = await createInitialOwnerMembership(tx, userId, organization.id);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.membership_create_failed",
+        error,
+        userId,
         organizationId: organization.id,
-        activeOrganizationId: organization.id,
-      },
-    });
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
-    await writeAuditEvent(tx, {
-      organizationId: organization.id,
-      actorUserId: userId,
-      targetUserId: userId,
-      targetEntityId: organization.id,
-      eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
-      detail: `Workspace ${organization.name} was created.`,
-      payload: {
-        membershipRole: OWNER_ORGANIZATION_ROLE,
-        organizationSlug: organization.slug,
-      },
-    });
+    try {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          organizationId: organization.id,
+          activeOrganizationId: organization.id,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.user_update_failed",
+        error,
+        userId,
+        organizationId: organization.id,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
+
+    try {
+      await writeAuditEvent(tx, {
+        organizationId: organization.id,
+        actorUserId: userId,
+        targetUserId: userId,
+        targetEntityId: organization.id,
+        eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
+        detail: `Workspace ${organization.name} was created.`,
+        payload: {
+          membershipRole: OWNER_ORGANIZATION_ROLE,
+          organizationSlug: organization.slug,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.audit_write_failed",
+        error,
+        userId,
+        organizationId: organization.id,
+        payload: {
+          flow: "existing_user",
+          workspaceName: normalizedWorkspaceName,
+        },
+      });
+      throw error;
+    }
 
     return {
       created: true,
@@ -599,6 +798,7 @@ export async function createInitialWorkspaceForAuthenticatedUser(
     email: string;
     role?: Role;
     workspaceName: string;
+    workspaceDescription?: string | null;
   }
 ): Promise<InitialWorkspaceProvisioningResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(input.workspaceName);
@@ -618,33 +818,102 @@ export async function createInitialWorkspaceForAuthenticatedUser(
   }
 
   return prisma.$transaction(async (tx) => {
-    const organization = await createInitialOrganization(tx, normalizedWorkspaceName);
-    const user = await tx.user.create({
-      data: {
-        organizationId: organization.id,
-        activeOrganizationId: organization.id,
-        name: normalizedName,
-        email: normalizedEmail,
-        role: input.role ?? DEFAULT_FIRST_LOGIN_USER_ROLE,
-      },
-      select: {
-        id: true,
-      },
-    });
-    const membership = await createInitialOwnerMembership(tx, user.id, organization.id);
+    let organization: Awaited<ReturnType<typeof createInitialOrganization>>;
 
-    await writeAuditEvent(tx, {
-      organizationId: organization.id,
-      actorUserId: user.id,
-      targetUserId: user.id,
-      targetEntityId: organization.id,
-      eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
-      detail: `Workspace ${organization.name} was created.`,
-      payload: {
-        membershipRole: OWNER_ORGANIZATION_ROLE,
-        organizationSlug: organization.slug,
-      },
-    });
+    try {
+      organization = await createInitialOrganization(
+        tx,
+        normalizedWorkspaceName,
+        input.workspaceDescription
+      );
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.organization_create_failed",
+        error,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    let user: { id: string };
+
+    try {
+      user = await tx.user.create({
+        data: {
+          organizationId: organization.id,
+          activeOrganizationId: organization.id,
+          name: normalizedName,
+          email: normalizedEmail,
+          role: input.role ?? DEFAULT_FIRST_LOGIN_USER_ROLE,
+        },
+        select: {
+          id: true,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.first_login_user_create_failed",
+        error,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    let membership: Awaited<ReturnType<typeof createInitialOwnerMembership>>;
+
+    try {
+      membership = await createInitialOwnerMembership(tx, user.id, organization.id);
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.membership_create_failed",
+        error,
+        userId: user.id,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
+
+    try {
+      await writeAuditEvent(tx, {
+        organizationId: organization.id,
+        actorUserId: user.id,
+        targetUserId: user.id,
+        targetEntityId: organization.id,
+        eventType: auditEventTypes.ONBOARDING_WORKSPACE_CREATED,
+        detail: `Workspace ${organization.name} was created.`,
+        payload: {
+          membershipRole: OWNER_ORGANIZATION_ROLE,
+          organizationSlug: organization.slug,
+        },
+      });
+    } catch (error) {
+      captureWorkspaceOnboardingStepFailure({
+        event: "onboarding.workspace.audit_write_failed",
+        error,
+        userId: user.id,
+        organizationId: organization.id,
+        payload: {
+          flow: "first_login",
+          workspaceName: normalizedWorkspaceName,
+          email: normalizedEmail,
+        },
+      });
+      throw error;
+    }
 
     return {
       created: true,
@@ -702,6 +971,23 @@ export async function getOrganizationMembersDirectory(
   );
 }
 
+export async function getWorkspaceCurrencyMode(
+  organizationId: string
+): Promise<{ defaultCurrency: Currency; multiCurrencyEnabled: boolean }> {
+  const normalizedOrganizationId = normalizeOrganizationId(organizationId);
+  const organization = normalizedOrganizationId
+    ? await prisma.organization.findUnique({
+        where: { id: normalizedOrganizationId },
+        select: { defaultCurrency: true, multiCurrencyEnabled: true },
+      })
+    : null;
+
+  return {
+    defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
+    multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+  };
+}
+
 export async function getOrganizationSettings(
   organizationId: string
 ): Promise<OrganizationSettingsSummary> {
@@ -729,6 +1015,9 @@ export async function updateOrganizationSettings(input: {
   actor: AuthenticatedUser;
   name: string;
   description?: string | null;
+  fiscalYearStartMonth?: number | null;
+  defaultCurrency?: Currency | null;
+  multiCurrencyEnabled?: boolean | null;
 }): Promise<OrganizationSettingsUpdateResult> {
   const organizationId = normalizeOrganizationId(
     input.actor.activeOrganization.organizationId
@@ -736,6 +1025,10 @@ export async function updateOrganizationSettings(input: {
   const actorRole = input.actor.activeOrganization.membershipRole;
   const nextName = input.name.trim();
   const nextDescription = normalizeOrganizationDescription(input.description);
+  const nextFiscalYearStartMonth = normalizeFiscalYearStartMonth(
+    input.fiscalYearStartMonth
+  );
+  const nextDefaultCurrency = normalizeDefaultCurrency(input.defaultCurrency);
 
   if (!organizationId) {
     throw new OrganizationSettingsError("Organization context is required.", 422);
@@ -747,6 +1040,25 @@ export async function updateOrganizationSettings(input: {
 
   if (!nextName) {
     throw new OrganizationSettingsError("Workspace name is required.", 422);
+  }
+
+  if (
+    input.fiscalYearStartMonth !== undefined &&
+    input.fiscalYearStartMonth !== null &&
+    nextFiscalYearStartMonth === null
+  ) {
+    throw new OrganizationSettingsError(
+      "Fiscal year start month must be between 1 and 12.",
+      422
+    );
+  }
+
+  if (
+    input.defaultCurrency !== undefined &&
+    input.defaultCurrency !== null &&
+    nextDefaultCurrency === null
+  ) {
+    throw new OrganizationSettingsError("Default currency is invalid.", 422);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -761,9 +1073,22 @@ export async function updateOrganizationSettings(input: {
       throw new OrganizationSettingsError("Organization not found.", 404);
     }
 
+    const resolvedFiscalYearStartMonth =
+      nextFiscalYearStartMonth ?? organization.fiscalYearStartMonth;
+    const resolvedDefaultCurrency =
+      nextDefaultCurrency ?? organization.defaultCurrency;
+    const resolvedMultiCurrencyEnabled =
+      input.multiCurrencyEnabled === undefined ||
+      input.multiCurrencyEnabled === null
+        ? organization.multiCurrencyEnabled
+        : input.multiCurrencyEnabled;
+
     if (
       organization.name === nextName &&
-      normalizeOrganizationDescription(organization.description) === nextDescription
+      normalizeOrganizationDescription(organization.description) === nextDescription &&
+      organization.fiscalYearStartMonth === resolvedFiscalYearStartMonth &&
+      organization.defaultCurrency === resolvedDefaultCurrency &&
+      organization.multiCurrencyEnabled === resolvedMultiCurrencyEnabled
     ) {
       return {
         changed: false,
@@ -778,6 +1103,9 @@ export async function updateOrganizationSettings(input: {
       data: {
         name: nextName,
         description: nextDescription,
+        fiscalYearStartMonth: resolvedFiscalYearStartMonth,
+        defaultCurrency: resolvedDefaultCurrency,
+        multiCurrencyEnabled: resolvedMultiCurrencyEnabled,
       },
       select: organizationSettingsSelect,
     });
@@ -796,6 +1124,15 @@ export async function updateOrganizationSettings(input: {
               ? ["description"]
               : []
           ),
+          ...(organization.fiscalYearStartMonth !== resolvedFiscalYearStartMonth
+            ? ["fiscalYearStartMonth"]
+            : []),
+          ...(organization.defaultCurrency !== resolvedDefaultCurrency
+            ? ["defaultCurrency"]
+            : []),
+          ...(organization.multiCurrencyEnabled !== resolvedMultiCurrencyEnabled
+            ? ["multiCurrencyEnabled"]
+            : []),
         ],
       },
     });

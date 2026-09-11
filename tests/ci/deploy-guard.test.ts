@@ -34,6 +34,7 @@ function createDeployEnv(
       role: "service_role",
       ref: projectRef,
     }),
+    JOB_RUNNER_SECRET: "job-runner-secret",
     STRIPE_SECRET_KEY:
       "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:

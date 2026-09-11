@@ -140,7 +140,7 @@ export function ResetPasswordForm() {
           <CardContent>
             <Link
               href="/forgot-password"
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
             >
               Request a new reset link
             </Link>

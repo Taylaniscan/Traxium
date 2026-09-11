@@ -33,7 +33,7 @@ function HealthMetric({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <p className="text-xs text-[var(--muted-foreground)]">
         {label}
       </p>
@@ -88,7 +88,7 @@ export function AdminHealthPanel({
             {insights.recentCriticalAdminActions.map((event) => (
               <div
                 key={event.id}
-                className="rounded-2xl border border-[var(--border)] bg-white p-4"
+                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">

@@ -287,7 +287,7 @@ describe("query optimization helpers", () => {
           id: "audit-2",
           eventType: "invite.revoked",
           action: "invite.revoked",
-          detail: "Cancelled the pending invitation for supplier@example.com.",
+          detail: "Canceled the pending invitation for supplier@example.com.",
           createdAt: new Date("2026-03-26T11:00:00.000Z"),
           targetUserId: null,
           targetEntityId: "invite-2",

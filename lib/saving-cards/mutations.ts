@@ -1,6 +1,8 @@
-import { Prisma } from "@prisma/client";
-import { calculateSavings } from "@/lib/calculations";
+import { Currency, Phase, Prisma, SavingsImpactType } from "@prisma/client";
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
+import { calculateSavings, calculatePeriodizedSavings } from "@/lib/calculations";
 import { prisma } from "@/lib/prisma";
+import { toNumber } from "@/lib/utils/decimal";
 import {
   buildTenantOwnedRelationWhere,
   resolveTenantScope,
@@ -18,6 +20,7 @@ import {
 import { WorkflowError } from "@/lib/workflow/errors";
 import {
   buildSavingCardPayload,
+  DEFAULT_FISCAL_YEAR_START_MONTH,
   getLatestFxRate,
   getScopedAlternativeMaterial,
   getScopedAlternativeSupplier,
@@ -31,6 +34,206 @@ import {
 } from "@/lib/saving-cards/shared";
 import { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surface-cache";
 
+function buildSavingCardPath(savingCardId: string) {
+  return `/saving-cards/${savingCardId}`;
+}
+
+type WorkspaceFinancialSettings = {
+  fiscalYearStartMonth: number;
+  defaultCurrency: Currency;
+  multiCurrencyEnabled: boolean;
+};
+
+async function getWorkspaceFinancialSettings(
+  organizationId: string
+): Promise<WorkspaceFinancialSettings> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      fiscalYearStartMonth: true,
+      defaultCurrency: true,
+      multiCurrencyEnabled: true,
+    },
+  });
+
+  return {
+    fiscalYearStartMonth:
+      organization?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
+    defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
+    multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+  };
+}
+
+/**
+ * In a single-currency (USD-only) workspace the buyer never sees a currency or fx
+ * field, so any client-supplied currency/fxRate is ignored: cards are forced to the
+ * workspace default currency at a 1.0 rate regardless of payload.
+ */
+function applyWorkspaceCurrencyMode(
+  input: Prisma.JsonObject | Record<string, unknown>,
+  settings: WorkspaceFinancialSettings
+) {
+  if (settings.multiCurrencyEnabled) {
+    return input;
+  }
+
+  return {
+    ...input,
+    currency: settings.defaultCurrency,
+    fxRate: 1,
+  };
+}
+
+/**
+ * Recompute the persisted savings figures (annual totals + periodized run-rate /
+ * in-year value) when an applied scenario changes the card's new price, currency, or
+ * fx rate. Keeps every write path consistent with buildSavingCardPayload.
+ */
+function computeCardScenarioFinancials(args: {
+  baselinePrice: number;
+  newPrice: number;
+  annualVolume: number;
+  fxRate: number;
+  currency: Currency;
+  impactType: SavingsImpactType;
+  referencePrice: number | null;
+  impactStartDate: Date;
+  impactEndDate: Date;
+  fiscalYearStartMonth: number;
+}) {
+  const totals = calculateSavings({
+    baselinePrice: args.baselinePrice,
+    newPrice: args.newPrice,
+    annualVolume: args.annualVolume,
+    fxRate: args.fxRate,
+    currency: args.currency,
+    impactType: args.impactType,
+    referencePrice: args.referencePrice,
+  });
+  const periodized = calculatePeriodizedSavings({
+    baselinePrice: args.baselinePrice,
+    newPrice: args.newPrice,
+    annualVolume: args.annualVolume,
+    fxRate: args.fxRate,
+    currency: args.currency,
+    impactType: args.impactType,
+    referencePrice: args.referencePrice,
+    impactStartDate: args.impactStartDate,
+    impactEndDate: args.impactEndDate,
+    fiscalYear: { startMonth: args.fiscalYearStartMonth },
+  });
+
+  return {
+    calculatedSavings: totals.localSavings,
+    calculatedSavingsUSD: totals.savingsUSD,
+    annualizedRunRate: periodized.annualizedRunRate,
+    annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+    inYearValue: periodized.inYearValue,
+    inYearValueUSD: periodized.inYearValueUSD,
+  };
+}
+
+const SAVING_CARD_CREATE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const;
+
+const SAVING_CARD_IMPORT_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 120_000,
+} as const;
+
+function assertInitialSavingCardPhase(phase: Phase) {
+  if (!isInitialWorkflowPhase(phase)) {
+    throw new WorkflowError(
+      `New saving cards must start in ${INITIAL_WORKFLOW_PHASE} phase.`,
+      409
+    );
+  }
+}
+
+async function createSavingCardRecord(
+  tx: Prisma.TransactionClient,
+  payload: ReturnType<typeof buildSavingCardPayload>,
+  actorId: string,
+  organizationId: string
+) {
+  const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
+
+  return tx.savingCard.create({
+    data: {
+      organizationId,
+      title: payload.title,
+      description: payload.description,
+      savingType: payload.savingType,
+      impactType: payload.impactType,
+      impactRecurrence: payload.impactRecurrence,
+      budgetImpact: payload.budgetImpact,
+      phase: INITIAL_WORKFLOW_PHASE,
+      supplierId: resolved.supplierId,
+      materialId: resolved.materialId,
+      alternativeSupplierId: resolved.alternativeSupplierId,
+      alternativeSupplierManualName: resolved.alternativeSupplierId
+        ? null
+        : normalizeOptionalName(payload.alternativeSupplier?.name),
+      alternativeMaterialId: resolved.alternativeMaterialId,
+      alternativeMaterialManualName: resolved.alternativeMaterialId
+        ? null
+        : normalizeOptionalName(payload.alternativeMaterial?.name),
+      categoryId: resolved.categoryId,
+      plantId: resolved.plantId,
+      businessUnitId: resolved.businessUnitId,
+      buyerId: resolved.buyerId,
+      baselinePrice: payload.baselinePrice,
+      newPrice: payload.newPrice,
+      referencePrice: payload.referencePrice,
+      annualVolume: payload.annualVolume,
+      currency: payload.currency,
+      fxRate: payload.fxRate,
+      calculatedSavings: payload.calculatedSavings,
+      calculatedSavingsUSD: payload.calculatedSavingsUSD,
+      annualizedRunRate: payload.annualizedRunRate,
+      annualizedRunRateUSD: payload.annualizedRunRateUSD,
+      inYearValue: payload.inYearValue,
+      inYearValueUSD: payload.inYearValueUSD,
+      frequency: payload.frequency,
+      savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
+      implementationComplexity: normalizeOptionalName(
+        payload.implementationComplexity || undefined
+      ),
+      qualificationStatus: normalizeOptionalName(
+        payload.qualificationStatus || undefined
+      ),
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      impactStartDate: payload.impactStartDate,
+      impactEndDate: payload.impactEndDate,
+      financeLocked: false,
+      cancellationReason: null,
+      stakeholders: {
+        create: (payload.stakeholderIds ?? []).map((userId) => ({
+          userId,
+        })),
+      },
+      phaseHistory: {
+        create: {
+          fromPhase: null,
+          toPhase: INITIAL_WORKFLOW_PHASE,
+          changedById: actorId,
+        },
+      },
+      auditLogs: {
+        create: {
+          userId: actorId,
+          action: "saving_card.created",
+          detail: `Saving card created in ${INITIAL_WORKFLOW_PHASE} phase`,
+        },
+      },
+    },
+    include: savingCardDetailInclude,
+  });
+}
+
 export async function createSavingCard(
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
@@ -40,83 +243,18 @@ export async function createSavingCard(
   }
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const payload = buildSavingCardPayload(input);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const payload = buildSavingCardPayload(
+    applyWorkspaceCurrencyMode(input, settings),
+    { fiscalYearStartMonth: settings.fiscalYearStartMonth }
+  );
 
-  if (!isInitialWorkflowPhase(payload.phase)) {
-    throw new WorkflowError(
-      `New saving cards must start in ${INITIAL_WORKFLOW_PHASE} phase.`,
-      409
-    );
-  }
+  assertInitialSavingCardPhase(payload.phase);
 
-  const card = await prisma.$transaction(async (tx) => {
-    const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
-
-    return tx.savingCard.create({
-      data: {
-        organizationId,
-        title: payload.title,
-        description: payload.description,
-        savingType: payload.savingType,
-        phase: INITIAL_WORKFLOW_PHASE,
-        supplierId: resolved.supplierId,
-        materialId: resolved.materialId,
-        alternativeSupplierId: resolved.alternativeSupplierId,
-        alternativeSupplierManualName: resolved.alternativeSupplierId
-          ? null
-          : normalizeOptionalName(payload.alternativeSupplier?.name),
-        alternativeMaterialId: resolved.alternativeMaterialId,
-        alternativeMaterialManualName: resolved.alternativeMaterialId
-          ? null
-          : normalizeOptionalName(payload.alternativeMaterial?.name),
-        categoryId: resolved.categoryId,
-        plantId: resolved.plantId,
-        businessUnitId: resolved.businessUnitId,
-        buyerId: resolved.buyerId,
-        baselinePrice: payload.baselinePrice,
-        newPrice: payload.newPrice,
-        annualVolume: payload.annualVolume,
-        currency: payload.currency,
-        fxRate: payload.fxRate,
-        calculatedSavings: payload.calculatedSavings,
-        calculatedSavingsUSD: payload.calculatedSavingsUSD,
-        frequency: payload.frequency,
-        savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
-        implementationComplexity: normalizeOptionalName(
-          payload.implementationComplexity || undefined
-        ),
-        qualificationStatus: normalizeOptionalName(
-          payload.qualificationStatus || undefined
-        ),
-        startDate: payload.startDate,
-        endDate: payload.endDate,
-        impactStartDate: payload.impactStartDate,
-        impactEndDate: payload.impactEndDate,
-        financeLocked: false,
-        cancellationReason: null,
-        stakeholders: {
-          create: (payload.stakeholderIds ?? []).map((userId) => ({
-            userId,
-          })),
-        },
-        phaseHistory: {
-          create: {
-            fromPhase: null,
-            toPhase: INITIAL_WORKFLOW_PHASE,
-            changedById: actorId,
-          },
-        },
-        auditLogs: {
-          create: {
-            userId: actorId,
-            action: "saving_card.created",
-            detail: `Saving card created in ${INITIAL_WORKFLOW_PHASE} phase`,
-          },
-        },
-      },
-      include: savingCardDetailInclude,
-    });
-  });
+  const card = await prisma.$transaction(
+    (tx) => createSavingCardRecord(tx, payload, actorId, organizationId),
+    SAVING_CARD_CREATE_TRANSACTION_OPTIONS
+  );
 
   if (!options?.skipViewInvalidation) {
     invalidatePortfolioSurfaceCaches(organizationId);
@@ -132,7 +270,11 @@ export async function updateSavingCard(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
-  const payload = buildSavingCardPayload(input);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const payload = buildSavingCardPayload(
+    applyWorkspaceCurrencyMode(input, settings),
+    { fiscalYearStartMonth: settings.fiscalYearStartMonth }
+  );
 
   const updated = await prisma.$transaction(async (tx) => {
     const existing = await tx.savingCard.findFirst({
@@ -153,6 +295,21 @@ export async function updateSavingCard(
       );
     }
 
+    if (
+      existing.financeLocked &&
+      (
+        existing.savingType !== payload.savingType ||
+        existing.impactType !== payload.impactType ||
+        existing.impactRecurrence !== payload.impactRecurrence ||
+        existing.budgetImpact !== payload.budgetImpact
+      )
+    ) {
+      throw new WorkflowError(
+        "Finance-locked savings cannot change savings classification. Remove the finance lock before changing savings type, impact type, recurrence, or budget impact.",
+        409
+      );
+    }
+
     const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
 
     const nextCard = await tx.savingCard.update({
@@ -160,7 +317,14 @@ export async function updateSavingCard(
       data: {
         title: payload.title,
         description: payload.description,
-        savingType: payload.savingType,
+        savingType: existing.financeLocked ? existing.savingType : payload.savingType,
+        impactType: existing.financeLocked ? existing.impactType : payload.impactType,
+        impactRecurrence: existing.financeLocked
+          ? existing.impactRecurrence
+          : payload.impactRecurrence,
+        budgetImpact: existing.financeLocked
+          ? existing.budgetImpact
+          : payload.budgetImpact,
         phase: existing.phase,
         supplierId: resolved.supplierId,
         materialId: resolved.materialId,
@@ -180,13 +344,32 @@ export async function updateSavingCard(
           ? existing.baselinePrice
           : payload.baselinePrice,
         newPrice: existing.financeLocked ? existing.newPrice : payload.newPrice,
+        referencePrice: existing.financeLocked
+          ? existing.referencePrice
+          : payload.referencePrice,
         annualVolume: existing.financeLocked
           ? existing.annualVolume
           : payload.annualVolume,
         currency: existing.financeLocked ? existing.currency : payload.currency,
-        fxRate: payload.fxRate,
-        calculatedSavings: payload.calculatedSavings,
-        calculatedSavingsUSD: payload.calculatedSavingsUSD,
+        fxRate: existing.financeLocked ? existing.fxRate : payload.fxRate,
+        calculatedSavings: existing.financeLocked
+          ? existing.calculatedSavings
+          : payload.calculatedSavings,
+        calculatedSavingsUSD: existing.financeLocked
+          ? existing.calculatedSavingsUSD
+          : payload.calculatedSavingsUSD,
+        annualizedRunRate: existing.financeLocked
+          ? existing.annualizedRunRate
+          : payload.annualizedRunRate,
+        annualizedRunRateUSD: existing.financeLocked
+          ? existing.annualizedRunRateUSD
+          : payload.annualizedRunRateUSD,
+        inYearValue: existing.financeLocked
+          ? existing.inYearValue
+          : payload.inYearValue,
+        inYearValueUSD: existing.financeLocked
+          ? existing.inYearValueUSD
+          : payload.inYearValueUSD,
         frequency: payload.frequency,
         savingDriver: normalizeOptionalName(payload.savingDriver || undefined),
         implementationComplexity: normalizeOptionalName(
@@ -302,7 +485,8 @@ export async function updateAlternativeSupplier(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
   const payload = alternativeSupplierSchema.parse(input);
@@ -313,6 +497,10 @@ export async function updateAlternativeSupplier(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative supplier not found.");
+    }
 
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
@@ -366,7 +554,8 @@ export async function updateAlternativeSupplier(
 
 export async function deleteAlternativeSupplier(
   alternativeId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
 
@@ -376,6 +565,10 @@ export async function deleteAlternativeSupplier(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative supplier not found.");
+    }
 
     return tx.savingCardAlternativeSupplier.delete({
       where: { id: existing.id },
@@ -453,7 +646,8 @@ export async function updateAlternativeMaterial(
   alternativeId: string,
   input: Prisma.JsonObject | Record<string, unknown>,
   actorId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
   const payload = alternativeMaterialSchema.parse(input);
@@ -464,6 +658,10 @@ export async function updateAlternativeMaterial(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative material not found.");
+    }
 
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
@@ -521,7 +719,8 @@ export async function updateAlternativeMaterial(
 
 export async function deleteAlternativeMaterial(
   alternativeId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  expectedSavingCardId?: string
 ) {
   const { organizationId } = resolveTenantScope(context);
 
@@ -531,6 +730,10 @@ export async function deleteAlternativeMaterial(
       alternativeId,
       organizationId
     );
+
+    if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
+      throw new Error("Alternative material not found.");
+    }
 
     return tx.savingCardAlternativeMaterial.delete({
       where: { id: existing.id },
@@ -561,13 +764,32 @@ async function applySelectedAlternativeSupplier(
     throw new Error("Unable to apply selected supplier scenario.");
   }
 
-  const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const totals = calculateSavings({
-    baselinePrice: card.baselinePrice,
-    newPrice: alternative.quotedPrice,
-    annualVolume: card.annualVolume,
+  if (card.financeLocked) {
+    throw new WorkflowError(
+      "Finance-locked savings cannot apply alternative supplier scenarios. Remove the finance lock before changing validated financial assumptions.",
+      409
+    );
+  }
+
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const scenarioCurrency = settings.multiCurrencyEnabled
+    ? alternative.currency
+    : settings.defaultCurrency;
+  const fxRate = settings.multiCurrencyEnabled
+    ? await getLatestFxRate(tx, scenarioCurrency)
+    : 1;
+  const financials = computeCardScenarioFinancials({
+    baselinePrice: toNumber(card.baselinePrice),
+    newPrice: toNumber(alternative.quotedPrice),
+    annualVolume: toNumber(card.annualVolume),
     fxRate,
-    currency: alternative.currency,
+    currency: scenarioCurrency,
+    impactType: card.impactType,
+    referencePrice:
+      card.referencePrice === null ? null : toNumber(card.referencePrice),
+    impactStartDate: card.impactStartDate,
+    impactEndDate: card.impactEndDate,
+    fiscalYearStartMonth: settings.fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -579,10 +801,9 @@ async function applySelectedAlternativeSupplier(
         ? null
         : alternative.supplierNameManual,
       newPrice: alternative.quotedPrice,
-      currency: alternative.currency,
+      currency: scenarioCurrency,
       fxRate,
-      calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD,
+      ...financials,
     },
   });
 
@@ -619,13 +840,32 @@ async function applySelectedAlternativeMaterial(
     throw new Error("Unable to apply selected material scenario.");
   }
 
-  const fxRate = await getLatestFxRate(tx, alternative.currency);
-  const totals = calculateSavings({
-    baselinePrice: card.baselinePrice,
-    newPrice: alternative.quotedPrice,
-    annualVolume: card.annualVolume,
+  if (card.financeLocked) {
+    throw new WorkflowError(
+      "Finance-locked savings cannot apply alternative material scenarios. Remove the finance lock before changing validated financial assumptions.",
+      409
+    );
+  }
+
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const scenarioCurrency = settings.multiCurrencyEnabled
+    ? alternative.currency
+    : settings.defaultCurrency;
+  const fxRate = settings.multiCurrencyEnabled
+    ? await getLatestFxRate(tx, scenarioCurrency)
+    : 1;
+  const financials = computeCardScenarioFinancials({
+    baselinePrice: toNumber(card.baselinePrice),
+    newPrice: toNumber(alternative.quotedPrice),
+    annualVolume: toNumber(card.annualVolume),
     fxRate,
-    currency: alternative.currency,
+    currency: scenarioCurrency,
+    impactType: card.impactType,
+    referencePrice:
+      card.referencePrice === null ? null : toNumber(card.referencePrice),
+    impactStartDate: card.impactStartDate,
+    impactEndDate: card.impactEndDate,
+    fiscalYearStartMonth: settings.fiscalYearStartMonth,
   });
 
   await tx.savingCard.update({
@@ -642,10 +882,9 @@ async function applySelectedAlternativeMaterial(
         ? null
         : alternative.supplierNameManual,
       newPrice: alternative.quotedPrice,
-      currency: alternative.currency,
+      currency: scenarioCurrency,
       fxRate,
-      calculatedSavings: totals.savingsEUR,
-      calculatedSavingsUSD: totals.savingsUSD,
+      ...financials,
     },
   });
 
@@ -668,7 +907,23 @@ export async function setFinanceLock(
   const { organizationId } = resolveTenantScope(context);
 
   const updatedCard = await prisma.$transaction(async (tx) => {
-    const card = await getScopedSavingCard(tx, savingCardId, organizationId);
+    const card = await tx.savingCard.findFirst({
+      where: {
+        id: savingCardId,
+        organizationId,
+      },
+      include: {
+        stakeholders: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!card) {
+      throw new Error("Saving card not found.");
+    }
 
     if (locked && !canFinanceLockWorkflowPhase(card.phase)) {
       throw new WorkflowError(
@@ -691,6 +946,23 @@ export async function setFinanceLock(
       },
     });
 
+    const recipientIds = [...new Set(card.stakeholders.map((stakeholder) => stakeholder.userId))]
+      .filter((userId) => userId !== actorId);
+
+    if (recipientIds.length) {
+      await tx.notification.createMany({
+        data: recipientIds.map((userId) => ({
+          organizationId,
+          userId,
+          title: locked ? "Finance lock applied" : "Finance lock removed",
+          message: locked
+            ? `${card.title} was finance locked.`
+            : `${card.title} finance lock was removed.`,
+          href: buildSavingCardPath(savingCardId),
+        })),
+      });
+    }
+
     return nextCard;
   });
 
@@ -707,12 +979,35 @@ export async function importSavingCards(
   context: TenantContextSource
 ) {
   const { organizationId } = resolveTenantScope(context);
+  const settings = await getWorkspaceFinancialSettings(organizationId);
+  const payloads = rows.map((row) =>
+    buildSavingCardPayload(applyWorkspaceCurrencyMode(row, settings), {
+      fiscalYearStartMonth: settings.fiscalYearStartMonth,
+    })
+  );
 
-  for (const row of rows) {
-    await createSavingCard(row, actorId, organizationId, {
-      skipViewInvalidation: true,
-    });
-  }
+  payloads.forEach((payload) => assertInitialSavingCardPhase(payload.phase));
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const payload of payloads) {
+        await createSavingCardRecord(tx, payload, actorId, organizationId);
+      }
+
+      await writeAuditEvent(tx, {
+        organizationId,
+        actorUserId: actorId,
+        eventType: auditEventTypes.SAVING_CARDS_IMPORTED,
+        detail: `${payloads.length} saving card${payloads.length === 1 ? "" : "s"} imported in one transaction.`,
+        payload: {
+          importedCount: payloads.length,
+          phase: INITIAL_WORKFLOW_PHASE,
+          atomic: true,
+        },
+      });
+    },
+    SAVING_CARD_IMPORT_TRANSACTION_OPTIONS
+  );
 
   invalidatePortfolioSurfaceCaches(organizationId);
 }

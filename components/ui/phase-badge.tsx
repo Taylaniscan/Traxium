@@ -9,44 +9,77 @@ type PhaseVisual = {
   dotClassName: string;
   headerClassName: string;
   countBadgeClassName: string;
+  columnAccentClassName: string;
+  rowAccentClassName: string;
   chartColor: string;
 };
 
+/**
+ * Single source of truth for the five-phase status color language.
+ * Every surface that shows a phase (badges, kanban, charts, timeline,
+ * table accents, monthly close) consumes these tokens — colors are
+ * defined once in app/globals.css.
+ */
 export const phaseVisuals: Record<Phase, PhaseVisual> = {
   IDEA: {
-    badgeClassName: "border-[#ddd6fe] bg-[#ede9fe] text-[#5b21b6]",
-    dotClassName: "bg-[#7c3aed]",
-    headerClassName: "border-[#ddd6fe] bg-[#f5f3ff] text-[#5b21b6]",
-    countBadgeClassName: "border-[#d8b4fe] bg-[#ede9fe] text-[#5b21b6]",
-    chartColor: "#7c3aed",
+    badgeClassName:
+      "border-transparent bg-[var(--phase-proposed-soft)] text-[var(--phase-proposed-text)]",
+    dotClassName: "bg-[var(--phase-proposed)]",
+    headerClassName:
+      "border-[var(--border)] bg-[var(--phase-proposed-soft)] text-[var(--phase-proposed-text)]",
+    countBadgeClassName:
+      "border-transparent bg-[var(--phase-proposed-soft)] text-[var(--phase-proposed-text)]",
+    columnAccentClassName: "border-t-[3px] border-t-[var(--phase-proposed)]",
+    rowAccentClassName: "border-l-[3px] border-l-[var(--phase-proposed)]",
+    chartColor: "var(--phase-proposed)",
   },
   VALIDATED: {
-    badgeClassName: "border-[#bfdbfe] bg-[#dbeafe] text-[#1e40af]",
-    dotClassName: "bg-[#2563eb]",
-    headerClassName: "border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af]",
-    countBadgeClassName: "border-[#93c5fd] bg-[#dbeafe] text-[#1e40af]",
-    chartColor: "#2563eb",
+    badgeClassName:
+      "border-transparent bg-[var(--phase-validated-soft)] text-[var(--phase-validated-text)]",
+    dotClassName: "bg-[var(--phase-validated)]",
+    headerClassName:
+      "border-[var(--border)] bg-[var(--phase-validated-soft)] text-[var(--phase-validated-text)]",
+    countBadgeClassName:
+      "border-transparent bg-[var(--phase-validated-soft)] text-[var(--phase-validated-text)]",
+    columnAccentClassName: "border-t-[3px] border-t-[var(--phase-validated)]",
+    rowAccentClassName: "border-l-[3px] border-l-[var(--phase-validated)]",
+    chartColor: "var(--phase-validated)",
   },
   REALISED: {
-    badgeClassName: "border-[#fde68a] bg-[#fef3c7] text-[#92400e]",
-    dotClassName: "bg-[#d97706]",
-    headerClassName: "border-[#fde68a] bg-[#fffbeb] text-[#92400e]",
-    countBadgeClassName: "border-[#fcd34d] bg-[#fef3c7] text-[#92400e]",
-    chartColor: "#d97706",
+    badgeClassName:
+      "border-transparent bg-[var(--phase-implemented-soft)] text-[var(--phase-implemented-text)]",
+    dotClassName: "bg-[var(--phase-implemented)]",
+    headerClassName:
+      "border-[var(--border)] bg-[var(--phase-implemented-soft)] text-[var(--phase-implemented-text)]",
+    countBadgeClassName:
+      "border-transparent bg-[var(--phase-implemented-soft)] text-[var(--phase-implemented-text)]",
+    columnAccentClassName: "border-t-[3px] border-t-[var(--phase-implemented)]",
+    rowAccentClassName: "border-l-[3px] border-l-[var(--phase-implemented)]",
+    chartColor: "var(--phase-implemented)",
   },
   ACHIEVED: {
-    badgeClassName: "border-[#a7f3d0] bg-[#d1fae5] text-[#064e3b]",
-    dotClassName: "bg-[#059669]",
-    headerClassName: "border-[#a7f3d0] bg-[#ecfdf5] text-[#064e3b]",
-    countBadgeClassName: "border-[#6ee7b7] bg-[#d1fae5] text-[#064e3b]",
-    chartColor: "#059669",
+    badgeClassName:
+      "border-transparent bg-[var(--phase-captured-soft)] text-[var(--phase-captured-text)]",
+    dotClassName: "bg-[var(--phase-captured)]",
+    headerClassName:
+      "border-[var(--border)] bg-[var(--phase-captured-soft)] text-[var(--phase-captured-text)]",
+    countBadgeClassName:
+      "border-transparent bg-[var(--phase-captured-soft)] text-[var(--phase-captured-text)]",
+    columnAccentClassName: "border-t-[3px] border-t-[var(--phase-captured)]",
+    rowAccentClassName: "border-l-[3px] border-l-[var(--phase-captured)]",
+    chartColor: "var(--phase-captured)",
   },
   CANCELLED: {
-    badgeClassName: "border-[#e5e7eb] bg-[#f3f4f6] text-[#6b7280]",
-    dotClassName: "bg-[#9ca3af]",
-    headerClassName: "border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280]",
-    countBadgeClassName: "border-[#d1d5db] bg-[#f3f4f6] text-[#6b7280]",
-    chartColor: "#9ca3af",
+    badgeClassName:
+      "border-transparent bg-[var(--phase-canceled-soft)] text-[var(--phase-canceled-text)]",
+    dotClassName: "bg-[var(--phase-canceled)]",
+    headerClassName:
+      "border-[var(--border)] bg-[var(--phase-canceled-soft)] text-[var(--phase-canceled-text)]",
+    countBadgeClassName:
+      "border-transparent bg-[var(--phase-canceled-soft)] text-[var(--phase-canceled-text)]",
+    columnAccentClassName: "border-t-[3px] border-t-[var(--phase-canceled)]",
+    rowAccentClassName: "border-l-[3px] border-l-[var(--phase-canceled)]",
+    chartColor: "var(--phase-canceled)",
   },
 };
 
@@ -66,11 +99,12 @@ export function PhaseBadge({
   return (
     <Badge
       className={cn(
-        "border px-2.5 py-1 text-[11px] font-semibold",
+        "gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
         phaseVisuals[phase].badgeClassName,
         className
       )}
     >
+      <PhaseDot phase={phase} className="h-1.5 w-1.5 shrink-0" />
       {children}
     </Badge>
   );

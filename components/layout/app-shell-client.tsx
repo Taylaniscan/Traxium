@@ -7,33 +7,34 @@ import type { Role } from "@prisma/client";
 import {
   ArrowUpRight,
   Bell,
-  CalendarRange,
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
   KanbanSquare,
   LayoutDashboard,
+  LineChart,
   LogOut,
   Mail,
-  PanelsTopLeft,
   Settings,
   Table2,
   UserRound,
 } from "lucide-react";
 
+import { NotificationBell, type ShellNotification } from "@/components/layout/notification-bell";
 import { Button } from "@/components/ui/button";
 import { APP_NAME, roleLabels } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
+const ACTION_CENTER_HREF = "/command-center";
+
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/saving-cards", label: "Saving Cards", icon: Table2 },
-  { href: "/kanban", label: "Kanban", icon: KanbanSquare },
-  { href: "/timeline", label: "Timeline", icon: CalendarRange },
-  { href: "/command-center", label: "Command Center", icon: PanelsTopLeft },
+  { href: "/saving-cards", label: "Savings Register", icon: Table2 },
+  { href: "/kanban", label: "Board", icon: KanbanSquare },
+  { href: ACTION_CENTER_HREF, label: "Action Center", icon: Bell },
+  { href: "/reports/timeline", label: "Timeline", icon: LineChart },
   { href: "/reports", label: "Reports", icon: FileSpreadsheet },
-  { href: "/admin", label: "Settings", icon: Settings },
-  { href: "/open-actions", label: "Open Actions", icon: Bell },
+  { href: "/admin/settings", label: "Workspace Settings", icon: Settings },
 ] as const;
 
 type AppShellClientProps = {
@@ -46,11 +47,8 @@ type AppShellClientProps = {
   workspace: {
     name: string;
   } | null;
-  notifications: Array<{
-    id: string;
-    title: string;
-    message: string;
-  }>;
+  notifications: ShellNotification[];
+  unreadNotificationCount: number;
   pendingActionsCount: number;
   children: React.ReactNode;
 };
@@ -59,6 +57,7 @@ export function AppShellClient({
   user,
   workspace,
   notifications,
+  unreadNotificationCount,
   pendingActionsCount: _pendingActionsCount,
   children,
 }: AppShellClientProps) {
@@ -147,7 +146,7 @@ export function AppShellClient({
           router.push("/kanban");
           break;
         case "o":
-          router.push("/open-actions");
+          router.push(ACTION_CENTER_HREF);
           break;
         default:
           return;
@@ -170,7 +169,7 @@ export function AppShellClient({
     <div className="min-h-screen bg-[var(--background)] lg:flex">
       <aside
         className={cn(
-          "border-b border-[var(--border)] bg-white lg:sticky lg:top-0 lg:h-screen lg:flex-shrink-0 lg:border-b-0 lg:border-r",
+          "border-b border-[var(--border)] bg-[var(--surface)] lg:sticky lg:top-0 lg:h-screen lg:flex-shrink-0 lg:border-b-0 lg:border-r",
           collapsed ? "lg:w-[104px]" : "lg:w-[304px]"
         )}
       >
@@ -189,29 +188,45 @@ export function AppShellClient({
             >
               {APP_NAME.slice(0, 2).toUpperCase()}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="hidden flex-shrink-0 lg:inline-flex"
-              onClick={() => setCollapsed((value) => !value)}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              <NotificationBell
+                notifications={notifications}
+                unreadCount={unreadNotificationCount}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="hidden flex-shrink-0 lg:inline-flex"
+                onClick={() => setCollapsed((value) => !value)}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="mt-8 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
             <nav className="space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const active =
+                // Only the most specific match highlights, so a nested route like
+                // /reports/timeline lights up Timeline rather than both it and Reports.
+                const matchesItem =
                   pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const hasMoreSpecificMatch = navItems.some(
+                  (other) =>
+                    other.href !== item.href &&
+                    other.href.startsWith(`${item.href}/`) &&
+                    (pathname === other.href ||
+                      pathname.startsWith(`${other.href}/`))
+                );
+                const active = matchesItem && !hasMoreSpecificMatch;
 
                 return (
                   <Link
@@ -219,10 +234,10 @@ export function AppShellClient({
                     href={item.href}
                     title={collapsed ? item.label : undefined}
                     className={cn(
-                      "group relative flex items-center border-l-[3px] px-3 py-3 text-[13px] font-medium transition",
+                      "group relative flex items-center rounded-md px-3 py-3 text-[13px] transition-colors duration-150",
                       active
-                        ? "rounded-l-none rounded-r-[8px] border-l-[var(--primary)] bg-[rgba(99,102,241,0.08)] text-[var(--foreground)]"
-                        : "rounded-l-none rounded-r-[8px] border-l-transparent bg-transparent text-[var(--foreground)] hover:bg-[rgba(99,102,241,0.05)]",
+                        ? "bg-[var(--primary-soft)] font-semibold text-[var(--primary)]"
+                        : "bg-transparent font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]",
                       collapsed ? "justify-center lg:px-0" : "justify-between"
                     )}
                   >
@@ -234,7 +249,7 @@ export function AppShellClient({
                     >
                       <Icon
                         className={cn(
-                          "h-4 w-4 transition",
+                          "h-4 w-4 transition-colors duration-150",
                           active
                             ? "text-[var(--primary)]"
                             : "text-[var(--muted-foreground)] group-hover:text-[var(--primary)]"
@@ -244,10 +259,10 @@ export function AppShellClient({
                         {item.label}
                       </span>
                     </span>
-                    {item.href === "/open-actions" && visiblePendingApprovalCount > 0 && collapsed ? (
+                    {item.href === ACTION_CENTER_HREF && visiblePendingApprovalCount > 0 && collapsed ? (
                       <span
                         className={cn(
-                          "absolute right-3 top-3 inline-flex items-center justify-center rounded-full bg-[#f43f5e] text-[10px] font-semibold text-white",
+                          "absolute right-3 top-3 inline-flex items-center justify-center rounded-full bg-[var(--phase-canceled)] text-[10px] font-semibold text-white",
                           pendingApprovalBadge ? "min-w-5 px-1.5 py-0.5" : "h-1.5 w-1.5"
                         )}
                         aria-label={`${visiblePendingApprovalCount} pending actions`}
@@ -256,10 +271,10 @@ export function AppShellClient({
                       </span>
                     ) : null}
                     <span className={cn("flex items-center gap-2", collapsed && "hidden")}>
-                      {item.href === "/open-actions" && visiblePendingApprovalCount > 0 ? (
+                      {item.href === ACTION_CENTER_HREF && visiblePendingApprovalCount > 0 ? (
                         <span
                           className={cn(
-                            "inline-flex items-center justify-center rounded-full bg-[#f43f5e] text-[10px] font-semibold text-white",
+                            "inline-flex items-center justify-center rounded-full bg-[var(--phase-canceled)] text-[10px] font-semibold text-white",
                             pendingApprovalBadge ? "min-w-5 px-1.5 py-0.5" : "h-1.5 w-1.5"
                           )}
                           aria-label={`${visiblePendingApprovalCount} pending actions`}
@@ -280,46 +295,6 @@ export function AppShellClient({
                 );
               })}
             </nav>
-
-            <div
-              className={cn(
-                "mt-8 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)]",
-                collapsed && "lg:hidden"
-              )}
-            >
-              <div className="border-b border-[var(--border)] px-4 py-3">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-[var(--primary)]" />
-                  <p className="text-sm font-semibold">Workflow Feed</p>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {notifications.length
-                    ? `${notifications.length} notification${notifications.length === 1 ? "" : "s"}`
-                    : "No workflow updates"}
-                </p>
-              </div>
-              <div className="space-y-2 px-4 py-3">
-                {notifications.length ? (
-                  notifications.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl bg-white p-2.5 text-xs shadow-[inset_0_0_0_1px_rgba(17,24,39,0.04)]"
-                    >
-                      <p className="font-semibold text-[var(--foreground)]">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 text-[var(--muted-foreground)]">
-                        {item.message}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    No open workflow notifications.
-                  </p>
-                )}
-              </div>
-            </div>
           </div>
 
           <SidebarWorkspaceAccount
@@ -392,14 +367,14 @@ export function SidebarWorkspaceAccount({
           )}
         >
           <Link
-            href="/admin"
+            href="/admin/settings"
             className={cn(
               "inline-flex items-center justify-center rounded-xl border border-[var(--border)] px-3 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2",
               collapsed && "px-0"
             )}
             title={collapsed ? "Settings" : undefined}
           >
-            {collapsed ? <Settings className="h-4 w-4" /> : "Settings"}
+            {collapsed ? <Settings className="h-4 w-4" /> : "Workspace Settings"}
           </Link>
 
           <form action="/logout" method="post">

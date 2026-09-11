@@ -6,15 +6,19 @@ import {
   Phase,
   PrismaClient,
   Role,
+  SavingType,
+  SavingsImpactType,
 } from "@prisma/client";
-import { calculateSavings } from "../lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "../lib/calculations";
+
+const SEED_FISCAL_YEAR_START_MONTH = 1;
 
 const prisma = new PrismaClient();
 
 const fxRatesSeed = [
   {
-    currency: Currency.USD,
-    rateToEUR: 0.92,
+    currency: Currency.EUR,
+    rateToUSD: 1.08,
     validFrom: new Date("2026-01-01T00:00:00.000Z"),
   },
 ];
@@ -130,6 +134,28 @@ type BusinessUnitKey = keyof typeof businessUnitSeeds;
 
 type IdLookup<T extends string> = Record<T, { id: string; name: string }>;
 
+function classifyLegacySavingType(value: string): SavingType {
+  const normalized = value.toLowerCase();
+
+  if (normalized.includes("supplier") || normalized.includes("sourcing")) {
+    return SavingType.SUPPLIER_SWITCH;
+  }
+  if (normalized.includes("specification") || normalized.includes("substitution")) {
+    return SavingType.SPECIFICATION_CHANGE;
+  }
+  if (normalized.includes("logistics") || normalized.includes("freight")) {
+    return SavingType.FREIGHT_LOGISTICS;
+  }
+  if (normalized.includes("consolidation")) {
+    return SavingType.VOLUME_CONSOLIDATION;
+  }
+  if (normalized.includes("risk") || normalized.includes("avoidance")) {
+    return SavingType.COST_AVOIDANCE;
+  }
+
+  return SavingType.PRICE_REDUCTION;
+}
+
 function getEvidenceStorageBucketName() {
   return process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_EVIDENCE_BUCKET;
 }
@@ -156,8 +182,10 @@ const savingCardsSeed: Array<{
   businessUnitKey: BusinessUnitKey;
   buyerKey: BuyerKey;
   stakeholderKeys: UserKey[];
+  impactType?: SavingsImpactType;
   baselinePrice: number;
   newPrice: number;
+  referencePrice?: number;
   annualVolume: number;
   currency: Currency;
   fxRate: number;
@@ -190,7 +218,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 10,
     newPrice: 9.25,
     annualVolume: 100000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Negotiation",
@@ -221,7 +249,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 8.7,
     newPrice: 8.1,
     annualVolume: 85000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Dual sourcing",
@@ -252,7 +280,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 4.2,
     newPrice: 3.95,
     annualVolume: 312000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.MULTI_YEAR,
     savingDriver: "Negotiation",
@@ -283,7 +311,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 3.75,
     newPrice: 3.28,
     annualVolume: 145000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Volume Consolidation",
@@ -311,10 +339,12 @@ const savingCardsSeed: Array<{
     businessUnitKey: "additives" as BusinessUnitKey,
     buyerKey: "packagingStrategic" as BuyerKey,
     stakeholderKeys: ["sophie"] as UserKey[],
+    impactType: SavingsImpactType.COST_AVOIDANCE,
     baselinePrice: 6.1,
     newPrice: 5.72,
+    referencePrice: 6.8,
     annualVolume: 96000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.ONE_TIME,
     savingDriver: "Specification Optimization",
@@ -342,10 +372,12 @@ const savingCardsSeed: Array<{
     businessUnitKey: "masterbatch" as BusinessUnitKey,
     buyerKey: "luca" as BuyerKey,
     stakeholderKeys: ["helen", "luca"] as UserKey[],
+    impactType: SavingsImpactType.COST_AVOIDANCE,
     baselinePrice: 4.85,
     newPrice: 4.3,
+    referencePrice: 5.4,
     annualVolume: 188000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Material Substitution",
@@ -376,7 +408,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 2.15,
     newPrice: 1.68,
     annualVolume: 42000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Specification Optimization",
@@ -407,7 +439,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 2.95,
     newPrice: 2.61,
     annualVolume: 220000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Logistics Optimization",
@@ -438,7 +470,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 3.62,
     newPrice: 3.31,
     annualVolume: 76000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.ONE_TIME,
     savingDriver: "Material Substitution",
@@ -469,7 +501,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 7.5,
     newPrice: 7.1,
     annualVolume: 58000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.ONE_TIME,
     savingDriver: "Supplier Change",
@@ -479,7 +511,7 @@ const savingCardsSeed: Array<{
     endDate: new Date("2026-06-30T00:00:00.000Z"),
     impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
     impactEndDate: new Date("2026-06-30T00:00:00.000Z"),
-    evidenceFileName: "polyone-flame-retardant-cancelled.docx",
+    evidenceFileName: "polyone-flame-retardant-canceled.docx",
     evidenceType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     cancellationReason: "Prototype test showed unacceptable odor and migration risk; project paused.",
   },
@@ -500,7 +532,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 5.05,
     newPrice: 4.63,
     annualVolume: 52000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Qualification",
@@ -531,7 +563,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 2.98,
     newPrice: 2.59,
     annualVolume: 128000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Qualification",
@@ -562,7 +594,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 4.4,
     newPrice: 4.14,
     annualVolume: 104000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.MULTI_YEAR,
     savingDriver: "Negotiation",
@@ -593,7 +625,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 3.95,
     newPrice: 3.67,
     annualVolume: 93000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Supplier Change",
@@ -624,7 +656,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 5.9,
     newPrice: 5.48,
     annualVolume: 86000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.ONE_TIME,
     savingDriver: "Risk Reduction",
@@ -655,7 +687,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 6.35,
     newPrice: 5.9,
     annualVolume: 61000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Specification Optimization",
@@ -686,7 +718,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 4.58,
     newPrice: 4.22,
     annualVolume: 173000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Demand Reduction",
@@ -717,7 +749,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 8.2,
     newPrice: 7.55,
     annualVolume: 39000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.ONE_TIME,
     savingDriver: "Material Substitution",
@@ -727,7 +759,7 @@ const savingCardsSeed: Array<{
     endDate: new Date("2026-08-31T00:00:00.000Z"),
     impactStartDate: new Date("2026-05-01T00:00:00.000Z"),
     impactEndDate: new Date("2026-08-31T00:00:00.000Z"),
-    evidenceFileName: "ampacet-bio-pilot-cancelled.xlsx",
+    evidenceFileName: "ampacet-bio-pilot-canceled.xlsx",
     evidenceType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     cancellationReason: "Certification review rejected due to unresolved migration stability concerns.",
   },
@@ -748,7 +780,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 3.9,
     newPrice: 3.62,
     annualVolume: 102000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Implementation Optimization",
@@ -779,7 +811,7 @@ const savingCardsSeed: Array<{
     baselinePrice: 5.5,
     newPrice: 5.0,
     annualVolume: 140000,
-    currency: Currency.EUR,
+    currency: Currency.USD,
     fxRate: 1,
     frequency: Frequency.RECURRING,
     savingDriver: "Formulation optimization",
@@ -798,7 +830,6 @@ const savingCardsSeed: Array<{
 async function clearExistingData() {
   await prisma.phaseChangeRequestApproval.deleteMany();
   await prisma.phaseChangeRequest.deleteMany();
-  await prisma.approval.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.phaseHistory.deleteMany();
@@ -823,10 +854,15 @@ async function clearExistingData() {
 async function upsertOrganization() {
   return prisma.organization.upsert({
     where: { slug: "demo-org" },
-    update: {},
+    update: {
+      defaultCurrency: Currency.USD,
+      multiCurrencyEnabled: false,
+    },
     create: {
       name: "Demo Org",
       slug: "demo-org",
+      defaultCurrency: Currency.USD,
+      multiCurrencyEnabled: false,
     },
   });
 }
@@ -1057,55 +1093,6 @@ function buildPhaseHistory(phase: Phase, users: IdLookup<UserKey>) {
   return history;
 }
 
-function buildApprovals(
-  savingCardId: string,
-  phase: Phase,
-  users: IdLookup<UserKey>
-) {
-  const approvals: Array<{
-    savingCardId: string;
-    approverId: string;
-    phase: Phase;
-    approved: boolean;
-    status: ApprovalStatus;
-    comment: string;
-  }> = [];
-
-  if (phase === Phase.VALIDATED || phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.sophie.id,
-      phase: Phase.VALIDATED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  if (phase === Phase.REALISED || phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.marco.id,
-      phase: Phase.REALISED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  if (phase === Phase.ACHIEVED) {
-    approvals.push({
-      savingCardId,
-      approverId: users.helen.id,
-      phase: Phase.ACHIEVED,
-      approved: true,
-      status: ApprovalStatus.APPROVED,
-      comment: "Seeded approval",
-    });
-  }
-
-  return approvals;
-}
 
 async function createPendingWorkflow(
   createdCards: Record<string, { id: string }>,
@@ -1172,12 +1159,28 @@ async function main() {
   const createdCards: Record<string, { id: string }> = {};
 
   for (const card of savingCardsSeed) {
+    const impactType = card.impactType ?? SavingsImpactType.HARD_SAVINGS;
+    const referencePrice = card.referencePrice ?? null;
     const savings = calculateSavings({
       baselinePrice: card.baselinePrice,
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
       currency: card.currency,
       fxRate: card.fxRate,
+      impactType,
+      referencePrice,
+    });
+    const periodized = calculatePeriodizedSavings({
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      fxRate: card.fxRate,
+      impactType,
+      referencePrice,
+      impactStartDate: card.impactStartDate,
+      impactEndDate: card.impactEndDate,
+      fiscalYear: { startMonth: SEED_FISCAL_YEAR_START_MONTH },
     });
 
     const created = await prisma.savingCard.create({
@@ -1185,7 +1188,9 @@ async function main() {
         organizationId: organization.id,
         title: card.title,
         description: card.description,
-        savingType: card.savingType,
+        legacySavingsMethod: card.savingType,
+        savingType: classifyLegacySavingType(card.savingType),
+        impactType,
         phase: card.phase,
         supplierId: suppliers[card.supplierKey].id,
         materialId: materials[card.materialKey].id,
@@ -1201,11 +1206,16 @@ async function main() {
         buyerId: buyers[card.buyerKey].id,
         baselinePrice: card.baselinePrice,
         newPrice: card.newPrice,
+        referencePrice,
         annualVolume: card.annualVolume,
         currency: card.currency,
         fxRate: card.fxRate,
-        calculatedSavings: savings.savingsEUR,
+        calculatedSavings: savings.localSavings,
         calculatedSavingsUSD: savings.savingsUSD,
+        annualizedRunRate: periodized.annualizedRunRate,
+        annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+        inYearValue: periodized.inYearValue,
+        inYearValueUSD: periodized.inYearValueUSD,
         frequency: card.frequency,
         savingDriver: card.savingDriver,
         implementationComplexity: card.implementationComplexity,
@@ -1253,11 +1263,6 @@ async function main() {
         uploadedById: users.luca.id,
       },
     });
-
-    const approvals = buildApprovals(created.id, card.phase, users);
-    if (approvals.length) {
-      await prisma.approval.createMany({ data: approvals });
-    }
   }
 
   await createPendingWorkflow(createdCards, users);

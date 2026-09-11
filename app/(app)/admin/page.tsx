@@ -1,11 +1,27 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { WorkspaceBillingSettingsCard } from "@/components/billing/workspace-billing-settings-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { isAuthGuardError, requirePermission } from "@/lib/auth";
+import { getOrganizationAccessState } from "@/lib/billing/access";
+import {
+  getMissingStripeBillingEnvKeys,
+  isStripeBillingConfigured,
+} from "@/lib/billing/config";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
+import type { OrganizationAccessStateResult } from "@/lib/billing/types";
+import { roleLabels } from "@/lib/constants";
 import { getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 import type { WorkspaceReadiness } from "@/lib/types";
+
+const WORKFLOW_COVERAGE_LABELS = [
+  roleLabels.HEAD_OF_GLOBAL_PROCUREMENT,
+  roleLabels.GLOBAL_CATEGORY_LEADER,
+  roleLabels.FINANCIAL_CONTROLLER,
+] as const;
 
 const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   workspace: {
@@ -72,19 +88,19 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   workflowCoverage: [
     {
       key: "HEAD_OF_GLOBAL_PROCUREMENT",
-      label: "Head of Global Procurement",
+      label: roleLabels.HEAD_OF_GLOBAL_PROCUREMENT,
       count: 0,
       ready: false,
     },
     {
       key: "GLOBAL_CATEGORY_LEADER",
-      label: "Global Category Leader",
+      label: roleLabels.GLOBAL_CATEGORY_LEADER,
       count: 0,
       ready: false,
     },
     {
       key: "FINANCIAL_CONTROLLER",
-      label: "Financial Controller",
+      label: roleLabels.FINANCIAL_CONTROLLER,
       count: 0,
       ready: false,
     },
@@ -104,12 +120,26 @@ const EMPTY_WORKSPACE_READINESS: WorkspaceReadiness = {
   isWorkflowReady: false,
   isWorkspaceReady: false,
   missingCoreSetup: ["Buyers", "Suppliers", "Materials", "Categories", "Plants", "Business Units"],
-  missingWorkflowCoverage: [
-    "Head of Global Procurement",
-    "Global Category Leader",
-    "Financial Controller",
-  ],
+  missingWorkflowCoverage: [...WORKFLOW_COVERAGE_LABELS],
 };
+
+function createUnknownAccessState(
+  organizationId: string
+): OrganizationAccessStateResult {
+  return {
+    organizationId,
+    subscriptionId: null,
+    stripeSubscriptionId: null,
+    rawSubscriptionStatus: null,
+    accessState: "no_subscription",
+    isBlocked: false,
+    reasonCode: "unknown",
+    currentPeriodEnd: null,
+    trialEndsAt: null,
+    trialSource: null,
+    plan: null,
+  };
+}
 
 export default async function AdminPage() {
   let user: Awaited<ReturnType<typeof requirePermission>>;
@@ -124,15 +154,48 @@ export default async function AdminPage() {
     throw error;
   }
 
-  let readiness: WorkspaceReadiness = EMPTY_WORKSPACE_READINESS;
+  const [readiness, accessState] = await Promise.all([
+    getWorkspaceReadiness(user.organizationId).catch((error) => {
+      captureException(error, {
+        event: "admin.page.readiness_load_failed",
+        route: "/admin",
+        organizationId: user.organizationId,
+        userId: user.id,
+        payload: {
+          resource: "workspace_readiness",
+          degradedRender: true,
+          fallback: "admin_empty_readiness",
+        },
+      });
 
-  try {
-    readiness = await getWorkspaceReadiness(user.organizationId);
-  } catch (error) {
-    console.log("Workspace readiness could not be loaded:", error);
-  }
+      return EMPTY_WORKSPACE_READINESS;
+    }),
+    getOrganizationAccessState(user.organizationId).catch((error) => {
+      captureException(error, {
+        event: "admin.page.billing_access_load_failed",
+        route: "/admin",
+        organizationId: user.organizationId,
+        userId: user.id,
+        payload: {
+          resource: "billing_access_state",
+          degradedRender: true,
+          fallback: "unknown_billing_state",
+        },
+      });
+
+      return createUnknownAccessState(user.organizationId);
+    }),
+  ]);
 
   const workspaceName = readiness.workspace.name;
+  const canManageBilling = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
+  const stripeBillingConfigured = isStripeBillingConfigured();
+  const missingStripeBillingEnvKeys = stripeBillingConfigured
+    ? []
+    : getMissingStripeBillingEnvKeys();
   const liveDataStatus =
     readiness.counts.savingCards > 0
       ? `${readiness.counts.savingCards} live saving card${readiness.counts.savingCards === 1 ? "" : "s"}`
@@ -155,6 +218,14 @@ export default async function AdminPage() {
           Review operational readiness, control coverage, and master-data health before onboarding more users or scaling saving-card creation.
         </p>
       </div>
+
+      <WorkspaceBillingSettingsCard
+        workspaceName={workspaceName}
+        accessState={accessState}
+        canManageBilling={canManageBilling}
+        stripeBillingConfigured={stripeBillingConfigured}
+        missingStripeBillingEnvKeys={missingStripeBillingEnvKeys}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
@@ -278,7 +349,7 @@ export default async function AdminPage() {
               ready={readiness.counts.buyers > 0}
             />
             <MetricCard
-              label="Workflow Roles"
+              label="Approval Coverage"
               value={readiness.isWorkflowReady ? "Covered" : "Incomplete"}
               detail="Approval routing is only production-ready when all required roles are assigned"
               ready={readiness.isWorkflowReady}

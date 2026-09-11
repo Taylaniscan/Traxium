@@ -34,6 +34,9 @@ const mockPrisma = vi.hoisted(() => ({
     findUnique: vi.fn(),
     updateMany: vi.fn(),
   },
+  jobRunnerHeartbeat: {
+    findUnique: vi.fn().mockResolvedValue(null),
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -233,6 +236,7 @@ describe("admin jobs routes", () => {
           retryable: false,
         },
       ],
+      workerHeartbeat: null,
     });
   });
 

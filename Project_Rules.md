@@ -49,33 +49,33 @@ Currencies:
 EUR and USD with FX conversion.
 
 Savings phases:
-- Idea
-- Validated
-- Realised
-- Achieved
-- Cancelled
+- Proposed (`IDEA` internal enum)
+- Finance Validated (`VALIDATED` internal enum)
+- Implemented (`REALISED` internal enum)
+- Captured (`ACHIEVED` internal enum)
+- Canceled (`CANCELLED` internal enum)
 
 Approval Workflow
 
 Canonical lifecycle:
-- New saving cards must start in `Idea`.
-- Allowed non-cancelled progression is `Idea -> Validated -> Realised -> Achieved`.
-- Any non-cancelled phase may move to `Cancelled` only with a cancellation reason.
+- New saving cards must start as Proposed (`IDEA`).
+- Allowed non-canceled progression is Proposed (`IDEA`) -> Finance Validated (`VALIDATED`) -> Implemented (`REALISED`) -> Captured (`ACHIEVED`).
+- Any non-canceled phase may move to Canceled (`CANCELLED`) only with a cancellation reason.
 - No phase skipping is allowed.
 
 Target-phase approvals:
-- `Idea`: initial phase for new cards rather than a normal requested destination
-- `Validated`: Head of Global Procurement + Financial Controller
-- `Realised`: Financial Controller
-- `Achieved`: Financial Controller
-- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+- Proposed (`IDEA`): initial phase for new cards rather than a normal requested destination
+- Finance Validated (`VALIDATED`): Procurement Lead + Finance Reviewer
+- Implemented (`REALISED`): Finance Reviewer
+- Captured (`ACHIEVED`): Finance Reviewer
+- Canceled (`CANCELLED`): requires a reason and follows the implemented phase-change approval path
 
 Workflow guardrail:
 - Saving-card create and edit flows must not bypass workflow by writing phase directly.
 - The active approval path is the phase-change request approval model. Do not reintroduce a parallel legacy approval flow.
 
 Finance Lock
-Finance can lock the record only when the saving card is in `Validated`.
+Finance can lock the record only when the saving card is Finance Validated (`VALIDATED`).
 
 Locked fields:
 - baseline price

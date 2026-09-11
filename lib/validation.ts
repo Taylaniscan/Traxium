@@ -5,10 +5,17 @@ import {
   implementationComplexities,
   phases,
   qualificationStatuses,
-  savingDrivers
+  savingDrivers,
+  savingTypes,
+  savingsBudgetImpacts,
+  savingsImpactRecurrences,
+  savingsImpactTypes
 } from "@/lib/constants";
 
-const numberField = z.coerce.number().finite();
+const positiveNumberField = (message: string) =>
+  z.coerce.number().finite().positive(message);
+const nonNegativeNumberField = (message: string) =>
+  z.coerce.number().finite().nonnegative(message);
 const masterDataField = z
   .object({
     id: z.string().optional(),
@@ -34,21 +41,33 @@ export const savingCardSchema = z
   .object({
     title: z.string().min(3),
     description: z.string().min(10),
-    savingType: z.string().min(2),
+    savingType: z.enum(savingTypes).default("PRICE_REDUCTION"),
+    impactType: z.enum(savingsImpactTypes).default("HARD_SAVINGS"),
+    impactRecurrence: z.enum(savingsImpactRecurrences).default("RECURRING"),
+    budgetImpact: z.enum(savingsBudgetImpacts).default("BUDGET_IMPACT"),
     phase: z.enum(phases),
     supplier: masterDataField,
     material: masterDataField,
     alternativeSupplier: optionalMasterDataField,
     alternativeMaterial: optionalMasterDataField,
     category: masterDataField,
-    plant: masterDataField,
-    businessUnit: masterDataField,
+    plant: optionalMasterDataField,
+    businessUnit: optionalMasterDataField,
     buyer: masterDataField,
-    baselinePrice: numberField,
-    newPrice: numberField,
-    annualVolume: numberField,
+    baselinePrice: positiveNumberField("Baseline price must be greater than zero."),
+    newPrice: nonNegativeNumberField("New price must be zero or greater."),
+    referencePrice: z.preprocess(
+      (value) =>
+        value === "" || value === null || value === undefined ? undefined : value,
+      z.coerce
+        .number()
+        .finite()
+        .positive("Reference price must be greater than zero.")
+        .optional()
+    ),
+    annualVolume: positiveNumberField("Annual volume must be greater than zero."),
     currency: z.enum(currencies),
-    fxRate: z.coerce.number().positive(),
+    fxRate: positiveNumberField("FX rate must be greater than zero."),
     frequency: z.enum(frequencies),
     savingDriver: z.enum(savingDrivers).optional().nullable().or(z.literal("")),
     implementationComplexity: z.enum(implementationComplexities).optional().nullable().or(z.literal("")),
@@ -70,12 +89,32 @@ export const savingCardSchema = z
       .default([])
   })
   .superRefine((value, ctx) => {
-    if (value.newPrice > value.baselinePrice) {
+    // Hard savings must reduce against the approved baseline. Cost avoidance can
+    // mitigate a price increase, so it is measured against a quoted reference price
+    // rather than requiring newPrice <= baselinePrice.
+    if (value.impactType === "HARD_SAVINGS" && value.newPrice > value.baselinePrice) {
       ctx.addIssue({
         code: "custom",
-        message: "New price must not exceed the baseline price.",
+        message: "New price must not exceed the baseline price for hard savings.",
         path: ["newPrice"]
       });
+    }
+
+    if (value.impactType === "COST_AVOIDANCE") {
+      if (value.referencePrice === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Reference price is required for cost avoidance (the price you would have paid).",
+          path: ["referencePrice"]
+        });
+      } else if (value.referencePrice <= value.newPrice) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Reference price must be greater than the new price.",
+          path: ["referencePrice"]
+        });
+      }
     }
 
     if (value.endDate < value.startDate) {
@@ -97,7 +136,7 @@ export const savingCardSchema = z
     if (value.phase === "CANCELLED" && !value.cancellationReason) {
       ctx.addIssue({
         code: "custom",
-        message: "Cancellation reason is required when a card is cancelled.",
+        message: "Cancellation reason is required when a card is canceled.",
         path: ["cancellationReason"]
       });
     }
@@ -116,7 +155,7 @@ export const loginSchema = z.object({
 export const alternativeSupplierSchema = z.object({
   supplier: masterDataField.optional().default({}),
   country: z.string().min(2),
-  quotedPrice: numberField,
+  quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
   currency: z.enum(currencies),
   leadTimeDays: z.coerce.number().int().nonnegative(),
   moq: z.coerce.number().int().nonnegative(),
@@ -131,7 +170,7 @@ export const alternativeMaterialSchema = z.object({
   material: masterDataField.optional().default({}),
   supplier: masterDataField.optional().default({}),
   specification: z.string().min(2),
-  quotedPrice: numberField,
+  quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
   currency: z.enum(currencies),
   performanceImpact: z.string().min(2),
   qualificationStatus: z.string().min(2),

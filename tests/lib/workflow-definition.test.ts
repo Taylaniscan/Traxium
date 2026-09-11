@@ -8,6 +8,7 @@ import {
   phaseRequiresCancellationReason,
   requiredRolesForWorkflowPhase,
 } from "@/lib/workflow";
+import { isLockedField } from "@/lib/permissions";
 
 describe("workflow definition", () => {
   it("defines the canonical initial phase and sequential transitions", () => {
@@ -65,5 +66,18 @@ describe("workflow definition", () => {
     expect(canFinanceLockWorkflowPhase(Phase.REALISED)).toBe(false);
     expect(canFinanceLockWorkflowPhase(Phase.ACHIEVED)).toBe(false);
     expect(canFinanceLockWorkflowPhase(Phase.CANCELLED)).toBe(false);
+  });
+
+  it("identifies the finance-controlled saving-card fields", () => {
+    expect(isLockedField("baselinePrice")).toBe(true);
+    expect(isLockedField("newPrice")).toBe(true);
+    expect(isLockedField("annualVolume")).toBe(true);
+    expect(isLockedField("currency")).toBe(true);
+    expect(isLockedField("fxRate")).toBe(true);
+    expect(isLockedField("calculatedSavings")).toBe(true);
+    expect(isLockedField("calculatedSavingsUSD")).toBe(true);
+    expect(isLockedField("impactStartDate")).toBe(true);
+    expect(isLockedField("impactEndDate")).toBe(true);
+    expect(isLockedField("title")).toBe(false);
   });
 });

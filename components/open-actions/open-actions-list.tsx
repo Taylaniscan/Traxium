@@ -23,6 +23,8 @@ type OpenAction = {
   currentPhase: Phase;
   requestedPhase: Phase;
   comment: string | null;
+  canDecide: boolean;
+  pendingApproverSummary: string;
 };
 
 type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWorkspaceReadiness>>;
@@ -30,9 +32,17 @@ type WorkspaceReadiness = Awaited<ReturnType<typeof import("@/lib/data").getWork
 export function OpenActionsList({
   actions,
   readiness,
+  view = "mine",
+  viewOptions = [],
 }: {
   actions: OpenAction[];
   readiness?: WorkspaceReadiness | null;
+  view?: "mine" | "all";
+  viewOptions?: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
 }) {
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -111,7 +121,8 @@ export function OpenActionsList({
   }, [actions, requestedPhaseFilter, search]);
 
   const activeFilters = Boolean(search.trim() || requestedPhaseFilter);
-  const canBulkApprove = !activeFilters && filteredActions.length >= 2;
+  const canBulkApprove =
+    view === "mine" && !activeFilters && filteredActions.length >= 2;
   const workspaceCardCount = readiness?.counts.savingCards;
   const hasWorkspaceCards =
     typeof workspaceCardCount === "number" ? workspaceCardCount > 0 : true;
@@ -122,6 +133,10 @@ export function OpenActionsList({
     !!readiness &&
     (readiness.counts.savingCards < 3 || !readiness.isWorkspaceReady);
   const nextActions = buildOpenActionsNextActions(readiness, actions.length);
+  const viewDescription =
+    view === "all"
+      ? "Portfolio-wide queue of pending phase-change requests across the workspace."
+      : "Approval requests currently assigned to you.";
 
   function clearFilters() {
     setSearch("");
@@ -169,8 +184,8 @@ export function OpenActionsList({
     setBulkSummary({
       message:
         failedCount > 0
-          ? `${approvedCount} onaylandı, ${failedCount} başarısız oldu`
-          : `${approvedCount} inisiyatif onaylandı`,
+          ? `${approvedCount} approved, ${failedCount} failed`
+          : `${approvedCount} initiative${approvedCount === 1 ? "" : "s"} approved`,
       tone: failedCount > 0 ? "error" : "success"
     });
     router.refresh();
@@ -179,10 +194,13 @@ export function OpenActionsList({
   if (!actions.length && !hasWorkspaceCards) {
     return (
       <div className="space-y-6">
+        {viewOptions.length ? (
+          <WorkflowViewCard description={viewDescription} options={viewOptions} />
+        ) : null}
         <Card className="border-0 bg-[linear-gradient(135deg,#113b61_0%,#194f7a_58%,#1b7f87_100%)] text-white">
           <CardContent className="grid gap-6 p-8 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
-              <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-cyan-100">
+              <div className="inline-flex rounded-full border border-white/15 bg-[var(--surface)]/10 px-3 py-1 text-xs font-medium text-cyan-100">
                 Workflow Launch
               </div>
               <div>
@@ -196,10 +214,10 @@ export function OpenActionsList({
                   Create first saving card
                 </Link>
                 <Link
-                  href="/admin"
+                  href="/admin/settings"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
-                    "border-white/20 bg-white/10 text-white hover:bg-white/20"
+                    "border-white/20 bg-[var(--surface)]/10 text-white hover:bg-[var(--surface)]/20"
                   )}
                 >
                   Review setup
@@ -272,18 +290,29 @@ export function OpenActionsList({
   return (
     <div className="space-y-5">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {viewOptions.length ? (
+        <WorkflowViewCard description={viewDescription} options={viewOptions} />
+      ) : null}
       {showRampUpState ? (
         <Card className="border-dashed">
           <CardHeader>
-            <CardTitle>
+              <CardTitle>
               {readiness?.isWorkspaceReady
-                ? "Workflow queue is live and still ramping up"
-                : "Workflow queue is live, but setup is still in progress"}
+                ? view === "all"
+                  ? "Workspace workflow queue is live and still ramping up"
+                  : "Workflow queue is live and still ramping up"
+                : view === "all"
+                  ? "Workspace workflow queue is live, but setup is still in progress"
+                  : "Workflow queue is live, but setup is still in progress"}
             </CardTitle>
             <CardDescription>
               {readiness?.isWorkspaceReady
-                ? `You currently have ${actions.length} open action${actions.length === 1 ? "" : "s"} assigned to you. The queue becomes more representative as more saving cards advance through the workflow.`
-                : `You already have ${actions.length} open action${actions.length === 1 ? "" : "s"}, but shared setup still needs attention to keep approval routing consistent.`}
+                ? view === "all"
+                  ? `There ${actions.length === 1 ? "is" : "are"} currently ${actions.length} open action${actions.length === 1 ? "" : "s"} across the workspace. The queue becomes more representative as more saving cards advance through the workflow.`
+                  : `You currently have ${actions.length} open action${actions.length === 1 ? "" : "s"} assigned to you. The queue becomes more representative as more saving cards advance through the workflow.`
+                : view === "all"
+                  ? `There ${actions.length === 1 ? "is" : "are"} already ${actions.length} open action${actions.length === 1 ? "" : "s"} in the workspace, but shared setup still needs attention to keep approval routing consistent.`
+                  : `You already have ${actions.length} open action${actions.length === 1 ? "" : "s"}, but shared setup still needs attention to keep approval routing consistent.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -291,7 +320,11 @@ export function OpenActionsList({
               <OpenActionsMetric
                 label="Open Actions"
                 value={String(actions.length)}
-                detail="Pending workflow decisions assigned to you"
+                detail={
+                  view === "all"
+                    ? "Pending workflow decisions across the workspace"
+                    : "Pending workflow decisions assigned to you"
+                }
               />
               <OpenActionsMetric
                 label="Live Cards"
@@ -319,27 +352,39 @@ export function OpenActionsList({
         <Card>
           <CardHeader>
             <CardTitle>
-              {readiness?.isWorkspaceReady
-                ? "No open actions are assigned to you right now"
-                : "No open actions are assigned to you, but setup is still in progress"}
+              {view === "all"
+                ? readiness?.isWorkspaceReady
+                  ? "No open actions exist in the workspace right now"
+                  : "No open actions exist yet, and setup is still in progress"
+                : readiness?.isWorkspaceReady
+                  ? "No open actions are assigned to you right now"
+                  : "No open actions are assigned to you, but setup is still in progress"}
             </CardTitle>
             <CardDescription>
-              {typeof workspaceCardCount === "number" && workspaceCardCount > 0
-                ? `Your workspace has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but there are no pending approvals waiting on you at the moment.`
-                : "There are no pending approvals or workflow tasks currently waiting on you."}
+              {view === "all"
+                ? typeof workspaceCardCount === "number" && workspaceCardCount > 0
+                  ? `Your workspace has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but there are no pending approvals anywhere in the portfolio at the moment.`
+                  : "There are no pending approvals or workflow tasks in the workspace yet."
+                : typeof workspaceCardCount === "number" && workspaceCardCount > 0
+                  ? `Your workspace has ${workspaceCardCount} saving card${workspaceCardCount === 1 ? "" : "s"}, but there are no pending approvals waiting on you at the moment.`
+                  : "There are no pending approvals or workflow tasks currently waiting on you."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-[var(--muted-foreground)]">
-              {readiness?.isWorkspaceReady
-                ? "When cards advance into approval steps assigned to your role, they will appear here automatically."
-                : "Finish the missing setup items and progress active cards through the workflow so approval routing becomes fully operational."}
+              {view === "all"
+                ? readiness?.isWorkspaceReady
+                  ? "As cards move into approval steps, pending workflow requests from across the workspace will appear here automatically."
+                  : "Finish the missing setup items and progress active cards through the workflow so the workspace queue becomes fully operational."
+                : readiness?.isWorkspaceReady
+                  ? "When cards advance into approval steps assigned to your role, they will appear here automatically."
+                  : "Finish the missing setup items and progress active cards through the workflow so approval routing becomes fully operational."}
             </div>
             <div className="flex flex-wrap gap-3">
               <Link href="/saving-cards" className={buttonVariants({ size: "sm" })}>
                 View saving cards
               </Link>
-              <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <Link href="/admin/settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Review setup
               </Link>
             </div>
@@ -358,7 +403,7 @@ export function OpenActionsList({
         <Card>
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle>Workflow Filters</CardTitle>
+              <CardTitle>{view === "all" ? "Workspace Workflow Filters" : "Workflow Filters"}</CardTitle>
               <p className="mt-1 text-[14px] text-[var(--muted-foreground)]">
                 Search by saving card, requester, or comment, and narrow the queue by requested phase.
               </p>
@@ -403,21 +448,21 @@ export function OpenActionsList({
                 }}
                 disabled={Boolean(bulkProgress)}
               >
-                Tümünü Onayla
+                Approve All
               </Button>
             ) : null}
 
             {bulkConfirmOpen ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm md:col-span-4">
                 <p className="font-medium text-[var(--foreground)]">
-                  Bu sayfadaki [{actions.length}] onay isteğini onaylamak istediğinizden emin misiniz?
+                  Are you sure you want to approve the {actions.length} approval request{actions.length === 1 ? "" : "s"} on this page?
                 </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <Button type="button" onClick={approveAllActions}>
-                    Evet, Onayla
+                    Yes, Approve
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setBulkConfirmOpen(false)}>
-                    İptal
+                    Cancel
                   </Button>
                 </div>
               </div>
@@ -425,7 +470,7 @@ export function OpenActionsList({
 
             {bulkProgress ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 text-sm text-[var(--foreground)] md:col-span-4">
-                {bulkProgress.current} / {bulkProgress.total} işleniyor...
+                Processing {bulkProgress.current} / {bulkProgress.total}...
               </div>
             ) : null}
 
@@ -450,7 +495,9 @@ export function OpenActionsList({
           <CardHeader>
             <CardTitle>No open actions match the current view</CardTitle>
             <CardDescription>
-              Your queue still has {actions.length} open action{actions.length === 1 ? "" : "s"}, but none match the active search or requested-phase filter.
+              {view === "all"
+                ? `The workspace still has ${actions.length} open action${actions.length === 1 ? "" : "s"}, but none match the active search or requested-phase filter.`
+                : `Your queue still has ${actions.length} open action${actions.length === 1 ? "" : "s"}, but none match the active search or requested-phase filter.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
@@ -479,6 +526,9 @@ export function OpenActionsList({
                 <p className="text-sm text-[var(--muted-foreground)]">
                   {phaseLabels[action.currentPhase]} to {phaseLabels[action.requestedPhase]}
                 </p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {action.pendingApproverSummary}
+                </p>
               </div>
               <div className="text-right text-sm text-[var(--muted-foreground)]">
                 <p>Requested by {action.requestedBy}</p>
@@ -489,21 +539,29 @@ export function OpenActionsList({
             {action.comment ? <p className="text-sm text-[var(--muted-foreground)]">{action.comment}</p> : null}
 
             <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={() => submitDecision(action.requestId, true)}
-                disabled={loadingId === action.requestId || Boolean(bulkProgress)}
-                className="rounded-[8px] bg-[#059669] px-5 py-2 text-white hover:bg-[#047857]"
-              >
-                {loadingId === action.requestId ? "Processing..." : "Approve"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => submitDecision(action.requestId, false)}
-                disabled={loadingId === action.requestId || Boolean(bulkProgress)}
-                className="rounded-[8px] border-[1.5px] border-[#f43f5e] bg-white px-5 py-2 text-[#e11d48] hover:bg-[#fff1f2] hover:text-[#e11d48]"
-              >
-                Reject
-              </Button>
+              {action.canDecide ? (
+                <>
+                  <Button
+                    onClick={() => submitDecision(action.requestId, true)}
+                    disabled={loadingId === action.requestId || Boolean(bulkProgress)}
+                    className="rounded-[8px] bg-[#059669] px-5 py-2 text-white hover:bg-[#047857]"
+                  >
+                    {loadingId === action.requestId ? "Processing..." : "Approve"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => submitDecision(action.requestId, false)}
+                    disabled={loadingId === action.requestId || Boolean(bulkProgress)}
+                    className="rounded-[8px] border-[1.5px] border-[#f43f5e] bg-[var(--surface)] px-5 py-2 text-[#e11d48] hover:bg-[#fff1f2] hover:text-[#e11d48]"
+                  >
+                    Reject
+                  </Button>
+                </>
+              ) : (
+                <div className="inline-flex items-center rounded-[8px] border border-[var(--border)] bg-[var(--muted)]/45 px-4 py-2 text-sm text-[var(--muted-foreground)]">
+                  Approval is assigned to another reviewer
+                </div>
+              )}
               <Link href={`/saving-cards/${action.savingCardId}`} className={cn(buttonVariants({ variant: "secondary" }))}>
                 View
               </Link>
@@ -512,6 +570,44 @@ export function OpenActionsList({
         </Card>
       ))}
     </div>
+  );
+}
+
+function WorkflowViewCard({
+  description,
+  options,
+}: {
+  description: string;
+  options: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[var(--foreground)]">Action Views</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => (
+            <Link
+              key={option.href}
+              href={option.href}
+              aria-current={option.active ? "page" : undefined}
+              className={buttonVariants({
+                variant: option.active ? "default" : "outline",
+                size: "sm",
+              })}
+            >
+              {option.label}
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -525,7 +621,7 @@ function OpenActionsMetric({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white/80 p-4 text-[var(--foreground)]">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-4 text-[var(--foreground)]">
       <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
         {label}
       </p>

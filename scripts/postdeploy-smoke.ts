@@ -208,11 +208,11 @@ export function buildPostdeploySmokeChecks(input?: {
         expectedStatuses: [200],
         expectedBodyIncludes: [
           "Kanban Board",
-          "Idea",
-          "Validated",
-          "Realised",
-          "Achieved",
-          "Cancelled",
+          "Proposed",
+          "Finance Validated",
+          "Implemented",
+          "Captured",
+          "Canceled",
         ],
         expectedBodyExcludes: [
           "No board activity yet",

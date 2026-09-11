@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
-import { createAlternativeMaterial } from "@/lib/data";
+import { createAlternativeMaterial, WorkflowError } from "@/lib/data";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,6 +17,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return response;
     }
 
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create alternative material." }, { status: 400 });
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0]?.message ?? "Alternative material payload is invalid." },
+        { status: 422 }
+      );
+    }
+
+    if (error instanceof WorkflowError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to create alternative material." },
+      { status: 400 }
+    );
   }
 }

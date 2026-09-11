@@ -1,4 +1,5 @@
 .next
+.next-e2e
 node_modules
 .env
 dist
@@ -9,3 +10,21 @@ prisma/dev.db-journal
 .env
 .env.local
 .env.*.local
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Playwright reports/artifacts (regenerated on each run)
+outputs/playwright-report/
+outputs/playwright-artifacts/
+
+node_modules
+.next
+.env
+.env.local
+.env.production
+.env.development
+.DS_Store
+*.log
+coverage
+.vercel

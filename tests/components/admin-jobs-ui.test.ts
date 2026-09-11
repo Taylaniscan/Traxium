@@ -74,6 +74,8 @@ describe("admin jobs UI", () => {
     expect(markup).toContain("Processing");
     expect(markup).toContain("Failed");
     expect(markup).toContain("Completed");
+    expect(markup).toContain("Separate worker dependency");
+    expect(markup).toContain("jobs:worker:healthcheck");
     expect(markup).toContain("Recent Jobs");
     expect(markup).toContain("Auth Email / Invitation Delivery");
     expect(markup).toContain("invitationId");
@@ -98,6 +100,7 @@ describe("admin jobs UI", () => {
     expect(markup).toContain(
       "Organization-scoped email delivery and telemetry jobs will appear here"
     );
+    expect(markup).toContain("verify the separate worker process first");
   });
 
   it("renders the loading skeleton for the admin jobs page", () => {

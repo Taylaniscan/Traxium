@@ -189,7 +189,10 @@ function createValidSavingCardPayload() {
   return {
     title: "Resin renegotiation",
     description: "Renegotiate the resin packaging contract for margin improvement.",
-    savingType: "Cost reduction",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     phase: "IDEA",
     supplier: { name: "Supplier A" },
     material: { name: "PET Resin" },

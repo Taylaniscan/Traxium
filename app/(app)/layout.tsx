@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <AppShell>
+    <AppShell user={session.user}>
       <AnalyticsSessionIdentify
         userId={session.user.id}
         organizationId={session.user.activeOrganization.organizationId}

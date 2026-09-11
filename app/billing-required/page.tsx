@@ -8,6 +8,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+import { WorkspaceBillingSummary } from "@/components/billing/workspace-billing-summary";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -17,11 +18,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { bootstrapCurrentUser, requireUser } from "@/lib/auth";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import type {
   OrganizationAccessReasonCode,
-  OrganizationAccessStateResult,
 } from "@/lib/billing/types";
-import { canManageOrganizationMembers } from "@/lib/organizations";
 
 type BillingRequiredPageProps = {
   searchParams: Promise<{
@@ -51,38 +51,6 @@ function humanizeLabel(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(" ");
-}
-
-function formatDateLabel(value: Date | null) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(value);
-}
-
-function formatPlanLabel(accessState: OrganizationAccessStateResult) {
-  const planName = accessState.plan?.planName?.trim() || "Plan not synced yet";
-  const currencyCode = accessState.plan?.currencyCode?.toUpperCase() ?? null;
-  const unitAmount = accessState.plan?.unitAmount ?? null;
-
-  if (!currencyCode || unitAmount === null) {
-    return planName;
-  }
-
-  const formattedAmount = new Intl.NumberFormat("en", {
-    style: "currency",
-    currency: currencyCode,
-  }).format(unitAmount / 100);
-  const interval = accessState.plan?.billingInterval
-    ? accessState.plan.billingInterval.toLowerCase()
-    : null;
-
-  return interval ? `${planName} · ${formattedAmount}/${interval}` : `${planName} · ${formattedAmount}`;
 }
 
 function getReasonPresentation(reasonCode: OrganizationAccessReasonCode) {
@@ -150,8 +118,21 @@ function getReasonPresentation(reasonCode: OrganizationAccessReasonCode) {
         memberGuidance:
           "This workspace still needs subscription setup. Contact a workspace owner or admin to finish billing.",
       };
+    case "trial_expired":
+      return {
+        badgeTone: "amber" as const,
+        badgeLabel: "Trial expired",
+        title: "Workspace trial has ended",
+        summary:
+          "The workspace trial has expired and there is no active paid subscription yet, so access stays paused until billing setup is completed.",
+        adminGuidance:
+          "Start a paid subscription in Stripe to restore workspace access, then refresh this page.",
+        memberGuidance:
+          "The workspace trial has ended. Contact a workspace owner or admin to start billing and restore access.",
+      };
     case "active":
     case "trialing":
+    case "workspace_trial":
       return {
         badgeTone: "emerald" as const,
         badgeLabel: "Active",
@@ -179,6 +160,7 @@ function getRecoveryActions(
   reasonCode: OrganizationAccessReasonCode
 ): RecoveryAction[] {
   if (
+    reasonCode === "trial_expired" ||
     reasonCode === "incomplete" ||
     reasonCode === "incomplete_expired" ||
     reasonCode === "no_subscription"
@@ -234,7 +216,7 @@ function getRecoveryBanner(recoveryCode: string | null, canManageBilling: boolea
     case "checkout_cancelled":
       return {
         tone: "amber" as const,
-        title: "Billing checkout was cancelled",
+        title: "Billing checkout was canceled",
         message:
           "The checkout flow was not completed. The workspace will stay blocked until billing setup finishes.",
       };
@@ -244,6 +226,20 @@ function getRecoveryBanner(recoveryCode: string | null, canManageBilling: boolea
         title: "Billing recovery could not be opened",
         message:
           "Traxium could not launch the Stripe recovery flow. Try again from this page, or contact support if your team has a billing contact.",
+      };
+    case "stripe_not_configured":
+      return {
+        tone: "rose" as const,
+        title: "Stripe billing is not configured",
+        message:
+          "Traxium could not open billing because the Stripe environment is not configured for this deployment.",
+      };
+    case "no_billing_customer":
+      return {
+        tone: "amber" as const,
+        title: "Billing customer is not ready yet",
+        message:
+          "This workspace does not have a Stripe customer record yet. Start checkout to create one and activate billing.",
       };
     case "processing":
       return {
@@ -321,9 +317,10 @@ export default async function BillingRequiredPage({
     redirectTo: null,
   });
   const accessState = session.accessState;
-  const canManageBilling = canManageOrganizationMembers(
-    user.activeOrganization.membershipRole
-  );
+  const canManageBilling = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
   const reasonPresentation = getReasonPresentation(accessState.reasonCode);
   const recoveryBanner = getRecoveryBanner(recoveryCode, canManageBilling);
   const supportEmail = getSupportEmail();
@@ -352,48 +349,12 @@ export default async function BillingRequiredPage({
             </p>
           </div>
 
-          <Card className="bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,0.06)]">
-            <CardHeader>
-              <CardTitle>Workspace billing snapshot</CardTitle>
-              <CardDescription>
-                Recovery options are scoped to your active organization membership.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <div className="rounded-2xl bg-[var(--muted)]/65 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
-                  Membership role
-                </p>
-                <p className="mt-2 text-base font-semibold">
-                  {humanizeLabel(user.activeOrganization.membershipRole)}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[var(--muted)]/65 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
-                  Billing state
-                </p>
-                <p className="mt-2 text-base font-semibold">
-                  {humanizeLabel(accessState.accessState)}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[var(--muted)]/65 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
-                  Subscription plan
-                </p>
-                <p className="mt-2 text-base font-semibold">
-                  {formatPlanLabel(accessState)}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[var(--muted)]/65 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
-                  Latest billing date
-                </p>
-                <p className="mt-2 text-base font-semibold">
-                  {formatDateLabel(accessState.currentPeriodEnd)}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <WorkspaceBillingSummary
+            accessState={accessState}
+            canManageBilling={canManageBilling}
+            title="Commercial summary"
+            description={`Recovery options reflect the current billing posture for the ${humanizeLabel(user.activeOrganization.membershipRole).toLowerCase()} who is viewing this workspace.`}
+          />
         </section>
 
         {recoveryBanner ? (

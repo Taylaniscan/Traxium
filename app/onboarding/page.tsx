@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 
+import { WorkspaceSetupGuide } from "@/components/onboarding/workspace-setup-guide";
 import { WorkspaceOnboardingForm } from "@/components/onboarding/workspace-onboarding-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWorkspaceOnboardingState } from "@/lib/auth";
+import { bootstrapCurrentUser, getWorkspaceOnboardingState } from "@/lib/auth";
+import { getWorkspaceReadiness } from "@/lib/data";
+import { captureException } from "@/lib/observability";
 
 export default async function OnboardingPage() {
   const state = await getWorkspaceOnboardingState();
@@ -32,9 +35,55 @@ export default async function OnboardingPage() {
     );
   }
 
-  if (!state.needsWorkspace) {
-    redirect("/dashboard");
+  if (state.needsWorkspace) {
+    return <WorkspaceOnboardingForm userName={state.user.name} />;
   }
 
-  return <WorkspaceOnboardingForm userName={state.user.name} />;
+  const session = await bootstrapCurrentUser();
+
+  if (!session.ok) {
+    if (session.code === "UNAUTHENTICATED") {
+      redirect("/login");
+    }
+
+    if (session.code === "ORGANIZATION_ACCESS_REQUIRED") {
+      return <WorkspaceOnboardingForm userName={state.user.name} />;
+    }
+
+    if (session.code === "BILLING_REQUIRED") {
+      redirect("/billing-required");
+    }
+
+    redirect("/login");
+  }
+
+  let readiness: Awaited<ReturnType<typeof getWorkspaceReadiness>> | null = null;
+  let readinessError: string | null = null;
+
+  try {
+    readiness = await getWorkspaceReadiness(session.user.organizationId);
+  } catch (error) {
+    readinessError =
+      "Workspace setup progress could not be loaded right now. You can still continue onboarding.";
+    captureException(error, {
+      event: "onboarding.page.readiness_load_failed",
+      route: "/onboarding",
+      organizationId: session.user.organizationId,
+      userId: session.user.id,
+      payload: {
+        resource: "workspace_readiness",
+        degradedRender: true,
+        fallback: "guided_onboarding_without_readiness",
+      },
+    });
+  }
+
+  return (
+    <WorkspaceSetupGuide
+      readiness={readiness}
+      readinessError={readinessError}
+      userName={session.user.name}
+      viewerMembershipRole={session.user.activeOrganization.membershipRole}
+    />
+  );
 }

@@ -22,9 +22,9 @@ type AggregatedRow = {
   period: string;
   periodKey: string;
   forecastSaving: number;
-  actualSaving: number;
+  actualSaving: number | null;
   cumulativeForecast: number;
-  cumulativeActual: number;
+  cumulativeActual: number | null;
 };
 
 export function VolumeSCurve({
@@ -39,7 +39,7 @@ export function VolumeSCurve({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
 
     async function load() {
       if (!cards.length) {
@@ -52,33 +52,34 @@ export function VolumeSCurve({
       setError(null);
 
       try {
-        const responses = await Promise.allSettled(
-          cards.map((card) =>
-            fetch(`/api/saving-cards/${card.id}/volume`, {
-              cache: "no-store",
-            }).then(async (response) => {
-              const result = await response.json().catch(() => null);
+        const params = new URLSearchParams();
+        cards.forEach((card) => params.append("cardId", card.id));
+        const response = await fetch(`/api/volume/portfolio?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const result = (await response.json().catch(() => null)) as
+          | { timelines?: VolumeTimelineResult[]; error?: string }
+          | null;
 
-              if (!response.ok) {
-                throw new Error(result?.error ?? "Volume timeline could not be loaded.");
-              }
+        if (!response.ok) {
+          throw new Error(result?.error ?? "Volume timeline could not be loaded.");
+        }
 
-              return result as VolumeTimelineResult;
-            })
-          )
-        );
-
-        if (cancelled) {
+        if (canceled) {
           return;
         }
 
-        const successful = responses
-          .filter((result): result is PromiseFulfilledResult<VolumeTimelineResult> => result.status === "fulfilled")
-          .map((result) => result.value);
+        const successful = result?.timelines ?? [];
 
         const monthlyMap = new Map<
           string,
-          { period: string; periodKey: string; forecastSaving: number; actualSaving: number }
+          {
+            period: string;
+            periodKey: string;
+            forecastSaving: number;
+            actualSaving: number;
+            hasActual: boolean;
+          }
         >();
 
         for (const timeline of successful) {
@@ -88,10 +89,14 @@ export function VolumeSCurve({
               periodKey: row.periodKey,
               forecastSaving: 0,
               actualSaving: 0,
+              hasActual: false,
             };
 
             current.forecastSaving += row.forecastSaving;
-            current.actualSaving += row.actualSaving;
+            if (row.isConfirmed) {
+              current.actualSaving += row.actualSaving;
+              current.hasActual = true;
+            }
             monthlyMap.set(row.periodKey, current);
           }
         }
@@ -102,18 +107,23 @@ export function VolumeSCurve({
           .sort((a, b) => a.periodKey.localeCompare(b.periodKey))
           .map((row) => {
             cumulativeForecast += row.forecastSaving;
-            cumulativeActual += row.actualSaving;
+            if (row.hasActual) {
+              cumulativeActual += row.actualSaving;
+            }
 
             return {
-              ...row,
+              period: row.period,
+              periodKey: row.periodKey,
+              forecastSaving: row.forecastSaving,
+              actualSaving: row.hasActual ? row.actualSaving : null,
               cumulativeForecast,
-              cumulativeActual,
+              cumulativeActual: row.hasActual ? cumulativeActual : null,
             };
           });
 
         setRows(nextRows);
       } catch (loadError) {
-        if (!cancelled) {
+        if (!canceled) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -122,7 +132,7 @@ export function VolumeSCurve({
           setRows([]);
         }
       } finally {
-        if (!cancelled) {
+        if (!canceled) {
           setLoading(false);
         }
       }
@@ -131,7 +141,7 @@ export function VolumeSCurve({
     void load();
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [cards]);
 
@@ -151,7 +161,7 @@ export function VolumeSCurve({
           <CardDescription>Loading portfolio volume performance.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[520px] animate-pulse rounded-3xl bg-slate-100" />
+          <div className="h-[520px] skeleton-shimmer rounded-3xl" />
         </CardContent>
       </Card>
     );
@@ -187,38 +197,44 @@ export function VolumeSCurve({
         <CardHeader>
           <CardTitle>Monthly Forecast vs Actual</CardTitle>
           <CardDescription>
-            Portfolio-level monthly savings impact from forecast and actual volumes.
+            Portfolio-level monthly savings impact from forecast and confirmed actual volumes.
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 640, height: 320 }}
+          >
             <AreaChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+              <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
               <Tooltip
-                contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                formatter={(value: number, name: string) => [
-                  formatCurrency(Math.round(value), "EUR"),
+                contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
+                formatter={(value, name) => [
+                  typeof value === "number" && Number.isFinite(value)
+                    ? formatCurrency(Math.round(value), "USD")
+                    : "No confirmed actual",
                   name === "forecastSaving" ? "Forecast" : "Actual",
                 ]}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine x={todayPeriodLabel} stroke="#94A3B8" strokeDasharray="4 4" />
+              <ReferenceLine x={todayPeriodLabel} stroke="var(--chart-axis)" strokeDasharray="4 4" />
               <Area
                 type="monotone"
                 dataKey="forecastSaving"
                 name="Forecast"
-                stroke="#2563EB"
-                fill="#93C5FD"
+                stroke="var(--primary-action)"
+                fill="var(--primary-soft-strong)"
                 fillOpacity={0.55}
               />
               <Area
                 type="monotone"
                 dataKey="actualSaving"
                 name="Actual"
-                stroke="#16A34A"
-                fill="#86EFAC"
+                stroke="var(--phase-captured)"
+                fill="var(--phase-captured-soft)"
                 fillOpacity={0.45}
               />
             </AreaChart>
@@ -230,29 +246,35 @@ export function VolumeSCurve({
         <CardHeader>
           <CardTitle>Cumulative Volume S-Curve</CardTitle>
           <CardDescription>
-            Cumulative forecast and actual savings progression across the portfolio.
+            Cumulative forecast and confirmed actual savings progression across the portfolio.
           </CardDescription>
         </CardHeader>
         <CardContent className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 640, height: 320 }}
+          >
             <ComposedChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+              <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
               <Tooltip
-                contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                formatter={(value: number, name: string) => [
-                  formatCurrency(Math.round(value), "EUR"),
+                contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
+                formatter={(value, name) => [
+                  typeof value === "number" && Number.isFinite(value)
+                    ? formatCurrency(Math.round(value), "USD")
+                    : "No confirmed actual",
                   name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                 ]}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine x={todayPeriodLabel} stroke="#94A3B8" strokeDasharray="4 4" />
+              <ReferenceLine x={todayPeriodLabel} stroke="var(--chart-axis)" strokeDasharray="4 4" />
               <Line
                 type="monotone"
                 dataKey="cumulativeForecast"
                 name="Cumulative Forecast"
-                stroke="#2563EB"
+                stroke="var(--primary-action)"
                 strokeWidth={3}
                 strokeDasharray="6 4"
                 dot={false}
@@ -261,7 +283,7 @@ export function VolumeSCurve({
                 type="monotone"
                 dataKey="cumulativeActual"
                 name="Cumulative Actual"
-                stroke="#16A34A"
+                stroke="var(--phase-captured)"
                 strokeWidth={3}
                 dot={false}
               />

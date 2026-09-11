@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RESERVATION_SCAN_ATTEMPTS = 5;
 const MAX_ERROR_LENGTH = 2_000;
+const JOB_RUNNER_HEARTBEAT_ID = "singleton";
+export const JOB_RUNNER_STALE_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_ADMIN_JOBS_TAKE = 20;
 const MAX_ADMIN_JOBS_TAKE = 50;
 const ADMIN_JOBS_CACHE_TTL_MS = 1_500;
@@ -41,6 +43,7 @@ export const jobTypes = {
   ANALYTICS_IDENTIFY: "analytics.identify",
   OBSERVABILITY_MESSAGE: "observability.message",
   OBSERVABILITY_EXCEPTION: "observability.exception",
+  MONTHLY_CLOSE_REMINDER: "monthly_close.reminder",
 } as const;
 
 export type JobPayload = Record<string, unknown>;
@@ -216,6 +219,34 @@ function normalizeJobId(jobId: string) {
   }
 
   return normalized;
+}
+
+function toIsoString(value: Date | null | undefined) {
+  if (!(value instanceof Date)) {
+    return null;
+  }
+
+  return value.toISOString();
+}
+
+function logJobEvent(
+  level: "info" | "warn" | "error",
+  event: string,
+  payload: Record<string, unknown>
+) {
+  const logger =
+    level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : console.info;
+
+  logger(
+    JSON.stringify({
+      event,
+      ...payload,
+    })
+  );
 }
 
 function resolveRetryAt(
@@ -466,7 +497,7 @@ export async function markJobCompleted(
   client: JobClient = prisma
 ): Promise<Job | null> {
   const processedAt = new Date();
-  const completion = await client.job.updateMany({
+  await client.job.updateMany({
     where: {
       id: jobId,
       status: JobStatus.RUNNING,
@@ -529,6 +560,25 @@ export async function markJobFailed(
     invalidateOrganizationJobsCache(updatedJob.organizationId);
   }
 
+  if (updatedJob) {
+    const retryPayload = {
+      jobId: updatedJob.id,
+      jobType: updatedJob.type,
+      organizationId: updatedJob.organizationId ?? null,
+      attempts: updatedJob.attempts,
+      maxAttempts: updatedJob.maxAttempts,
+      scheduledAt: toIsoString(updatedJob.scheduledAt),
+      processedAt: toIsoString(updatedJob.processedAt),
+      error: updatedJob.error,
+    };
+
+    if (updatedJob.status === JobStatus.QUEUED) {
+      logJobEvent("warn", "jobs.retry.scheduled", retryPayload);
+    } else if (updatedJob.status === JobStatus.FAILED) {
+      logJobEvent("error", "jobs.retry.exhausted", retryPayload);
+    }
+  }
+
   return updatedJob;
 }
 
@@ -558,6 +608,18 @@ export async function retryJob(
 
   if (job?.organizationId) {
     invalidateOrganizationJobsCache(job.organizationId);
+  }
+
+  if (job && retry.count > 0) {
+    logJobEvent("info", "jobs.retry.manually_queued", {
+      jobId: job.id,
+      jobType: job.type,
+      organizationId: job.organizationId ?? null,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      scheduledAt: toIsoString(job.scheduledAt),
+      source: "system",
+    });
   }
 
   return job;
@@ -668,8 +730,73 @@ export async function retryOrganizationJob(input: {
 
   invalidateOrganizationJobsCache(organizationId);
 
+  if (retry.count > 0) {
+    logJobEvent("info", "jobs.retry.manually_queued", {
+      jobId: retriedJob.id,
+      jobType: retriedJob.type,
+      organizationId: retriedJob.organizationId ?? null,
+      attempts: retriedJob.attempts,
+      maxAttempts: retriedJob.maxAttempts,
+      scheduledAt: toIsoString(retriedJob.scheduledAt),
+      source: "admin",
+    });
+  }
+
   return {
     changed: retry.count > 0,
     job: mapOrganizationAdminJob(retriedJob),
+  };
+}
+
+export type JobRunnerHeartbeatStatus = {
+  lastSuccessfulRunAt: string;
+  processedJobs: number;
+  durationMs: number;
+  ageMs: number;
+  stale: boolean;
+};
+
+/** Record a successful worker pass (Vercel cron or dedicated worker). */
+export async function recordJobRunnerHeartbeat(
+  input: { processedJobs: number; durationMs: number },
+  client: Pick<typeof prisma, "jobRunnerHeartbeat"> = prisma
+) {
+  const now = new Date();
+  const processedJobs = Math.max(0, Math.trunc(input.processedJobs) || 0);
+  const durationMs = Math.max(0, Math.trunc(input.durationMs) || 0);
+
+  await client.jobRunnerHeartbeat.upsert({
+    where: { id: JOB_RUNNER_HEARTBEAT_ID },
+    update: { lastSuccessfulRunAt: now, processedJobs, durationMs },
+    create: {
+      id: JOB_RUNNER_HEARTBEAT_ID,
+      lastSuccessfulRunAt: now,
+      processedJobs,
+      durationMs,
+    },
+  });
+}
+
+/** Read the last successful worker pass and whether it has gone stale (>30 min). */
+export async function getJobRunnerHeartbeat(
+  client: Pick<typeof prisma, "jobRunnerHeartbeat"> = prisma,
+  now: Date = new Date()
+): Promise<JobRunnerHeartbeatStatus | null> {
+  const heartbeat = await client.jobRunnerHeartbeat.findUnique({
+    where: { id: JOB_RUNNER_HEARTBEAT_ID },
+  });
+
+  if (!heartbeat) {
+    return null;
+  }
+
+  const ageMs = now.getTime() - heartbeat.lastSuccessfulRunAt.getTime();
+
+  return {
+    lastSuccessfulRunAt: heartbeat.lastSuccessfulRunAt.toISOString(),
+    processedJobs: heartbeat.processedJobs,
+    durationMs: heartbeat.durationMs,
+    ageMs,
+    stale: ageMs > JOB_RUNNER_STALE_THRESHOLD_MS,
   };
 }

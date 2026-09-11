@@ -1,26 +1,149 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f0f4ff;
-  --foreground: #1e1b4b;
-  --card: #ffffff;
-  --card-foreground: #1e1b4b;
-  --popover: #ffffff;
-  --popover-foreground: #1e1b4b;
-  --primary: #4f46e5;
-  --primary-foreground: #eef2ff;
-  --secondary: #e0e7ff;
-  --secondary-foreground: #3730a3;
-  --muted: #f5f3ff;
-  --muted-foreground: #6d6aac;
-  --accent: #6366f1;
-  --accent-foreground: #eef2ff;
-  --destructive: #dc2626;
-  --destructive-foreground: #fef2f2;
-  --border: #ddd6fe;
-  --input: #e0e7ff;
-  --ring: rgba(99, 102, 241, 0.24);
-  --radius: 1rem;
+  /* ------------------------------------------------------------------ */
+  /* Traxium work-OS foundation: soft cool canvas, white cards, vibrant  */
+  /* indigo brand, and a five-color phase status language.               */
+  /* ------------------------------------------------------------------ */
+
+  /* Canvas & surfaces */
+  --canvas-background: #f5f6f8;
+  --surface: #ffffff;
+  --surface-elevated: #fafbfd;
+  --surface-muted: #eff1f5;
+
+  /* Brand */
+  --primary-action: #5b5fef;
+  --primary-action-hover: #4a4edb;
+  --primary-soft: rgba(91, 95, 239, 0.1);
+  --primary-soft-strong: rgba(91, 95, 239, 0.16);
+
+  /* Phase status language (solid / soft tint / text-on-tint) */
+  --phase-proposed: #579bfc;
+  --phase-proposed-soft: rgba(87, 155, 252, 0.12);
+  --phase-proposed-text: #1763c6;
+  --phase-validated: #fdab3d;
+  --phase-validated-soft: rgba(253, 171, 61, 0.16);
+  --phase-validated-text: #8f5800;
+  --phase-implemented: #00b8d9;
+  --phase-implemented-soft: rgba(0, 184, 217, 0.12);
+  --phase-implemented-text: #00758c;
+  --phase-captured: #00c875;
+  --phase-captured-soft: rgba(0, 200, 117, 0.12);
+  --phase-captured-text: #00794a;
+  --phase-canceled: #e2445c;
+  --phase-canceled-soft: rgba(226, 68, 92, 0.1);
+  --phase-canceled-text: #c42b45;
+
+  /* Semantic statuses ride the phase language */
+  --success: var(--phase-captured-text);
+  --success-solid: var(--phase-captured);
+  --success-surface: var(--phase-captured-soft);
+  --warning: var(--phase-validated-text);
+  --warning-solid: var(--phase-validated);
+  --warning-surface: var(--phase-validated-soft);
+  --risk: var(--phase-canceled-text);
+  --risk-solid: var(--phase-canceled);
+  --risk-surface: var(--phase-canceled-soft);
+  --info-forecast: var(--phase-proposed-text);
+  --info-forecast-solid: var(--phase-proposed);
+  --info-forecast-surface: var(--phase-proposed-soft);
+  --finance-lock: var(--phase-validated-text);
+  --finance-lock-solid: var(--phase-validated);
+  --finance-lock-surface: var(--phase-validated-soft);
+
+  /* Text */
+  --text-primary: #1f2536;
+  --text-secondary: #5d6678;
+  --text-numeric: #10131c;
+
+  /* Lines & inputs */
+  --subtle-border: #e6e8ee;
+  --input-surface: #d8dce6;
+  --focus-ring: rgba(91, 95, 239, 0.4);
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 12px rgba(16, 24, 40, 0.05);
+  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.07), 0 12px 24px rgba(16, 24, 40, 0.1);
+  --shadow-pop: 0 10px 30px rgba(16, 24, 40, 0.12);
+
+  --radius: 0.75rem;
+
+  /* Charts (non-phase series) */
+  --chart-grid: #e9ebf1;
+  --chart-axis: #707888;
+  --chart-forecast: #a5aef9;
+
+  /* Compatibility aliases for existing UI primitives */
+  --background: var(--canvas-background);
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--primary-action);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--primary-action);
+  --accent-foreground: #ffffff;
+  --destructive: var(--phase-canceled);
+  --destructive-foreground: #ffffff;
+  --border: var(--subtle-border);
+  --input: var(--input-surface);
+  --ring: var(--focus-ring);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --canvas-background: #1c1f2b;
+  --surface: #262a38;
+  --surface-elevated: #2b3040;
+  --surface-muted: #313749;
+
+  --primary-action: #7b7ff6;
+  --primary-action-hover: #9295f8;
+  --primary-soft: rgba(123, 127, 246, 0.16);
+  --primary-soft-strong: rgba(123, 127, 246, 0.24);
+
+  --phase-proposed: #6ea4ef;
+  --phase-proposed-soft: rgba(110, 164, 239, 0.16);
+  --phase-proposed-text: #9ec4f6;
+  --phase-validated: #efa84e;
+  --phase-validated-soft: rgba(239, 168, 78, 0.16);
+  --phase-validated-text: #f4c084;
+  --phase-implemented: #2cb6cf;
+  --phase-implemented-soft: rgba(44, 182, 207, 0.16);
+  --phase-implemented-text: #7fd6e6;
+  --phase-captured: #2cbd80;
+  --phase-captured-soft: rgba(44, 189, 128, 0.16);
+  --phase-captured-text: #82dcb4;
+  --phase-canceled: #d95570;
+  --phase-canceled-soft: rgba(217, 85, 112, 0.16);
+  --phase-canceled-text: #ef9bac;
+
+  --text-primary: #e6e8ef;
+  --text-secondary: #9aa1b2;
+  --text-numeric: #f4f6fb;
+
+  --subtle-border: #343949;
+  --input-surface: #3d4356;
+  --focus-ring: rgba(123, 127, 246, 0.5);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 24px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  --chart-grid: #343949;
+  --chart-axis: #9aa1b2;
+  --chart-forecast: #585f97;
+
+  --primary-foreground: #14162a;
+  --accent-foreground: #14162a;
+  --destructive-foreground: #ffffff;
 }
 
 @theme inline {
@@ -43,10 +166,27 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 0.25rem);
-  --radius-md: calc(var(--radius) - 0.125rem);
+  --color-canvas-background: var(--canvas-background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-primary-action: var(--primary-action);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-risk: var(--risk);
+  --color-info-forecast: var(--info-forecast);
+  --color-finance-lock: var(--finance-lock);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-subtle-border: var(--subtle-border);
+  --color-phase-proposed: var(--phase-proposed);
+  --color-phase-validated: var(--phase-validated);
+  --color-phase-implemented: var(--phase-implemented);
+  --color-phase-captured: var(--phase-captured);
+  --color-phase-canceled: var(--phase-canceled);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 0.25rem);
+  --radius-xl: 1rem;
 }
 
 * {
@@ -56,16 +196,21 @@
 
 html {
   min-height: 100%;
+  color-scheme: light;
   scroll-behavior: smooth;
+}
+
+html.dark {
+  color-scheme: dark;
 }
 
 body {
   min-height: 100%;
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(180deg, #f0f4ff 0%, #eef2ff 100%);
+  background: var(--canvas-background);
   color: var(--foreground);
-  font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans, Figtree), Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   text-rendering: optimizeLegibility;
@@ -87,17 +232,71 @@ a {
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.18);
+  background: var(--primary-soft-strong);
+}
+
+/* Monetary / numeric values: darker, higher-contrast, tabular figures.
+   Color may sit next to a number, never behind it. */
+.text-numeric {
+  color: var(--text-numeric);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Interactive card lift */
+.card-interactive {
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.card-interactive:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+/* Loading skeleton shimmer on soft gray */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+.dark .skeleton-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes toast-fade {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
 
-  12%,
-  88% {
+  10%,
+  90% {
     opacity: 1;
     transform: translateY(0);
   }

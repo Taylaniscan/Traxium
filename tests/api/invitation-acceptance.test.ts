@@ -139,6 +139,9 @@ function createTransactionMock() {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    notification: {
+      create: vi.fn().mockResolvedValue({ id: "notification-1" }),
+    },
     organizationMembership: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
@@ -247,6 +250,15 @@ describe("invitation acceptance route", () => {
       app_metadata: {
         userId: DEFAULT_USER_ID,
         activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+      },
+    });
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: "admin-user-1",
+        title: "Invitation accepted",
+        message: "new.user@example.com joined the workspace.",
+        href: "/admin/members",
       },
     });
   });

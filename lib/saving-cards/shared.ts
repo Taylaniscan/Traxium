@@ -1,6 +1,7 @@
 import { Currency, Prisma } from "@prisma/client";
-import { calculateSavings } from "@/lib/calculations";
+import { calculateSavings, calculatePeriodizedSavings } from "@/lib/calculations";
 import { buildTenantOwnedRelationWhere, buildTenantScopeWhere } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import { savingCardSchema } from "@/lib/validation";
 
 export const savingCardDetailInclude = {
@@ -12,7 +13,18 @@ export const savingCardDetailInclude = {
   buyer: true,
   plant: true,
   businessUnit: true,
-  evidence: true,
+  evidence: {
+    include: {
+      uploadedBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { uploadedAt: "desc" as const },
+  },
   stakeholders: {
     include: {
       user: true,
@@ -33,11 +45,6 @@ export const savingCardDetailInclude = {
     include: {
       material: true,
       supplier: true,
-    },
-  },
-  approvals: {
-    include: {
-      approver: true,
     },
   },
   phaseHistory: {
@@ -94,22 +101,48 @@ function normalizeOptionalId(value: unknown) {
   return null;
 }
 
+export const DEFAULT_FISCAL_YEAR_START_MONTH = 1;
+
 export function buildSavingCardPayload(
-  input: Prisma.JsonObject | Record<string, unknown>
+  input: Prisma.JsonObject | Record<string, unknown>,
+  options?: { fiscalYearStartMonth?: number }
 ) {
   const parsed = savingCardSchema.parse(input);
+  const referencePrice = parsed.referencePrice ?? null;
   const totals = calculateSavings({
     baselinePrice: parsed.baselinePrice,
     newPrice: parsed.newPrice,
     annualVolume: parsed.annualVolume,
     fxRate: parsed.fxRate,
     currency: parsed.currency,
+    impactType: parsed.impactType,
+    referencePrice,
+  });
+  const periodized = calculatePeriodizedSavings({
+    baselinePrice: parsed.baselinePrice,
+    newPrice: parsed.newPrice,
+    annualVolume: parsed.annualVolume,
+    fxRate: parsed.fxRate,
+    currency: parsed.currency,
+    impactType: parsed.impactType,
+    referencePrice,
+    impactStartDate: parsed.impactStartDate,
+    impactEndDate: parsed.impactEndDate,
+    fiscalYear: {
+      startMonth:
+        options?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
+    },
   });
 
   return {
     ...parsed,
-    calculatedSavings: totals.savingsEUR,
+    referencePrice,
+    calculatedSavings: totals.localSavings,
     calculatedSavingsUSD: totals.savingsUSD,
+    annualizedRunRate: periodized.annualizedRunRate,
+    annualizedRunRateUSD: periodized.annualizedRunRateUSD,
+    inYearValue: periodized.inYearValue,
+    inYearValueUSD: periodized.inYearValueUSD,
   };
 }
 
@@ -119,14 +152,14 @@ export async function getLatestFxRate(
   tx: Prisma.TransactionClient,
   currency: Currency
 ) {
-  if (currency === Currency.EUR) return 1;
+  if (currency === Currency.USD) return 1;
 
   const rate = await tx.fxRate.findFirst({
     where: { currency },
     orderBy: { validFrom: "desc" },
   });
 
-  return rate?.rateToEUR ?? 1;
+  return toNumber(rate?.rateToUSD ?? 1);
 }
 
 export async function resolveOrCreateSupplier(
@@ -296,6 +329,26 @@ async function resolveOrCreatePlant(
   });
 }
 
+async function resolveOptionalPlant(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreatePlant(tx, organizationId, { id: value?.id, name });
+}
+
+async function resolveOptionalBusinessUnit(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  value?: { id?: string; name?: string } | null
+) {
+  const name = normalizeOptionalName(value?.name);
+  if (!value?.id && !name) return null;
+  return resolveOrCreateBusinessUnit(tx, organizationId, { id: value?.id, name });
+}
+
 async function resolveOrCreateBuyer(
   tx: Prisma.TransactionClient,
   organizationId: string,
@@ -357,8 +410,8 @@ export async function resolveMasterData(
     payload.alternativeMaterial
   );
   const category = await resolveOrCreateCategory(tx, organizationId, payload.category);
-  const plant = await resolveOrCreatePlant(tx, organizationId, payload.plant);
-  const businessUnit = await resolveOrCreateBusinessUnit(
+  const plant = await resolveOptionalPlant(tx, organizationId, payload.plant);
+  const businessUnit = await resolveOptionalBusinessUnit(
     tx,
     organizationId,
     payload.businessUnit
@@ -369,7 +422,7 @@ export async function resolveMasterData(
     data: {
       userId: actorId,
       action: "master_data.resolved",
-      detail: `Resolved supplier ${supplier.id}, material ${material.id}, alternative supplier ${alternativeSupplier?.id ?? "none"}, alternative material ${alternativeMaterial?.id ?? "none"}, category ${category.id}, plant ${plant.id}, business unit ${businessUnit.id}, buyer ${buyer.id}`,
+      detail: `Resolved supplier ${supplier.id}, material ${material.id}, alternative supplier ${alternativeSupplier?.id ?? "none"}, alternative material ${alternativeMaterial?.id ?? "none"}, category ${category.id}, plant ${plant?.id ?? "none"}, business unit ${businessUnit?.id ?? "none"}, buyer ${buyer.id}`,
     },
   });
 
@@ -379,8 +432,8 @@ export async function resolveMasterData(
     alternativeSupplierId: alternativeSupplier?.id ?? null,
     alternativeMaterialId: alternativeMaterial?.id ?? null,
     categoryId: category.id,
-    plantId: plant.id,
-    businessUnitId: businessUnit.id,
+    plantId: plant?.id ?? null,
+    businessUnitId: businessUnit?.id ?? null,
     buyerId: buyer.id,
   };
 }

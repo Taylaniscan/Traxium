@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
+  phaseChangeRequest: {
+    findMany: vi.fn(),
+  },
   phaseChangeRequestApproval: {
     findMany: vi.fn(),
   },
@@ -27,6 +30,7 @@ import {
   approvePhaseChangeRequest,
   createPhaseChangeRequest,
   getPendingApprovals,
+  getPendingPhaseChangeRequests,
 } from "@/lib/data";
 
 function createWorkflowTransactionMock() {
@@ -66,6 +70,7 @@ describe("lib/data workflow flows", () => {
 
   beforeEach(() => {
     invalidateScopedCacheMock.mockReset();
+    mockPrisma.phaseChangeRequest.findMany.mockReset();
     tx = createWorkflowTransactionMock();
     mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
       if (typeof callback !== "function") {
@@ -182,6 +187,38 @@ describe("lib/data workflow flows", () => {
       })
     );
     expect(tx.notification.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          organizationId: "org-1",
+          userId: "approver-1",
+          title: "Phase change requested",
+          message:
+            "Resin renegotiation requests movement from IDEA to VALIDATED.",
+          href: "/open-actions",
+        },
+        {
+          organizationId: "org-1",
+          userId: "approver-2",
+          title: "Phase change requested",
+          message:
+            "Resin renegotiation requests movement from IDEA to VALIDATED.",
+          href: "/open-actions",
+        },
+      ],
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "requester-1",
+        actorUserId: "requester-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.requested",
+        action: "phase_change.requested",
+        detail: "Requested phase change from IDEA to VALIDATED",
+      },
+    });
     expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
@@ -212,7 +249,7 @@ describe("lib/data workflow flows", () => {
     expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
-  it("allows a validated card to request realised with finance approval", async () => {
+  it("allows a validated card to request realized with finance approval", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -285,7 +322,7 @@ describe("lib/data workflow flows", () => {
     );
   });
 
-  it("allows a realised card to request achieved", async () => {
+  it("allows a realized card to request achieved", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -356,7 +393,7 @@ describe("lib/data workflow flows", () => {
     });
 
     await expect(
-      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip realised")
+      createPhaseChangeRequest("card-1", Phase.ACHIEVED, "requester-1", "org-1", "Skip realized")
     ).rejects.toMatchObject({
       name: "WorkflowError",
       status: 409,
@@ -385,7 +422,7 @@ describe("lib/data workflow flows", () => {
     expect(tx.phaseChangeRequest.create).not.toHaveBeenCalled();
   });
 
-  it("requires a cancellation reason and keeps cancelled requests pending approval", async () => {
+  it("requires a cancellation reason and keeps canceled requests pending approval", async () => {
     tx.savingCard.findFirst.mockResolvedValue({
       id: "card-1",
       organizationId: "org-1",
@@ -558,10 +595,43 @@ describe("lib/data workflow flows", () => {
         cancellationReason: null,
       },
     });
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "requester-1",
+        title: "Phase change approved",
+        message: "Resin renegotiation moved to VALIDATED.",
+        href: "/saving-cards/card-1",
+      },
+    });
 
     const auditActions = tx.auditLog.create.mock.calls.map(([call]) => call.data.action);
     expect(auditActions).toContain("phase_change.approved");
     expect(auditActions).toContain("phase_change.completed");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.approved",
+        action: "phase_change.approved",
+        detail: "Final approval recorded for phase change to VALIDATED",
+      },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.completed",
+        action: "phase_change.completed",
+        detail: "Phase changed from IDEA to VALIDATED",
+      },
+    });
     expect(invalidateScopedCacheMock).toHaveBeenCalledWith({
       namespace: "dashboard-data",
       organizationId: "org-1",
@@ -571,6 +641,87 @@ describe("lib/data workflow flows", () => {
       organizationId: "org-1",
     });
     expect(result).toEqual(expect.objectContaining({ approvalStatus: ApprovalStatus.APPROVED }));
+  });
+
+  it("notifies the requester when a phase change is rejected", async () => {
+    const pendingRequest = {
+      id: "request-1",
+      savingCardId: "card-1",
+      currentPhase: Phase.IDEA,
+      requestedPhase: Phase.VALIDATED,
+      approvalStatus: ApprovalStatus.PENDING,
+      requestedById: "requester-1",
+      savingCard: {
+        id: "card-1",
+        organizationId: "org-1",
+        title: "Resin renegotiation",
+        cancellationReason: null,
+      },
+      approvals: [
+        {
+          id: "approval-1",
+          approverId: "approver-1",
+          role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+          status: ApprovalStatus.PENDING,
+          approver: {
+            id: "approver-1",
+            name: "Head of Global Procurement",
+          },
+        },
+      ],
+    };
+
+    tx.phaseChangeRequest.findUnique
+      .mockResolvedValueOnce(pendingRequest)
+      .mockResolvedValueOnce({
+        ...pendingRequest,
+        approvalStatus: ApprovalStatus.REJECTED,
+        approvals: [
+          {
+            ...pendingRequest.approvals[0],
+            status: ApprovalStatus.REJECTED,
+          },
+        ],
+      });
+
+    const result = await approvePhaseChangeRequest(
+      "request-1",
+      "approver-1",
+      "org-1",
+      false,
+      "Insufficient evidence"
+    );
+
+    expect(tx.phaseChangeRequest.update).toHaveBeenCalledWith({
+      where: { id: "request-1" },
+      data: { approvalStatus: ApprovalStatus.REJECTED },
+    });
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "requester-1",
+        title: "Phase change rejected",
+        message: "Resin renegotiation phase change to VALIDATED was rejected.",
+        href: "/saving-cards/card-1",
+      },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.rejected",
+        action: "phase_change.rejected",
+        detail: "Phase change to VALIDATED rejected",
+      },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        approvalStatus: ApprovalStatus.REJECTED,
+      })
+    );
   });
 
   it("does not invalidate dashboard caches while approval is still pending", async () => {
@@ -635,6 +786,18 @@ describe("lib/data workflow flows", () => {
 
     expect(tx.savingCard.update).not.toHaveBeenCalled();
     expect(invalidateScopedCacheMock).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: "org-1",
+        userId: "approver-1",
+        actorUserId: "approver-1",
+        savingCardId: "card-1",
+        targetEntityId: "request-1",
+        eventType: "phase_change.approved",
+        action: "phase_change.approved",
+        detail: "Approval recorded for phase change to VALIDATED",
+      },
+    });
     expect(result).toEqual(
       expect.objectContaining({
         approvalStatus: ApprovalStatus.PENDING,
@@ -713,5 +876,36 @@ describe("lib/data workflow flows", () => {
       orderBy: { createdAt: "desc" },
     });
     expect(result).toEqual(approvals);
+  });
+
+  it("retrieves pending phase-change requests across the current workspace", async () => {
+    const requests = [{ id: "request-1" }];
+    mockPrisma.phaseChangeRequest.findMany.mockResolvedValue(requests);
+
+    const result = await getPendingPhaseChangeRequests("org-1");
+
+    expect(mockPrisma.phaseChangeRequest.findMany).toHaveBeenCalledWith({
+      where: {
+        approvalStatus: ApprovalStatus.PENDING,
+        savingCard: {
+          organizationId: "org-1",
+        },
+      },
+      include: {
+        savingCard: true,
+        requestedBy: true,
+        approvals: {
+          where: {
+            status: ApprovalStatus.PENDING,
+          },
+          include: {
+            approver: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(result).toEqual(requests);
   });
 });

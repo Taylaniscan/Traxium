@@ -9,24 +9,33 @@ import {
 type BillingEnvSource = Record<string, string | undefined>;
 
 export const stripePlanCatalogKeys = ["starter", "growth"] as const;
-export const stripeBillingRequiredEnvKeys = [
+export const stripeBillingRuntimeRequiredEnvKeys = [
   "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
   "STRIPE_PORTAL_RETURN_URL",
   "STRIPE_CHECKOUT_SUCCESS_URL",
   "STRIPE_CHECKOUT_CANCEL_URL",
   "STRIPE_STARTER_PRODUCT_ID",
   "STRIPE_STARTER_BASE_PRICE_ID",
-  "STRIPE_STARTER_METERED_PRICE_ID",
   "STRIPE_GROWTH_PRODUCT_ID",
   "STRIPE_GROWTH_BASE_PRICE_ID",
+] as const;
+export const stripeBillingWebhookRequiredEnvKeys = [
+  "STRIPE_WEBHOOK_SECRET",
+] as const;
+export const stripeBillingOptionalServerEnvKeys = [
+  "STRIPE_STARTER_METERED_PRICE_ID",
   "STRIPE_GROWTH_METERED_PRICE_ID",
+] as const;
+export const stripeBillingRequiredEnvKeys = [
+  ...stripeBillingRuntimeRequiredEnvKeys,
+  ...stripeBillingWebhookRequiredEnvKeys,
 ] as const;
 export const stripeBillingOptionalEnvKeys = [
   "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
 ] as const;
 export const stripeBillingEnvKeys = [
   ...stripeBillingRequiredEnvKeys,
+  ...stripeBillingOptionalServerEnvKeys,
   ...stripeBillingOptionalEnvKeys,
 ] as const;
 
@@ -37,17 +46,20 @@ export type StripePlanCatalogEntry = {
   code: StripePlanCatalogKey;
   stripeProductId: string;
   basePriceId: string;
-  meteredPriceId: string;
+  meteredPriceId: string | null;
 };
 
-export type StripeBillingConfig = {
+export type StripeBillingRuntimeConfig = {
   appEnvironment: AppEnvironment;
   secretKey: string;
-  webhookSecret: string;
   portalReturnUrl: string;
   checkoutSuccessUrl: string;
   checkoutCancelUrl: string;
   plans: Record<StripePlanCatalogKey, StripePlanCatalogEntry>;
+};
+
+export type StripeBillingConfig = StripeBillingRuntimeConfig & {
+  webhookSecret: string;
 };
 
 export type StripeBillingConfigSnapshot = {
@@ -110,6 +122,38 @@ function readRequiredBillingUrlEnv(
     requirement: "non-test",
     description,
   });
+}
+
+export function getMissingStripeBillingEnvKeys(
+  source: BillingEnvSource = process.env,
+  scope: "runtime" | "full" = "runtime"
+) {
+  const keys =
+    scope === "full"
+      ? stripeBillingRequiredEnvKeys
+      : stripeBillingRuntimeRequiredEnvKeys;
+
+  return keys.filter((key) => !source[key]?.trim());
+}
+
+function throwWhenMultipleBillingEnvValuesAreMissing(
+  appEnvironment: AppEnvironment,
+  source: BillingEnvSource,
+  scope: "runtime" | "full"
+) {
+  if (appEnvironment === "test") {
+    return;
+  }
+
+  const missingKeys = getMissingStripeBillingEnvKeys(source, scope);
+
+  if (missingKeys.length <= 1) {
+    return;
+  }
+
+  throw new Error(
+    `Missing Stripe billing environment variables: ${missingKeys.join(", ")}. Required in development, preview, and production environments when Stripe billing validation runs. Current environment: ${appEnvironment}.`
+  );
 }
 
 function assertValueHasPrefix(
@@ -196,6 +240,16 @@ function getStripeWebhookSecret(source: BillingEnvSource) {
   );
 }
 
+function getOptionalStripeWebhookSecret(source: BillingEnvSource) {
+  const value = source.STRIPE_WEBHOOK_SECRET?.trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return assertValueHasPrefix("STRIPE_WEBHOOK_SECRET", value, "whsec_");
+}
+
 function getStripeProductId(name: string, source: BillingEnvSource) {
   return assertValueHasPrefix(
     name,
@@ -210,6 +264,16 @@ function getStripePriceId(name: string, source: BillingEnvSource) {
     readRequiredBillingEnv(name, source, "Stripe price identifier."),
     "price_"
   );
+}
+
+function getOptionalStripePriceId(name: string, source: BillingEnvSource) {
+  const value = source[name]?.trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return assertValueHasPrefix(name, value, "price_");
 }
 
 function buildPlanCatalogEntry(
@@ -228,7 +292,7 @@ function buildPlanCatalogEntry(
       `STRIPE_${upperCode}_BASE_PRICE_ID`,
       source
     ),
-    meteredPriceId: getStripePriceId(
+    meteredPriceId: getOptionalStripePriceId(
       `STRIPE_${upperCode}_METERED_PRICE_ID`,
       source
     ),
@@ -303,7 +367,10 @@ function assertLiveKeyDoesNotUseNonProductionCatalog(
         value: plan.meteredPriceId,
         kind: "price",
       },
-    ] as const;
+    ].filter(
+      (entry): entry is { name: string; value: string; kind: "product" | "price" } =>
+        Boolean(entry.value)
+    );
 
     for (const entry of planEnvValues) {
       if (!looksLikeNonProductionStripeResourceId(entry.value)) {
@@ -327,17 +394,23 @@ export function isStripeBillingConfigured(
   source: BillingEnvSource = process.env
 ) {
   try {
-    getStripeBillingConfig(source);
+    getStripeBillingRuntimeConfig(source);
     return true;
   } catch {
     return false;
   }
 }
 
-export function getStripeBillingConfig(
+export function getStripeBillingRuntimeConfig(
   source: BillingEnvSource = process.env
-): StripeBillingConfig {
+): StripeBillingRuntimeConfig {
   const appEnvironment = resolveAppEnvironment(source);
+  throwWhenMultipleBillingEnvValuesAreMissing(
+    appEnvironment,
+    source,
+    "runtime"
+  );
+
   const secretKey = getStripeSecretKey(source);
   const publishableKey = getStripePublishableKey(source);
   const plans = {
@@ -355,7 +428,6 @@ export function getStripeBillingConfig(
   return {
     appEnvironment,
     secretKey: secretKey.value,
-    webhookSecret: getStripeWebhookSecret(source),
     portalReturnUrl: readRequiredBillingUrlEnv(
       "STRIPE_PORTAL_RETURN_URL",
       source,
@@ -372,6 +444,18 @@ export function getStripeBillingConfig(
       "Stripe Checkout cancel return URL."
     ),
     plans,
+  };
+}
+
+export function getStripeBillingConfig(
+  source: BillingEnvSource = process.env
+): StripeBillingConfig {
+  const appEnvironment = resolveAppEnvironment(source);
+  throwWhenMultipleBillingEnvValuesAreMissing(appEnvironment, source, "full");
+
+  return {
+    ...getStripeBillingRuntimeConfig(source),
+    webhookSecret: getStripeWebhookSecret(source),
   };
 }
 
@@ -392,6 +476,28 @@ export function assertStripeBillingConfiguration(
     hasSecretKey: Boolean(config.secretKey),
     hasPublishableKey: Boolean(publishableKey.value),
     hasWebhookSecret: Boolean(config.webhookSecret),
+    planCodes: stripePlanCatalogKeys.slice(),
+  };
+}
+
+export function assertStripeBillingRuntimeConfiguration(
+  source: BillingEnvSource = process.env
+): StripeBillingConfigSnapshot {
+  const config = getStripeBillingRuntimeConfig(source);
+  const secretKey = getStripeSecretKey(source);
+  const publishableKey = getStripePublishableKey(source);
+  const webhookSecret = getOptionalStripeWebhookSecret(source);
+
+  return {
+    appEnvironment: config.appEnvironment,
+    secretKeyMode: secretKey.mode,
+    publishableKeyMode: publishableKey.mode,
+    portalReturnUrl: config.portalReturnUrl,
+    checkoutSuccessUrl: config.checkoutSuccessUrl,
+    checkoutCancelUrl: config.checkoutCancelUrl,
+    hasSecretKey: Boolean(config.secretKey),
+    hasPublishableKey: Boolean(publishableKey.value),
+    hasWebhookSecret: Boolean(webhookSecret),
     planCodes: stripePlanCatalogKeys.slice(),
   };
 }

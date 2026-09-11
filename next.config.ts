@@ -73,7 +73,7 @@ export function buildContentSecurityPolicy() {
     `object-src 'none'`,
     `frame-ancestors 'none'`,
     `frame-src 'none'`,
-    `form-action 'self'`,
+    `form-action 'self' https://checkout.stripe.com https://billing.stripe.com`,
     `manifest-src 'self'`,
     `script-src ${scriptSources.join(" ")}`,
     `style-src 'self' 'unsafe-inline'`,
@@ -151,17 +151,9 @@ export function buildSecurityHeaders() {
 }
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   experimental: {
     devtoolSegmentExplorer: false,
-  },
-  async redirects() {
-    return [
-      {
-        source: "/",
-        destination: "/dashboard",
-        permanent: false,
-      },
-    ];
   },
   async headers() {
     return buildSecurityHeaders();

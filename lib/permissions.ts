@@ -53,10 +53,22 @@ const FINANCE_LOCK_ROLES = new Set<Role>([Role.FINANCIAL_CONTROLLER]);
 const LOCKED_FINANCE_FIELDS = new Set([
   "baselinePrice",
   "newPrice",
+  "referencePrice",
   "annualVolume",
   "currency",
+  "fxRate",
+  "calculatedSavings",
+  "calculatedSavingsUSD",
+  "annualizedRunRate",
+  "annualizedRunRateUSD",
+  "inYearValue",
+  "inYearValueUSD",
   "impactStartDate",
   "impactEndDate",
+  "savingType",
+  "impactType",
+  "impactRecurrence",
+  "budgetImpact",
 ]);
 
 export function getPermissionsForRole(role: Role): readonly AppPermission[] {

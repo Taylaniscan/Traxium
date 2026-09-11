@@ -1,4 +1,8 @@
 import { buildOrganizationUserWhere } from "@/lib/organizations";
+import {
+  controllerSavingCardColumns,
+  mapSavingCardsForControllerExport,
+} from "@/lib/export/controller-workbook";
 import { prisma } from "@/lib/prisma";
 import { buildTenantScopeWhere, resolveTenantScope } from "@/lib/tenant-scope";
 import {
@@ -11,7 +15,7 @@ import { savingCardDetailInclude } from "@/lib/saving-cards/shared";
 export async function getReferenceData(context: TenantContextSource) {
   const scope = resolveTenantScope(context);
   const [users, buyers, suppliers, materials, categories, plants, businessUnits, fxRates] =
-    await Promise.all([
+    await prisma.$transaction([
       prisma.user.findMany({
         where: buildOrganizationUserWhere(scope),
         orderBy: { name: "asc" },
@@ -57,6 +61,23 @@ export async function getReferenceData(context: TenantContextSource) {
   };
 }
 
+export async function getSavingCardDetailReferenceData(context: TenantContextSource) {
+  const scope = resolveTenantScope(context);
+  const suppliers = await prisma.supplier.findMany({
+    where: buildTenantScopeWhere(scope),
+    orderBy: { name: "asc" },
+  });
+  const materials = await prisma.material.findMany({
+    where: buildTenantScopeWhere(scope),
+    orderBy: { name: "asc" },
+  });
+
+  return {
+    suppliers,
+    materials,
+  };
+}
+
 export async function getSavingCards(
   context: TenantContextSource,
   filters?: {
@@ -65,8 +86,14 @@ export async function getSavingCards(
     buyerId?: string;
     plantId?: string;
     supplierId?: string;
+    stakeholderUserId?: string;
+    ids?: string[];
   }
 ): Promise<SavingCardPortfolio[]> {
+  if (filters?.ids && !filters.ids.length) {
+    return [];
+  }
+
   return prisma.savingCard.findMany({
     where: buildTenantScopeWhere(context, {
       ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
@@ -74,6 +101,16 @@ export async function getSavingCards(
       ...(filters?.buyerId ? { buyerId: filters.buyerId } : {}),
       ...(filters?.plantId ? { plantId: filters.plantId } : {}),
       ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
+      ...(filters?.stakeholderUserId
+        ? {
+            stakeholders: {
+              some: {
+                userId: filters.stakeholderUserId,
+              },
+            },
+          }
+        : {}),
+      ...(filters?.ids ? { id: { in: filters.ids } } : {}),
     }),
     select: savingCardPortfolioSelect,
     orderBy: { updatedAt: "desc" },
@@ -97,32 +134,8 @@ export async function getNotificationsForUser(userId: string) {
   });
 }
 
+export const savingCardExportColumns = controllerSavingCardColumns;
+
 export function mapSavingCardsForExport(cards: SavingCardPortfolio[]) {
-  return cards.map((card) => ({
-    Title: card.title,
-    Phase: card.phase,
-    Supplier: card.supplier.name,
-    Material: card.material.name,
-    AlternativeSupplier:
-      card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "",
-    AlternativeMaterial:
-      card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "",
-    SavingDriver: card.savingDriver ?? "",
-    ImplementationComplexity: card.implementationComplexity ?? "",
-    QualificationStatus: card.qualificationStatus ?? "",
-    Category: card.category.name,
-    Buyer: card.buyer.name,
-    BusinessUnit: card.businessUnit.name,
-    BaselinePrice: card.baselinePrice,
-    NewPrice: card.newPrice,
-    AnnualVolume: card.annualVolume,
-    Currency: card.currency,
-    SavingsEUR: card.calculatedSavings,
-    SavingsUSD: card.calculatedSavingsUSD,
-    StartDate: card.startDate,
-    EndDate: card.endDate,
-    ImpactStartDate: card.impactStartDate,
-    ImpactEndDate: card.impactEndDate,
-    FinanceLocked: card.financeLocked,
-  }));
+  return mapSavingCardsForControllerExport(cards);
 }

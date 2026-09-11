@@ -226,6 +226,22 @@ describe("lib/auth guards", () => {
     });
   });
 
+  it("retries transient Prisma pool saturation during auth lookup", async () => {
+    mockPrisma.user.findUnique
+      .mockRejectedValueOnce(
+        new Error(
+          "Error in connector: Error querying the database: FATAL: (EMAXCONNSESSION) max clients reached in session mode"
+        )
+      )
+      .mockResolvedValueOnce(createResolvedUserRecord());
+
+    await expect(getCurrentUser()).resolves.toMatchObject({
+      id: DEFAULT_USER_ID,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+    });
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledTimes(2);
+  });
+
   it("checks billing access against the active organization only when multiple memberships exist", async () => {
     mockAuthenticatedSession(
       createAuthSessionUser({
@@ -471,6 +487,18 @@ describe("lib/auth guards", () => {
         role: true,
         organizationId: true,
         activeOrganizationId: true,
+        memberships: {
+          where: {
+            status: MembershipStatus.ACTIVE,
+          },
+          select: {
+            id: true,
+            organizationId: true,
+            role: true,
+            status: true,
+          },
+          orderBy: [{ createdAt: "asc" }, { organizationId: "asc" }],
+        },
       },
       orderBy: [{ id: "asc" }],
       take: 2,

@@ -285,9 +285,9 @@ function getAnalyticsConfig(
 class NoopAnalyticsProvider implements AnalyticsProvider {
   readonly name = "noop";
 
-  async track(_payload: AnalyticsTrackPayload) {}
+  async track() {}
 
-  async identify(_payload: AnalyticsIdentifyPayload) {}
+  async identify() {}
 }
 
 class HttpAnalyticsProvider implements AnalyticsProvider {

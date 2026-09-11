@@ -75,8 +75,8 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       message: result.changed
-        ? "Invitation cancelled."
-        : "Invitation was already cancelled.",
+        ? "Invitation canceled."
+        : "Invitation was already canceled.",
       invitation: {
         id: result.invitation.id,
         organizationId: result.invitation.organizationId,
@@ -159,7 +159,7 @@ export async function DELETE(
     });
 
     return jsonError(
-      error instanceof Error ? error.message : "Invitation could not be cancelled.",
+      error instanceof Error ? error.message : "Invitation could not be canceled.",
       500
     );
   }

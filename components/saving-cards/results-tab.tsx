@@ -29,10 +29,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type {
+  SavingType,
+  SavingsBudgetImpact,
+  SavingsImpactRecurrence,
+  SavingsImpactType,
+} from "@prisma/client";
+import type {
   VolumeImportResult,
   VolumeTimelineResult,
   VolumeTimelineRow,
 } from "@/lib/types";
+import {
+  savingTypeLabels,
+  savingsBudgetImpactLabels,
+  savingsImpactRecurrenceLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 type EditableField = "forecast" | "actual";
@@ -69,6 +81,10 @@ export function ResultsTab({
   annualVolume,
   volumeUnit,
   currency,
+  savingType,
+  impactType,
+  impactRecurrence,
+  budgetImpact,
 }: {
   savingCardId: string;
   materialName: string;
@@ -77,6 +93,10 @@ export function ResultsTab({
   annualVolume: number;
   volumeUnit: string;
   currency: "EUR" | "USD";
+  savingType: SavingType;
+  impactType: SavingsImpactType;
+  impactRecurrence: SavingsImpactRecurrence;
+  budgetImpact: SavingsBudgetImpact;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<SerialVolumeResponse>(EMPTY_TIMELINE);
@@ -302,65 +322,122 @@ export function ResultsTab({
     <div className="space-y-6">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ResultMetric
-          label="Static Forecast"
-          value={formatCurrency(Math.round(staticForecastSaving), currency)}
-          detail={`${formatVolume(annualVolume)} ${volumeUnit} annual baseline`}
-          tone="slate"
-        />
-        <ResultMetric
-          label="YTD Forecast Saving"
-          value={formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
-          detail={`${data.summary.totalForecastMonths} planned month${data.summary.totalForecastMonths === 1 ? "" : "s"}`}
-          tone="blue"
-        />
-        <ResultMetric
-          label="YTD Actual Saving"
-          value={formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
-          detail={`${data.summary.confirmedMonths} confirmed month${data.summary.confirmedMonths === 1 ? "" : "s"}`}
-          tone="emerald"
-        />
-        <ResultMetric
-          label="Volume Variance"
-          value={`${formatSignedVolume(data.summary.ytdVarianceQty)} ${volumeUnit}`}
-          detail={formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
-          tone={data.summary.ytdVarianceQty >= 0 ? "emerald" : "rose"}
-        />
-      </div>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+            Value Tracking
+          </p>
+          <CardTitle>Results & Realization</CardTitle>
+          <CardDescription>
+            Track monthly forecast and actual consumption so the commercial case, realized savings, and variance stay visible in one operational surface.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <ResultMetric
+            label="Static Forecast"
+            value={formatCurrency(Math.round(staticForecastSaving), currency)}
+            detail={`${formatVolume(annualVolume)} ${volumeUnit} annual baseline`}
+            tone="slate"
+          />
+          <ResultMetric
+            label="YTD Forecast Saving"
+            value={formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
+            detail={`${data.summary.totalForecastMonths} planned month${data.summary.totalForecastMonths === 1 ? "" : "s"}`}
+            tone="blue"
+          />
+          <ResultMetric
+            label="YTD Actual Saving"
+            value={formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
+            detail={`${data.summary.confirmedMonths} confirmed month${data.summary.confirmedMonths === 1 ? "" : "s"}`}
+            tone="emerald"
+          />
+          <ResultMetric
+            label="Volume Variance"
+            value={`${formatSignedVolume(data.summary.ytdVarianceQty)} ${volumeUnit}`}
+            detail={formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
+            tone={data.summary.ytdVarianceQty >= 0 ? "emerald" : "rose"}
+          />
+        </CardContent>
+        <CardContent className="border-t border-[var(--border)] pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            Estimate vs. actual {data.summary.hasData ? "" : "(no actuals entered yet)"}
+          </p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Estimated value to date</p>
+              <p className="mt-1 text-lg font-semibold">
+                {formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Actual to date</p>
+              <p className="mt-1 text-lg font-semibold">
+                {formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">Variance</p>
+              <p
+                className={
+                  data.summary.ytdVarianceSaving >= 0
+                    ? "mt-1 text-lg font-semibold text-[var(--success)]"
+                    : "mt-1 text-lg font-semibold text-[var(--risk)]"
+                }
+              >
+                {formatSignedCurrency(data.summary.ytdVarianceSaving, currency)}
+                {data.summary.ytdVariancePercent !== null
+                  ? ` (${data.summary.ytdVariancePercent >= 0 ? "+" : ""}${Math.round(data.summary.ytdVariancePercent)}%)`
+                  : ""}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+        <CardContent className="border-t border-[var(--border)] pt-4">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="neutral">{savingTypeLabels[savingType]}</Badge>
+            <Badge tone="neutral">{savingsImpactTypeLabels[impactType]}</Badge>
+            <Badge tone="neutral">{savingsImpactRecurrenceLabels[impactRecurrence]}</Badge>
+            <Badge tone="neutral">{savingsBudgetImpactLabels[budgetImpact]}</Badge>
+          </div>
+        </CardContent>
+      </Card>
 
       {loading ? (
         <ResultsLoadingSkeleton />
       ) : data.summary.hasData ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
               <CardTitle>Monthly Volume Performance</CardTitle>
               <CardDescription>
                 Forecast versus actual consumption by month.
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                initialDimension={{ width: 640, height: 320 }}
+              >
                 <BarChart data={chartRows}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                    formatter={(value: number, name: string) => [
-                      `${formatVolume(value)} ${volumeUnit}`,
-                      name === "forecastQty" ? "Forecast" : "Actual",
+                    contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
+                    formatter={(value, name) => [
+                      `${formatVolume(Number(value ?? 0))} ${volumeUnit}`,
+                      String(name) === "forecastQty" ? "Forecast" : "Actual",
                     ]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <ReferenceLine x={todayPeriodLabel} stroke="#94A3B8" strokeDasharray="4 4" />
-                  <Bar dataKey="forecastQty" name="Forecast" fill="#2563EB" radius={[8, 8, 0, 0]} />
+                  <ReferenceLine x={todayPeriodLabel} stroke="var(--chart-axis)" strokeDasharray="4 4" />
+                  <Bar dataKey="forecastQty" name="Forecast" fill="var(--primary-action)" radius={[8, 8, 0, 0]} />
                   <Bar dataKey="actualQty" name="Actual" radius={[8, 8, 0, 0]}>
                     {chartRows.map((row) => (
                       <Cell
                         key={`actual-${row.periodKey}`}
-                        fill={row.actualQty >= row.forecastQty ? "#16A34A" : "#DC2626"}
+                        fill={row.actualQty >= row.forecastQty ? "var(--phase-captured)" : "var(--phase-canceled)"}
                       />
                     ))}
                   </Bar>
@@ -369,33 +446,37 @@ export function ResultsTab({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
               <CardTitle>Cumulative Savings S-Curve</CardTitle>
               <CardDescription>
                 Cumulative forecast versus actual savings progression.
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                initialDimension={{ width: 640, height: 320 }}
+              >
                 <ComposedChart data={chartRows}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fill: "#6B7280", fontSize: 12 }} tickFormatter={(value) => formatVolume(value)} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--chart-axis)", fontSize: 12 }} tickFormatter={(value) => formatVolume(value)} />
                   <Tooltip
-                    contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
-                    formatter={(value: number, name: string) => [
-                      formatCurrency(Math.round(value), currency),
-                      name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
+                    contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
+                    formatter={(value, name) => [
+                      formatCurrency(Math.round(Number(value ?? 0)), currency),
+                      String(name) === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                     ]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <ReferenceLine x={todayPeriodLabel} stroke="#94A3B8" strokeDasharray="4 4" />
+                  <ReferenceLine x={todayPeriodLabel} stroke="var(--chart-axis)" strokeDasharray="4 4" />
                   <Line
                     type="monotone"
                     dataKey="cumulativeForecast"
                     name="Cumulative Forecast"
-                    stroke="#2563EB"
+                    stroke="var(--primary-action)"
                     strokeWidth={3}
                     strokeDasharray="6 4"
                     dot={false}
@@ -404,7 +485,7 @@ export function ResultsTab({
                     type="monotone"
                     dataKey="cumulativeActual"
                     name="Cumulative Actual"
-                    stroke="#16A34A"
+                    stroke="var(--phase-captured)"
                     strokeWidth={3}
                     dot={false}
                   />
@@ -414,18 +495,28 @@ export function ResultsTab({
           </Card>
         </div>
       ) : (
-        <Card>
-          <CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
             <CardTitle>No volume data yet</CardTitle>
             <CardDescription>
               Add monthly forecast rows to start tracking forecast versus actual savings impact.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-8 text-center">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                The result ledger is empty
+              </p>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Add monthly forecast periods below to start building realized-versus-forecast visibility for this initiative.
+              </p>
+            </div>
+          </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
           <CardTitle>Monthly Volume Table</CardTitle>
           <CardDescription>
             Forecast and actual consumption volumes for {materialName}.
@@ -433,7 +524,7 @@ export function ResultsTab({
         </CardHeader>
         <CardContent className="space-y-4 overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="border-b bg-white/70">
+            <thead className="border-b bg-[var(--surface)]/70">
               <tr>
                 {[
                   "Period",
@@ -545,8 +636,8 @@ export function ResultsTab({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
           <div>
             <CardTitle>CSV Import</CardTitle>
             <CardDescription>
@@ -611,7 +702,7 @@ export function ResultsTab({
               className={`rounded-3xl border-2 border-dashed p-8 text-center transition ${
                 dragging
                   ? "border-[var(--primary)] bg-[var(--muted)]"
-                  : "border-[var(--border)] bg-white/60"
+                  : "border-[var(--border)] bg-[var(--surface)]/60"
               }`}
             >
               <UploadCloud className="mx-auto mb-3 h-8 w-8 text-[var(--muted-foreground)]" />
@@ -743,13 +834,13 @@ function ResultMetric({
     tone === "blue"
       ? "text-blue-700"
       : tone === "emerald"
-        ? "text-emerald-700"
+        ? "text-[var(--success)]"
         : tone === "rose"
-          ? "text-rose-700"
-          : "text-slate-700";
+          ? "text-[var(--risk)]"
+          : "text-[var(--text-secondary)]";
 
   return (
-    <Card>
+    <Card className="border-[var(--border)] bg-[var(--surface)] shadow-none">
       <CardContent className="space-y-2">
         <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
           {label}
@@ -770,10 +861,10 @@ function VarianceChip({
 }) {
   const positive = row.varianceSaving >= 0;
   const Icon = positive ? ArrowUpRight : ArrowDownRight;
-  const toneClass = positive ? "text-emerald-700" : "text-rose-700";
+  const toneClass = positive ? "text-[var(--success)]" : "text-[var(--risk)]";
 
   return (
-    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${positive ? "bg-emerald-50" : "bg-rose-50"} ${toneClass}`}>
+    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${positive ? "bg-[var(--success-surface)]" : "bg-[var(--risk-surface)]"} ${toneClass}`}>
       <Icon className="h-3.5 w-3.5" />
       <span>
         {formatSignedCurrency(row.varianceSaving, currency)}
@@ -790,9 +881,9 @@ function ResultsLoadingSkeleton() {
         {Array.from({ length: 4 }).map((_, index) => (
           <Card key={index}>
             <CardContent className="space-y-3">
-              <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
-              <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
-              <div className="h-3 w-32 animate-pulse rounded bg-slate-200" />
+              <div className="h-3 w-24 skeleton-shimmer rounded" />
+              <div className="h-8 w-36 skeleton-shimmer rounded" />
+              <div className="h-3 w-32 skeleton-shimmer rounded" />
             </CardContent>
           </Card>
         ))}
@@ -800,7 +891,7 @@ function ResultsLoadingSkeleton() {
       <div className="grid gap-6 xl:grid-cols-2">
         {Array.from({ length: 2 }).map((_, index) => (
           <Card key={index}>
-            <CardContent className="h-80 animate-pulse rounded-2xl bg-slate-100" />
+            <CardContent className="h-80 skeleton-shimmer rounded-2xl" />
           </Card>
         ))}
       </div>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
 
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -100,6 +101,29 @@ const prismaMock = vi.hoisted(() => {
           return selectRecord(created, select);
         }
       ),
+      update: vi.fn(
+        async ({
+          where,
+          data,
+          select,
+        }: {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+          select?: Record<string, boolean>;
+        }) => {
+          const existing = findByWhere(prismaState.billingCustomers, where);
+
+          if (!existing) {
+            throw new Error("Record not found.");
+          }
+
+          Object.assign(existing, data, {
+            updatedAt: new Date(),
+          });
+
+          return selectRecord(existing, select);
+        }
+      ),
     },
   };
 });
@@ -133,6 +157,7 @@ vi.mock("@/lib/billing/stripe", () => ({
 
 import { POST as billingCheckoutRoute } from "@/app/api/billing/checkout/route";
 import { POST as billingPortalRoute } from "@/app/api/billing/portal/route";
+import { createCheckoutSessionForOrganization } from "@/lib/billing/checkout";
 
 function createCheckoutRequest(body: Record<string, unknown>) {
   return new Request("http://localhost/api/billing/checkout", {
@@ -156,6 +181,18 @@ function clearStripeBillingEnv() {
   delete process.env.STRIPE_GROWTH_PRODUCT_ID;
   delete process.env.STRIPE_GROWTH_BASE_PRICE_ID;
   delete process.env.STRIPE_GROWTH_METERED_PRICE_ID;
+}
+
+function createStripeMissingCustomerError() {
+  return Object.assign(new Error("No such customer: 'cus_demo_utopiatrax'"), {
+    statusCode: 404,
+    code: "resource_missing",
+    raw: {
+      statusCode: 404,
+      code: "resource_missing",
+      message: "No such customer: 'cus_demo_utopiatrax'",
+    },
+  });
 }
 
 describe("billing checkout routes", () => {
@@ -287,6 +324,86 @@ describe("billing checkout routes", () => {
     });
   });
 
+  it("passes the workspace trial end into Stripe Checkout when provided", async () => {
+    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await expect(
+      createCheckoutSessionForOrganization({
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+        customerEmail: "buyer@atlas.example",
+        planCode: "growth",
+        priceId: process.env.STRIPE_GROWTH_BASE_PRICE_ID!,
+        trialEnd,
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        sessionId: "cs_test_001",
+        url: "https://checkout.stripe.com/c/pay/cs_test_001",
+        planCode: "growth",
+      })
+    );
+
+    expect(checkoutSessionsCreateMock).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: "cus_atlas_001",
+      client_reference_id: DEFAULT_ORGANIZATION_ID,
+      success_url: "http://localhost:3000/settings/billing?checkout=success",
+      cancel_url: "http://localhost:3000/settings/billing?checkout=cancelled",
+      allow_promotion_codes: true,
+      line_items: [
+        {
+          price: "price_localdevgrowthmonthly2026",
+          quantity: 1,
+        },
+        {
+          price: "price_localdevgrowthusage2026",
+        },
+      ],
+      metadata: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        requestedByUserId: DEFAULT_USER_ID,
+        planCode: "growth",
+      },
+      subscription_data: {
+        trial_end: Math.floor(trialEnd.getTime() / 1000),
+        metadata: {
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          requestedByUserId: DEFAULT_USER_ID,
+          planCode: "growth",
+        },
+      },
+    });
+  });
+
+  it("caps oversized workspace trial handoff to the 14-day tenant trial", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-21T12:00:00.000Z"));
+
+    try {
+      await createCheckoutSessionForOrganization({
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+        customerEmail: "buyer@atlas.example",
+        planCode: "starter",
+        priceId: process.env.STRIPE_STARTER_BASE_PRICE_ID!,
+        trialEnd: new Date("2028-12-31T23:59:59.000Z"),
+      });
+
+      expect(checkoutSessionsCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subscription_data: expect.objectContaining({
+            trial_end: Math.floor(
+              new Date("2026-06-04T12:00:00.000Z").getTime() / 1000
+            ),
+          }),
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects unauthorized checkout requests with the shared auth guard response", async () => {
     requireOrganizationMock.mockRejectedValueOnce(
       new MockAuthGuardError("Authenticated session is required.", 401, "UNAUTHENTICATED")
@@ -305,6 +422,38 @@ describe("billing checkout routes", () => {
     });
     expect(customersCreateMock).not.toHaveBeenCalled();
     expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout for organization members even when their legacy app role can manage workspaces", async () => {
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        role: Role.GLOBAL_CATEGORY_LEADER,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-member",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
+
+    const response = await billingCheckoutRoute(
+      createCheckoutRequest({
+        planCode: "starter",
+        priceId: process.env.STRIPE_STARTER_BASE_PRICE_ID,
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Only workspace admins and owners can manage billing checkout.",
+    });
+    expect(customersCreateMock).not.toHaveBeenCalled();
+    expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+    expect(prismaState.billingCustomers).toHaveLength(0);
   });
 
   it("rejects checkout when the submitted price id does not match the configured plan catalog", async () => {
@@ -376,6 +525,117 @@ describe("billing checkout routes", () => {
     );
   });
 
+  it("replaces a demo billing customer before creating a real Stripe Checkout session", async () => {
+    prismaState.billingCustomers.push({
+      id: "bc_demo",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      stripeCustomerId: "cus_demo_utopiatrax",
+      email: "billing@demo.example",
+      name: "Demo Workspace",
+      metadata: null,
+      createdAt: new Date("2026-03-27T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-27T12:00:00.000Z"),
+    });
+    customersCreateMock.mockResolvedValueOnce({
+      id: "cus_real_recovered",
+      email: "buyer@atlas.example",
+      name: null,
+      metadata: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        createdByUserId: DEFAULT_USER_ID,
+      },
+    });
+
+    const response = await billingCheckoutRoute(
+      createCheckoutRequest({
+        planCode: "starter",
+        priceId: process.env.STRIPE_STARTER_BASE_PRICE_ID,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      sessionId: "cs_test_001",
+      url: "https://checkout.stripe.com/c/pay/cs_test_001",
+    });
+    expect(customersCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "buyer@atlas.example",
+      }),
+      {
+        idempotencyKey: `billing-customer:${DEFAULT_ORGANIZATION_ID}`,
+      }
+    );
+    expect(prismaMock.billingCustomer.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: DEFAULT_ORGANIZATION_ID,
+        },
+        data: expect.objectContaining({
+          stripeCustomerId: "cus_real_recovered",
+        }),
+      })
+    );
+    expect(checkoutSessionsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_real_recovered",
+      })
+    );
+  });
+
+  it("recovers checkout when Stripe no longer has the stored customer", async () => {
+    prismaState.billingCustomers.push({
+      id: "bc_deleted",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      stripeCustomerId: "cus_deleted_remote",
+      email: "billing@atlas.example",
+      name: "Atlas Procurement",
+      metadata: null,
+      createdAt: new Date("2026-03-27T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-27T12:00:00.000Z"),
+    });
+    customersCreateMock.mockResolvedValueOnce({
+      id: "cus_recreated_remote",
+      email: "buyer@atlas.example",
+      name: null,
+      metadata: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        createdByUserId: DEFAULT_USER_ID,
+      },
+    });
+    checkoutSessionsCreateMock
+      .mockRejectedValueOnce(createStripeMissingCustomerError())
+      .mockResolvedValueOnce({
+        id: "cs_test_recovered",
+        url: "https://checkout.stripe.com/c/pay/cs_test_recovered",
+      });
+
+    const response = await billingCheckoutRoute(
+      createCheckoutRequest({
+        planCode: "starter",
+        priceId: process.env.STRIPE_STARTER_BASE_PRICE_ID,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      sessionId: "cs_test_recovered",
+      url: "https://checkout.stripe.com/c/pay/cs_test_recovered",
+    });
+    expect(checkoutSessionsCreateMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        customer: "cus_deleted_remote",
+      })
+    );
+    expect(checkoutSessionsCreateMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        customer: "cus_recreated_remote",
+      })
+    );
+  });
+
   it("opens the billing portal with the active organization's billing customer only", async () => {
     prismaState.billingCustomers.push(
       {
@@ -429,5 +689,33 @@ describe("billing checkout routes", () => {
         "Billing portal is unavailable because this workspace does not have a billing customer yet. Start a subscription first.",
     });
     expect(billingPortalSessionsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a controlled 404 when Stripe no longer has the stored portal customer", async () => {
+    prismaState.billingCustomers.push({
+      id: "bc_deleted",
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      stripeCustomerId: "cus_demo_utopiatrax",
+      email: "billing@demo.example",
+      name: "Demo Workspace",
+      metadata: null,
+      createdAt: new Date("2026-03-27T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-27T12:00:00.000Z"),
+    });
+    billingPortalSessionsCreateMock.mockRejectedValueOnce(
+      createStripeMissingCustomerError()
+    );
+
+    const response = await billingPortalRoute();
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Billing portal is unavailable because this workspace does not have a valid Stripe customer yet. Start a subscription first.",
+    });
+    expect(billingPortalSessionsCreateMock).toHaveBeenCalledWith({
+      customer: "cus_demo_utopiatrax",
+      return_url: "http://localhost:3000/settings/billing",
+    });
   });
 });

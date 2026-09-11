@@ -45,7 +45,7 @@ export default function AdminInsightsLoadingPage() {
         <LoadingPanel title="System Health" />
       </div>
 
-      <LoadingPanel title="Recent Admin Activity" />
+      <LoadingPanel title="Recent Workspace Activity" />
     </div>
   );
 }

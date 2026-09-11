@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import type { MembershipStatus, OrganizationRole } from "@prisma/client";
+import { cache } from "react";
 
 import {
   acceptOrganizationInvitation,
@@ -28,6 +29,7 @@ import type {
 } from "@/lib/types";
 
 const ACTIVE_MEMBERSHIP_STATUS: MembershipStatus = "ACTIVE";
+const AUTH_PRISMA_RETRY_DELAYS_MS = [120, 360] as const;
 
 const sessionUserSelect = {
   id: true,
@@ -36,6 +38,18 @@ const sessionUserSelect = {
   role: true,
   organizationId: true,
   activeOrganizationId: true,
+  memberships: {
+    where: {
+      status: ACTIVE_MEMBERSHIP_STATUS,
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      role: true,
+      status: true,
+    },
+    orderBy: [{ createdAt: "asc" as const }, { organizationId: "asc" as const }],
+  },
 } satisfies Prisma.UserSelect;
 
 type BaseSessionUserRecord = Prisma.UserGetPayload<{
@@ -233,6 +247,48 @@ function resolveSessionDisplayName(authUser: AuthSessionUser, email: string) {
   return startCase(localPart) || email;
 }
 
+function isTransientPrismaPoolError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("emaxconnsession") ||
+    message.includes("max clients reached") ||
+    message.includes("too many connections")
+  );
+}
+
+async function retryTransientAuthPrismaQuery<T>(
+  operation: () => Promise<T>
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= AUTH_PRISMA_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!isTransientPrismaPoolError(error)) {
+        throw error;
+      }
+
+      const delayMs = AUTH_PRISMA_RETRY_DELAYS_MS[attempt];
+
+      if (delayMs == null) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
 function getAuthUserId(authUser: AuthSessionUser): string | null {
   return readMetadataValue(authUser.app_metadata, ["userId", "user_id"]);
 }
@@ -310,24 +366,28 @@ async function resolveAuthenticatedAppUserFromAuthUser(
 }
 
 async function findSessionUserById(userId: string): Promise<SessionUserRecord | null> {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: sessionUserSelect,
-  });
+  return retryTransientAuthPrismaQuery(() =>
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: sessionUserSelect,
+    })
+  );
 }
 
 async function findSessionUsersByEmail(email: string): Promise<SessionUserRecord[]> {
-  return prisma.user.findMany({
-    where: {
-      email: {
-        equals: email,
-        mode: "insensitive",
+  return retryTransientAuthPrismaQuery(() =>
+    prisma.user.findMany({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
       },
-    },
-    select: sessionUserSelect,
-    orderBy: [{ id: "asc" }],
-    take: 2,
-  });
+      select: sessionUserSelect,
+      orderBy: [{ id: "asc" }],
+      take: 2,
+    })
+  );
 }
 
 async function updateAuthSessionContext(
@@ -484,10 +544,13 @@ function getBillingRequiredMessage(accessState: OrganizationAccessStateResult) {
     case "incomplete_expired":
     case "no_subscription":
       return "Your workspace does not have an active subscription yet. Complete billing setup before product access can continue.";
+    case "trial_expired":
+      return "Your workspace trial has ended. Start a subscription before product access can continue.";
     case "unknown":
       return "Your workspace billing state could not be verified safely. Complete billing recovery before product access can continue.";
     case "active":
     case "trialing":
+    case "workspace_trial":
       return "Your workspace billing access is active.";
   }
 }
@@ -500,7 +563,7 @@ async function assertBillingAccess(
     return user;
   }
 
-  const accessState = await getOrganizationAccessState(
+  const accessState = await getCachedOrganizationAccessState(
     user.activeOrganization.organizationId
   );
 
@@ -520,7 +583,7 @@ async function assertBillingAccess(
   );
 }
 
-async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult> {
+const resolveAuthenticatedAppUser = cache(async (): Promise<AuthenticatedAppUserResult> => {
   const authUser = await getAuthenticatedSessionUser();
 
   if (!authUser) {
@@ -532,7 +595,11 @@ async function resolveAuthenticatedAppUser(): Promise<AuthenticatedAppUserResult
   }
 
   return resolveAuthenticatedAppUserFromAuthUser(authUser);
-}
+});
+
+const getCachedOrganizationAccessState = cache((organizationId: string) =>
+  getOrganizationAccessState(organizationId)
+);
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const resolved = await resolveAuthenticatedAppUser();
@@ -624,7 +691,7 @@ async function bootstrapResolvedAuthenticatedAppUser(
   }
 
   const sessionUser = mapSessionUser(user, activeMembership);
-  const accessState = await getOrganizationAccessState(
+  const accessState = await getCachedOrganizationAccessState(
     sessionUser.activeOrganization.organizationId
   );
 
@@ -680,7 +747,8 @@ export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboarding
 }
 
 export async function createInitialWorkspaceOnboarding(
-  workspaceName: string
+  workspaceName: string,
+  workspaceDescription?: string | null
 ): Promise<WorkspaceOnboardingResult> {
   const resolved = await resolveAuthenticatedAppUser();
 
@@ -696,13 +764,18 @@ export async function createInitialWorkspaceOnboarding(
   let persistedUserId: string;
 
   if (resolved.user) {
-    result = await createInitialWorkspaceForUser(resolved.user.id, workspaceName);
+    result = await createInitialWorkspaceForUser(
+      resolved.user.id,
+      workspaceName,
+      workspaceDescription
+    );
     persistedUserId = resolved.user.id;
   } else {
     const provisionedResult = await createInitialWorkspaceForAuthenticatedUser({
       name: resolved.name,
       email: resolved.email,
       workspaceName,
+      workspaceDescription,
     });
 
     result = provisionedResult;

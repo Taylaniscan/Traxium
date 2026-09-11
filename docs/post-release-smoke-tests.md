@@ -2,6 +2,8 @@
 
 Run these checks immediately after every preview signoff deployment and every production release. Keep the list short, but do not skip items that touch auth, onboarding, invitations, admin, observability, or jobs.
 
+Use [provider-flow-validation.md](provider-flow-validation.md) as the master provider-flow gate. This smoke list is the route-level companion; provider proof for invite email, password reset, Stripe Checkout, Stripe Billing Portal, Stripe webhook delivery, evidence upload/download, import/export, and worker health belongs in [readiness-proof-log.md](readiness-proof-log.md).
+
 1. Route-contract smoke:
    Export the current deployment URL to `POSTDEPLOY_BASE_URL`, then run `node --import tsx scripts/postdeploy-smoke.ts`.
    If a release-validation browser session is available, also export `POSTDEPLOY_SESSION_COOKIE` with the authenticated `Cookie` header value before running the script. If that workspace intentionally has a pending workflow request, also set `POSTDEPLOY_EXPECT_PENDING_PHASE_REQUEST=true`.
@@ -36,7 +38,7 @@ Run these checks immediately after every preview signoff deployment and every pr
    Expected:
    - page loads without blank UI or server error
    - cards stay grouped by persisted phase columns, not by pending destination
-   - invalid jump controls such as `Idea -> Achieved` are not offered
+   - invalid jump controls such as Proposed -> Captured are not offered
    - if the workspace has a pending phase request, the card stays in its persisted column and shows `Pending approval` metadata instead of appearing moved
    - cancellation still requires a reason
    - if there is a safe validation card for workflow rejection, an invalid jump still produces visible blocked feedback instead of feeling like drag-and-drop silently failed
@@ -95,3 +97,7 @@ Run these checks immediately after every preview signoff deployment and every pr
     - admin users see recovery actions such as portal or checkout handoff
     - normal members only see contact-admin guidance
     - after Stripe recovery, `/settings/billing` returns the user to `/dashboard` once subscription sync is active again
+
+18. Production smoke provider proof:
+    For production, run only the safe checks listed in [provider-flow-validation.md](provider-flow-validation.md). Do not send real customer emails, charge real cards, upload customer evidence, delete data, or test webhooks on uncontrolled customer subscriptions.
+    Expected: controlled production test admin can open `/dashboard`, `/admin/settings`, `/settings/billing`, open Stripe Portal and return, request password reset for a controlled test account, invite a controlled internal email, upload/download harmless evidence in an internal/test workspace, export an internal/test report, and pass `npm run jobs:worker:healthcheck`.

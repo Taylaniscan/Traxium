@@ -1,7 +1,16 @@
-import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
+
+import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
-import { getSavingCards, getWorkspaceReadiness, mapSavingCardsForExport } from "@/lib/data";
+import { getSavingCards, getWorkspaceReadiness } from "@/lib/data";
+import {
+  buildControllerWorkbookModel,
+  type ControllerActualsByCard,
+} from "@/lib/export/controller-workbook";
+import { renderControllerWorkbookXlsx } from "@/lib/export/controller-workbook-xlsx";
+import { prisma } from "@/lib/prisma";
+import { buildTenantOwnedRelationWhere } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -27,44 +36,91 @@ export async function GET(request: Request) {
       getSavingCards(user),
       getWorkspaceReadiness(user),
     ]);
-    const rows = mapSavingCardsForExport(cards);
-    const generatedAt = new Date();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const summarySheet = XLSX.utils.aoa_to_sheet([
-      ["Workspace", workspaceReadiness.workspace.name],
-      ["Workspace Slug", workspaceReadiness.workspace.slug],
-      ["Generated At (UTC)", generatedAt.toISOString()],
-      ["Portfolio Scope", `${cards.length} saving card${cards.length === 1 ? "" : "s"} included`],
-      ["Active Cards", String(cards.filter((card) => card.phase !== "CANCELLED").length)],
-      ["Setup Completeness", `${workspaceReadiness.coverage.overallPercent}%`],
-      [
-        "Master Data Coverage",
-        `${workspaceReadiness.coverage.masterDataReadyCount}/${workspaceReadiness.coverage.masterDataTotal}`,
-      ],
-      [
-        "Workflow Coverage",
-        `${workspaceReadiness.coverage.workflowReadyCount}/${workspaceReadiness.coverage.workflowTotal}`,
-      ],
-      [
-        "Last Portfolio Update (UTC)",
-        workspaceReadiness.activity.lastPortfolioUpdateAt?.toISOString() ?? "Not available",
-      ],
-      ["Reporting Basis", "Organization-scoped live saving-card portfolio"],
-    ]);
-    const workbook = XLSX.utils.book_new();
-    workbook.Props = {
-      Title: `${workspaceReadiness.workspace.name} savings report`,
-      Subject: "Traxium savings export",
-      Author: "Traxium",
-      Company: workspaceReadiness.workspace.name,
-      CreatedDate: generatedAt,
+
+    // Load per-card forecast/actual volume series for the actuals-reconciliation
+    // sheet, tenant-scoped through the saving-card relation.
+    const cardIds = cards.map((card) => card.id);
+    const [forecasts, actualEntries] = cardIds.length
+      ? await Promise.all([
+          prisma.materialConsumptionForecast.findMany({
+            where: buildTenantOwnedRelationWhere("savingCard", user.organizationId, {
+              id: { in: cardIds },
+            }),
+            select: { savingCardId: true, period: true, forecastQty: true },
+            orderBy: { period: "asc" },
+          }),
+          prisma.materialConsumptionActual.findMany({
+            where: buildTenantOwnedRelationWhere("savingCard", user.organizationId, {
+              id: { in: cardIds },
+            }),
+            select: {
+              savingCardId: true,
+              period: true,
+              actualQty: true,
+              invoiceRef: true,
+            },
+            orderBy: { period: "asc" },
+          }),
+        ])
+      : [[], []];
+
+    const actuals: ControllerActualsByCard = new Map();
+    const ensureSeries = (cardId: string) => {
+      let series = actuals.get(cardId);
+      if (!series) {
+        series = { forecasts: [], actuals: [] };
+        actuals.set(cardId, series);
+      }
+      return series;
     };
-    summarySheet["!cols"] = [{ wch: 26 }, { wch: 42 }];
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Report Summary");
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Savings");
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    for (const forecast of forecasts) {
+      ensureSeries(forecast.savingCardId).forecasts.push({
+        period: forecast.period,
+        forecastQty: toNumber(forecast.forecastQty),
+      });
+    }
+    for (const actual of actualEntries) {
+      ensureSeries(actual.savingCardId).actuals.push({
+        period: actual.period,
+        actualQty: toNumber(actual.actualQty),
+        invoiceRef: actual.invoiceRef,
+      });
+    }
+
+    const generatedAt = new Date();
+    const model = buildControllerWorkbookModel({
+      cards,
+      generatedAt,
+      workspaceReadiness,
+      actuals,
+    });
+    const buffer = renderControllerWorkbookXlsx({
+      model,
+      workspaceName: workspaceReadiness.workspace.name,
+    });
     const exportDate = generatedAt.toISOString().slice(0, 10);
-    const fileName = `traxium-${workspaceReadiness.workspace.slug}-savings-report-${exportDate}.xlsx`;
+    const fileName = `traxium-${workspaceReadiness.workspace.slug}-controller-review-${exportDate}.xlsx`;
+
+    await writeAuditEvent(prisma, {
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      eventType: auditEventTypes.CONTROLLER_WORKBOOK_EXPORTED,
+      detail: `Controller-review workbook exported with ${cards.length} saving cards.`,
+      payload: {
+        cardCount: cards.length,
+        activeCardCount: model.reconciliation.activeCardCount,
+        evidenceCoveragePercent: model.reconciliation.evidenceCoveragePercent,
+        reconciliationDifference: model.reconciliation.difference,
+        sheetNames: [
+          "Portfolio Summary",
+          "Saving Cards",
+          "Data Dictionary",
+          "Import Template",
+          "Evidence Summary",
+          "Actuals Reconciliation",
+        ],
+      },
+    });
 
     return new Response(buffer, {
       headers: {

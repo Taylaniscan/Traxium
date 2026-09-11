@@ -5,6 +5,7 @@ import {
   buildTenantOwnedRelationWhere,
   buildTenantScopeWhere,
 } from "@/lib/tenant-scope";
+import { toNumber } from "@/lib/utils/decimal";
 import type {
   TenantContextSource,
   VolumeImportResult,
@@ -86,6 +87,8 @@ type TimelineAccumulator = {
   unit: string;
   forecastSource: ForecastSource | null;
   actualSource: ForecastSource | null;
+  forecastRows: number;
+  actualRows: number;
 };
 
 const PERIOD_ALIASES = new Set(["period", "month", "date", "ay", "donem"]);
@@ -106,6 +109,20 @@ const scopedVolumeCardSelect = {
 type ScopedVolumeCard = Prisma.SavingCardGetPayload<{
   select: typeof scopedVolumeCardSelect;
 }>;
+
+type VolumeForecastRow = {
+  period: Date;
+  forecastQty: Prisma.Decimal | number;
+  unit: string;
+  source: ForecastSource;
+};
+
+type VolumeActualRow = {
+  period: Date;
+  actualQty: Prisma.Decimal | number;
+  unit: string;
+  source: ForecastSource;
+};
 
 async function getScopedVolumeCard(
   savingCardId: string,
@@ -128,6 +145,7 @@ async function upsertForecastForCard(
   input: Omit<ForecastUpsertInput, "context">
 ) {
   const period = normalizePeriod(input.period);
+  assertValidQuantity(input.forecastQty, "Forecast quantity");
 
   return prisma.materialConsumptionForecast.upsert({
     where: {
@@ -164,6 +182,7 @@ async function upsertActualForCard(
   input: Omit<ActualUpsertInput, "context">
 ) {
   const period = normalizePeriod(input.period);
+  assertValidQuantity(input.actualQty, "Actual quantity");
 
   if (period.getTime() >= getCurrentMonthStartUtc().getTime()) {
     throw new Error("Actuals can only be entered for past months.");
@@ -204,7 +223,6 @@ export async function getVolumeTimeline(
   context: TenantContextSource
 ): Promise<VolumeTimelineResult> {
   const card = await getScopedVolumeCard(savingCardId, context);
-  const priceDelta = card.baselinePrice - card.newPrice;
   const [forecasts, actuals] = await Promise.all([
     prisma.materialConsumptionForecast.findMany({
       where: buildTenantOwnedRelationWhere("savingCard", context, { id: savingCardId }),
@@ -228,8 +246,81 @@ export async function getVolumeTimeline(
     }),
   ]);
 
+  return buildVolumeTimelineResult(card, forecasts, actuals);
+}
+
+export async function getPortfolioVolumeTimelines(
+  savingCardIds: string[],
+  context: TenantContextSource
+): Promise<VolumeTimelineResult[]> {
+  const uniqueCardIds = [...new Set(savingCardIds.map((id) => id.trim()).filter(Boolean))];
+
+  if (!uniqueCardIds.length) {
+    return [];
+  }
+
+  const cards = await prisma.savingCard.findMany({
+    where: buildTenantScopeWhere(context, {
+      id: {
+        in: uniqueCardIds,
+      },
+    }),
+    select: scopedVolumeCardSelect,
+  });
+  const scopedCardIds = cards.map((card) => card.id);
+
+  if (!scopedCardIds.length) {
+    return [];
+  }
+
+  const forecasts = await prisma.materialConsumptionForecast.findMany({
+    where: buildTenantOwnedRelationWhere("savingCard", context, {
+      id: {
+        in: scopedCardIds,
+      },
+    }),
+    orderBy: [{ savingCardId: "asc" }, { period: "asc" }],
+    select: {
+      savingCardId: true,
+      period: true,
+      forecastQty: true,
+      unit: true,
+      source: true,
+    },
+  });
+  const actuals = await prisma.materialConsumptionActual.findMany({
+    where: buildTenantOwnedRelationWhere("savingCard", context, {
+      id: {
+        in: scopedCardIds,
+      },
+    }),
+    orderBy: [{ savingCardId: "asc" }, { period: "asc" }],
+    select: {
+      savingCardId: true,
+      period: true,
+      actualQty: true,
+      unit: true,
+      source: true,
+    },
+  });
+
+  return cards.map((card) =>
+    buildVolumeTimelineResult(
+      card,
+      forecasts.filter((row) => row.savingCardId === card.id),
+      actuals.filter((row) => row.savingCardId === card.id)
+    )
+  );
+}
+
+function buildVolumeTimelineResult(
+  card: ScopedVolumeCard,
+  forecasts: VolumeForecastRow[],
+  actuals: VolumeActualRow[]
+): VolumeTimelineResult {
+  const priceDelta = toNumber(card.baselinePrice) - toNumber(card.newPrice);
   const rows = new Map<string, TimelineAccumulator>();
-  const defaultUnit = card?.volumeUnit ?? "units";
+  const defaultUnit = card.volumeUnit ?? "units";
 
   for (const forecast of forecasts) {
     const normalizedPeriod = normalizePeriod(forecast.period);
@@ -241,11 +332,14 @@ export async function getVolumeTimeline(
       unit: forecast.unit || defaultUnit,
       forecastSource: null,
       actualSource: null,
+      forecastRows: 0,
+      actualRows: 0,
     };
 
-    current.forecastQty += forecast.forecastQty;
+    current.forecastQty += toNumber(forecast.forecastQty);
     current.unit = forecast.unit || current.unit || defaultUnit;
     current.forecastSource = forecast.source;
+    current.forecastRows += 1;
     rows.set(key, current);
   }
 
@@ -259,16 +353,21 @@ export async function getVolumeTimeline(
       unit: actual.unit || defaultUnit,
       forecastSource: null,
       actualSource: null,
+      forecastRows: 0,
+      actualRows: 0,
     };
 
-    current.actualQty += actual.actualQty;
+    current.actualQty += toNumber(actual.actualQty);
     current.unit = actual.unit || current.unit || defaultUnit;
     current.actualSource = actual.source;
+    current.actualRows += 1;
     rows.set(key, current);
   }
 
-  const timeline = Array.from(rows.values())
-    .sort((a, b) => a.periodDate.getTime() - b.periodDate.getTime())
+  const sortedRows = Array.from(rows.values()).sort(
+    (a, b) => a.periodDate.getTime() - b.periodDate.getTime()
+  );
+  const timeline = sortedRows
     .map<VolumeTimelineRow>((row) => {
       const forecastSaving = priceDelta * row.forecastQty;
       const actualSaving = priceDelta * row.actualQty;
@@ -290,7 +389,7 @@ export async function getVolumeTimeline(
         varianceQty,
         varianceSaving,
         variancePercent,
-        isConfirmed: row.actualQty > 0,
+        isConfirmed: row.actualRows > 0,
         isFuture: isFuture(row.periodDate),
         forecastSource: row.forecastSource,
         actualSource: row.actualSource,
@@ -326,8 +425,8 @@ export async function getVolumeTimeline(
       ytdForecastQty,
       ytdActualQty,
       ytdVarianceQty,
-      totalForecastMonths: timeline.filter((row) => row.forecastQty > 0).length,
-      confirmedMonths: timeline.filter((row) => row.actualQty > 0).length,
+      totalForecastMonths: sortedRows.filter((row) => row.forecastRows > 0).length,
+      confirmedMonths: sortedRows.filter((row) => row.actualRows > 0).length,
       hasData: timeline.length > 0,
     },
   };
@@ -446,33 +545,44 @@ export async function importFromCsv(
 
       const period = parseFlexiblePeriod(periodValue);
       const unit = unitValue.trim() || card.volumeUnit || "units";
-      let wroteRow = false;
+      const parsedForecastQty = forecastValue.trim()
+        ? parseQuantity(forecastValue, "forecast quantity")
+        : null;
+      const parsedActualQty = actualValue.trim()
+        ? parseQuantity(actualValue, "actual quantity")
+        : null;
+      const normalizedPeriod = normalizePeriod(period);
 
-      if (forecastValue.trim()) {
+      if (
+        parsedActualQty !== null &&
+        normalizedPeriod.getTime() >= getCurrentMonthStartUtc().getTime()
+      ) {
+        throw new Error("Actuals can only be entered for past months.");
+      }
+
+      if (parsedForecastQty !== null) {
         await upsertForecastForCard(card, {
           savingCardId: card.id,
           period,
-          forecastQty: parseQuantity(forecastValue, "forecast quantity"),
+          forecastQty: parsedForecastQty,
           unit,
           source: ForecastSource.ERP_CSV_UPLOAD,
           createdById: userId,
         });
-        wroteRow = true;
       }
 
-      if (actualValue.trim() && normalizePeriod(period).getTime() < getCurrentMonthStartUtc().getTime()) {
+      if (parsedActualQty !== null) {
         await upsertActualForCard(card, {
           savingCardId: card.id,
           period,
-          actualQty: parseQuantity(actualValue, "actual quantity"),
+          actualQty: parsedActualQty,
           unit,
           source: ForecastSource.ERP_CSV_UPLOAD,
           confirmedById: userId,
         });
-        wroteRow = true;
       }
 
-      if (wroteRow) {
+      if (parsedForecastQty !== null || parsedActualQty !== null) {
         result.imported += 1;
       }
     } catch (error) {
@@ -598,12 +708,19 @@ function parseCsvLine(line: string, delimiter: string) {
 function parseQuantity(value: string, label: string) {
   const normalized = value.replace(/\s/g, "").replace(",", ".");
   const parsed = Number(normalized);
+  assertValidQuantity(parsed, label);
 
-  if (!Number.isFinite(parsed)) {
+  return parsed;
+}
+
+function assertValidQuantity(value: number, label: string) {
+  if (!Number.isFinite(value)) {
     throw new Error(`${label} is invalid.`);
   }
 
-  return parsed;
+  if (value < 0) {
+    throw new Error(`${label} must be zero or greater.`);
+  }
 }
 
 function parseFlexiblePeriod(value: string) {

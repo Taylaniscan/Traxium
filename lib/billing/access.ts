@@ -9,6 +9,7 @@ import type {
   OrganizationAccessState,
   OrganizationAccessStateResult,
   OrganizationAccessSubscriptionRecord,
+  OrganizationAccessWorkspaceRecord,
 } from "@/lib/billing/types";
 
 export const organizationAccessSubscriptionSelect = {
@@ -54,7 +55,21 @@ export const organizationAccessSubscriptionSelect = {
   },
 } as const;
 
-type SubscriptionLookupClient = {
+export const organizationAccessWorkspaceSelect = {
+  id: true,
+  createdAt: true,
+  workspaceTrialEndsAt: true,
+} as const;
+
+type OrganizationAccessLookupClient = {
+  organization: {
+    findUnique(args: {
+      where: {
+        id: string;
+      };
+      select: typeof organizationAccessWorkspaceSelect;
+    }): Promise<OrganizationAccessWorkspaceRecord | null>;
+  };
   subscription: {
     findMany(args: {
       where: {
@@ -69,10 +84,14 @@ type SubscriptionLookupClient = {
 type ResolveOrganizationAccessStateInput = {
   organizationId: string;
   subscription: OrganizationAccessSubscriptionRecord | null;
+  workspaceCreatedAt?: Date | null;
+  workspaceTrialEndsAt?: Date | null;
   now?: Date;
 };
 
 type BillingEnvSource = Record<string, string | undefined>;
+
+const DEFAULT_WORKSPACE_TRIAL_DAYS = 14;
 
 function normalizeRequiredString(value: string, fieldName: string) {
   const normalized = value.trim();
@@ -92,6 +111,25 @@ function compareDatesDescending(
   const rightTime = right?.getTime() ?? Number.NEGATIVE_INFINITY;
 
   return rightTime - leftTime;
+}
+
+function addDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function resolveWorkspaceTrialEndsAt(
+  workspaceTrialEndsAt: Date | null,
+  workspaceCreatedAt: Date | null
+) {
+  if (workspaceTrialEndsAt) {
+    return workspaceTrialEndsAt;
+  }
+
+  if (!workspaceCreatedAt) {
+    return null;
+  }
+
+  return addDays(workspaceCreatedAt, DEFAULT_WORKSPACE_TRIAL_DAYS);
 }
 
 function getStatusTieBreaker(status: SubscriptionStatus) {
@@ -246,6 +284,33 @@ function resolveAccessPolicy(
   }
 }
 
+function resolveWorkspaceTrialPolicy(
+  workspaceTrialEndsAt: Date | null,
+  now: Date
+) {
+  if (!workspaceTrialEndsAt) {
+    return null;
+  }
+
+  if (workspaceTrialEndsAt.getTime() > now.getTime()) {
+    return {
+      accessState: "trialing" as const,
+      isBlocked: false,
+      reasonCode: "workspace_trial" as const,
+      trialEndsAt: workspaceTrialEndsAt,
+      trialSource: "workspace" as const,
+    };
+  }
+
+  return {
+    accessState: "trial_expired" as const,
+    isBlocked: true,
+    reasonCode: "trial_expired" as const,
+    trialEndsAt: workspaceTrialEndsAt,
+    trialSource: "workspace" as const,
+  };
+}
+
 export function resolveOrganizationAccessState(
   input: ResolveOrganizationAccessStateInput
 ): OrganizationAccessStateResult {
@@ -256,6 +321,30 @@ export function resolveOrganizationAccessState(
   const now = input.now ?? new Date();
 
   if (!input.subscription) {
+    const workspaceTrialPolicy = resolveWorkspaceTrialPolicy(
+      resolveWorkspaceTrialEndsAt(
+        input.workspaceTrialEndsAt ?? null,
+        input.workspaceCreatedAt ?? null
+      ),
+      now
+    );
+
+    if (workspaceTrialPolicy) {
+      return {
+        organizationId,
+        subscriptionId: null,
+        stripeSubscriptionId: null,
+        rawSubscriptionStatus: null,
+        accessState: workspaceTrialPolicy.accessState,
+        isBlocked: workspaceTrialPolicy.isBlocked,
+        reasonCode: workspaceTrialPolicy.reasonCode,
+        currentPeriodEnd: null,
+        trialEndsAt: workspaceTrialPolicy.trialEndsAt,
+        trialSource: workspaceTrialPolicy.trialSource,
+        plan: null,
+      };
+    }
+
     return {
       organizationId,
       subscriptionId: null,
@@ -265,11 +354,15 @@ export function resolveOrganizationAccessState(
       isBlocked: true,
       reasonCode: "no_subscription",
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialSource: null,
       plan: null,
     };
   }
 
   const policy = resolveAccessPolicy(input.subscription, now);
+  const isSubscriptionTrial =
+    input.subscription.status === SubscriptionStatus.TRIALING;
 
   return {
     organizationId,
@@ -280,6 +373,8 @@ export function resolveOrganizationAccessState(
     isBlocked: policy.isBlocked,
     reasonCode: policy.reasonCode,
     currentPeriodEnd: input.subscription.currentPeriodEnd,
+    trialEndsAt: isSubscriptionTrial ? input.subscription.trialEnd : null,
+    trialSource: isSubscriptionTrial ? "subscription" : null,
     plan: mapPlanMetadata(input.subscription),
   };
 }
@@ -288,7 +383,7 @@ export async function getOrganizationSubscriptionState(
   organizationId: string,
   dependencies: {
     envSource?: BillingEnvSource;
-    prismaClient?: SubscriptionLookupClient;
+    prismaClient?: OrganizationAccessLookupClient;
     now?: Date;
   } = {}
 ) {
@@ -320,33 +415,45 @@ export async function getOrganizationSubscriptionState(
       isBlocked: false,
       reasonCode: "active" as const,
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialSource: null,
       plan: null,
     };
   }
 
   const prismaClient =
-    dependencies.prismaClient ?? (prisma as unknown as SubscriptionLookupClient);
-  const subscriptions = await prismaClient.subscription.findMany({
-    where: {
-      organizationId: normalizedOrganizationId,
-    },
-    orderBy: [
-      {
-        createdAt: "desc",
+    dependencies.prismaClient ?? (prisma as unknown as OrganizationAccessLookupClient);
+  const [organization, subscriptions] = await Promise.all([
+    prismaClient.organization.findUnique({
+      where: {
+        id: normalizedOrganizationId,
       },
-      {
-        updatedAt: "desc",
+      select: organizationAccessWorkspaceSelect,
+    }),
+    prismaClient.subscription.findMany({
+      where: {
+        organizationId: normalizedOrganizationId,
       },
-      {
-        currentPeriodEnd: "desc",
-      },
-    ],
-    select: organizationAccessSubscriptionSelect,
-  });
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          updatedAt: "desc",
+        },
+        {
+          currentPeriodEnd: "desc",
+        },
+      ],
+      select: organizationAccessSubscriptionSelect,
+    }),
+  ]);
 
   return resolveOrganizationAccessState({
     organizationId: normalizedOrganizationId,
     subscription: selectCurrentSubscription(subscriptions),
+    workspaceCreatedAt: organization?.createdAt ?? null,
+    workspaceTrialEndsAt: organization?.workspaceTrialEndsAt ?? null,
     now: dependencies.now,
   });
 }

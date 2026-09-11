@@ -1,6 +1,7 @@
 import {
   MembershipStatus,
   OrganizationRole,
+  Prisma,
   Role,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +15,8 @@ import {
 const createSupabaseServerClientMock = vi.hoisted(() => vi.fn());
 const createSupabaseAdminClientMock = vi.hoisted(() => vi.fn());
 const updateUserByIdMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
+const writeStructuredLogMock = vi.hoisted(() => vi.fn());
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
@@ -31,6 +34,25 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: createSupabaseServerClientMock,
   createSupabaseAdminClient: createSupabaseAdminClientMock,
 }));
+
+vi.mock("@/lib/logger", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/logger")>();
+
+  return {
+    ...actual,
+    writeStructuredLog: writeStructuredLogMock,
+  };
+});
+
+vi.mock("@/lib/observability", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/observability")>();
+
+  return {
+    ...actual,
+    captureException: captureExceptionMock,
+  };
+});
 
 import { POST } from "@/app/api/onboarding/workspace/route";
 
@@ -134,6 +156,7 @@ function mockAuthenticatedSession(authUser: ReturnType<typeof createAuthSessionU
 
 function createTransactionMock() {
   return {
+    $queryRaw: vi.fn(),
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -141,6 +164,9 @@ function createTransactionMock() {
     },
     organization: {
       findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    plant: {
       create: vi.fn(),
     },
     organizationMembership: {
@@ -158,6 +184,7 @@ describe("workspace onboarding route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tx = createTransactionMock();
+    tx.$queryRaw.mockResolvedValue([{ exists: true }]);
 
     mockAuthenticatedSession(
       createAuthSessionUser({
@@ -235,6 +262,7 @@ describe("workspace onboarding route", () => {
         },
         body: JSON.stringify({
           name: "Atlas Procurement",
+          description: "US manufacturing savings pilot for direct materials.",
         }),
       })
     );
@@ -276,7 +304,9 @@ describe("workspace onboarding route", () => {
     expect(tx.organization.create).toHaveBeenCalledWith({
       data: {
         name: "Atlas Procurement",
+        description: "US manufacturing savings pilot for direct materials.",
         slug: "atlas-procurement",
+        workspaceTrialEndsAt: expect.any(Date),
       },
       select: {
         id: true,
@@ -675,6 +705,179 @@ describe("workspace onboarding route", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           slug: "atlas-procurement-3",
+          workspaceTrialEndsAt: expect.any(Date),
+        }),
+      })
+    );
+  });
+
+  it("skips workspaceTrialEndsAt in development when the local database column is missing", async () => {
+    const previousAppEnv = process.env.APP_ENV;
+    process.env.APP_ENV = "development";
+
+    mockPrisma.user.findUnique
+      .mockResolvedValueOnce(createResolvedUserRecord())
+      .mockResolvedValueOnce(
+        createResolvedUserRecord({
+          activeOrganizationId: "org-new",
+          memberships: [
+            createMembership("org-new", {
+              role: OrganizationRole.OWNER,
+            }),
+          ],
+        })
+      );
+    tx.user.findUnique.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      memberships: [],
+    });
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.$queryRaw.mockResolvedValueOnce([{ exists: false }]);
+    tx.organization.create.mockResolvedValueOnce({
+      id: "org-new",
+      name: "Atlas Procurement",
+      slug: "atlas-procurement",
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.organizationMembership.upsert.mockResolvedValueOnce({
+      id: "membership-org-new",
+      organizationId: "org-new",
+      role: OrganizationRole.OWNER,
+      status: MembershipStatus.ACTIVE,
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.user.update.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      organizationId: "org-new",
+      activeOrganizationId: "org-new",
+    });
+
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/onboarding/workspace", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "Atlas Procurement",
+          }),
+        })
+      );
+
+      expect(response.status).toBe(201);
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(tx.organization.create).toHaveBeenCalledWith({
+        data: {
+          name: "Atlas Procurement",
+          slug: "atlas-procurement",
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      expect(writeStructuredLogMock).toHaveBeenCalledWith(
+        "warn",
+        expect.objectContaining({
+          event: "workspace.onboarding.workspace_trial_fallback_used",
+        })
+      );
+    } finally {
+      if (previousAppEnv === undefined) {
+        delete process.env.APP_ENV;
+      } else {
+        process.env.APP_ENV = previousAppEnv;
+      }
+    }
+  });
+
+  it("captures the first failing step when organization creation fails for an existing user", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(createResolvedUserRecord());
+    tx.user.findUnique.mockResolvedValueOnce({
+      id: DEFAULT_USER_ID,
+      memberships: [],
+    });
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create.mockRejectedValueOnce(
+      new Error("Organization insert failed.")
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/onboarding/workspace", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Atlas Procurement",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "onboarding.workspace.organization_create_failed",
+        userId: DEFAULT_USER_ID,
+        payload: expect.objectContaining({
+          flow: "existing_user",
+          workspaceName: "Atlas Procurement",
+        }),
+      })
+    );
+  });
+
+  it("captures the first failing step when first-login user creation fails", async () => {
+    mockAuthenticatedSession(
+      createAuthSessionUser({
+        email: "new.user@example.com",
+        app_metadata: {},
+        user_metadata: {
+          full_name: "New User",
+        },
+      })
+    );
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.findMany.mockResolvedValueOnce([]);
+    tx.organization.findMany.mockResolvedValueOnce([]);
+    tx.organization.create.mockResolvedValueOnce({
+      id: "org-new",
+      name: "Atlas Procurement",
+      slug: "atlas-procurement",
+      createdAt: new Date("2026-03-24T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-24T00:00:00.000Z"),
+    });
+    tx.user.create.mockRejectedValueOnce(new Error("User insert failed."));
+
+    const response = await POST(
+      new Request("http://localhost/api/onboarding/workspace", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Atlas Procurement",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "onboarding.workspace.first_login_user_create_failed",
+        organizationId: "org-new",
+        payload: expect.objectContaining({
+          flow: "first_login",
+          workspaceName: "Atlas Procurement",
+          email: "new.user@example.com",
         }),
       })
     );

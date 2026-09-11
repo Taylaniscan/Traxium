@@ -22,7 +22,7 @@ function SignalRow({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-sm font-semibold text-[var(--foreground)]">{label}</p>
@@ -41,6 +41,13 @@ type AdminActivationSignalsProps = {
 export function AdminActivationSignals({
   insights,
 }: AdminActivationSignalsProps) {
+  const liveSavingCardCount = insights.metrics.liveSavingCards;
+  const activationProgressValue = insights.signals.firstValueReached
+    ? `${liveSavingCardCount} live saving card${liveSavingCardCount === 1 ? "" : "s"}`
+    : "First value pending";
+  const activationProgressDetail = insights.signals.firstValueReached
+    ? "At least one saving card exists, so activation can shift toward evidence, workflow, and portfolio review."
+    : "Create a real saving card to activate live portfolio signals; load sample data only for demo or training.";
   const firstValueLabel = insights.signals.firstValueReached
     ? formatDateTimeLabel(insights.signals.firstValueAt, "Reached")
     : "Not reached yet";
@@ -61,6 +68,11 @@ export function AdminActivationSignals({
             "Unknown"
           )}
           detail="Organization creation timestamp for this tenant boundary."
+        />
+        <SignalRow
+          label="Activation Progress"
+          value={activationProgressValue}
+          detail={activationProgressDetail}
         />
         <SignalRow
           label="First Value"

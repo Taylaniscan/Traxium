@@ -42,6 +42,41 @@ enum Frequency {
   MULTI_YEAR
 }
 
+enum SavingType {
+  PRICE_REDUCTION
+  SUPPLIER_SWITCH
+  REBATE_CREDIT
+  SPECIFICATION_CHANGE
+  VOLUME_CONSOLIDATION
+  FREIGHT_LOGISTICS
+  PAYMENT_TERMS
+  PROCESS_TOLLING
+  COST_AVOIDANCE
+  OTHER
+}
+
+enum SavingsImpactType {
+  HARD_SAVINGS
+  COST_AVOIDANCE
+  CASH_FLOW_IMPROVEMENT
+  WORKING_CAPITAL_IMPACT
+  RISK_CONTINUITY_BENEFIT
+}
+
+enum SavingsImpactRecurrence {
+  RECURRING
+  ONE_TIME
+  TEMPORARY
+  UNKNOWN
+}
+
+enum SavingsBudgetImpact {
+  BUDGET_IMPACT
+  FORECAST_AVOIDANCE
+  NON_BUDGET_OPERATIONAL_BENEFIT
+  UNKNOWN
+}
+
 enum Currency {
   EUR
   USD
@@ -112,13 +147,27 @@ enum UsageWindow {
   YEAR
 }
 
+enum PilotLeadStatus {
+  NEW
+  REVIEWED
+  QUALIFIED
+  DISQUALIFIED
+  CONTACTED
+  CONVERTED
+  ARCHIVED
+}
+
 model Organization {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  slug            String   @unique
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  name                 String
+  description          String?
+  slug                 String    @unique
+  fiscalYearStartMonth Int       @default(1)
+  defaultCurrency      Currency  @default(USD)
+  multiCurrencyEnabled Boolean   @default(false)
+  workspaceTrialEndsAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   users           User[]
   memberships     OrganizationMembership[]
@@ -139,6 +188,7 @@ model Organization {
   subscriptions   Subscription[]
   webhookEvents   WebhookEvent[]
   auditLogs       AuditLog[]
+  notifications   Notification[]
 }
 
 model User {
@@ -155,7 +205,6 @@ model User {
   memberships           OrganizationMembership[]
   sentInvitations       Invitation[]                  @relation("InvitationInvitedBy")
   stakeholderCards      SavingCardStakeholder[]
-  approvals             Approval[]
   comments              SavingCardComment[]
   notifications         Notification[]
   auditLogs             AuditLog[]
@@ -220,7 +269,7 @@ model Buyer {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  savingCards   SavingCard[]
+  savingCards  SavingCard[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -267,11 +316,11 @@ model Category {
   id             String   @id @default(cuid())
   organizationId String
   name           String
-  annualTarget   Float    @default(0)
+  annualTarget   Decimal  @default(0) @db.Decimal(18, 4)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization   @relation(fields: [organizationId], references: [id])
   savingCards   SavingCard[]
   annualTargets AnnualTarget[]
 
@@ -309,12 +358,16 @@ model BusinessUnit {
 }
 
 model SavingCard {
-  id                            String    @id @default(cuid())
+  id                            String                  @id @default(cuid())
   organizationId                String
   title                         String
   description                   String
-  savingType                    String
-  phase                         Phase     @default(IDEA)
+  legacySavingsMethod           String?
+  savingType                    SavingType              @default(PRICE_REDUCTION)
+  impactType                    SavingsImpactType       @default(HARD_SAVINGS)
+  impactRecurrence              SavingsImpactRecurrence @default(RECURRING)
+  budgetImpact                  SavingsBudgetImpact     @default(BUDGET_IMPACT)
+  phase                         Phase                   @default(IDEA)
   supplierId                    String
   materialId                    String
   alternativeSupplierId         String?
@@ -322,17 +375,22 @@ model SavingCard {
   alternativeMaterialId         String?
   alternativeMaterialManualName String?
   categoryId                    String
-  plantId                       String
-  businessUnitId                String
+  plantId                       String?
+  businessUnitId                String?
   buyerId                       String
-  baselinePrice                 Float
-  newPrice                      Float
-  annualVolume                  Float
-  volumeUnit                    String    @default("units")
+  baselinePrice                 Decimal                 @db.Decimal(18, 4)
+  newPrice                      Decimal                 @db.Decimal(18, 4)
+  referencePrice                Decimal?                @db.Decimal(18, 4)
+  annualVolume                  Decimal                 @db.Decimal(18, 4)
+  volumeUnit                    String                  @default("units")
   currency                      Currency
-  fxRate                        Float
-  calculatedSavings             Float
-  calculatedSavingsUSD          Float
+  fxRate                        Decimal                 @db.Decimal(18, 8)
+  calculatedSavings             Decimal                 @db.Decimal(18, 4)
+  calculatedSavingsUSD          Decimal                 @db.Decimal(18, 4)
+  annualizedRunRate             Decimal                 @default(0) @db.Decimal(18, 4)
+  annualizedRunRateUSD          Decimal                 @default(0) @db.Decimal(18, 4)
+  inYearValue                   Decimal                 @default(0) @db.Decimal(18, 4)
+  inYearValueUSD                Decimal                 @default(0) @db.Decimal(18, 4)
   frequency                     Frequency
   savingDriver                  String?
   implementationComplexity      String?
@@ -341,10 +399,10 @@ model SavingCard {
   endDate                       DateTime
   impactStartDate               DateTime
   impactEndDate                 DateTime
-  financeLocked                 Boolean   @default(false)
+  financeLocked                 Boolean                 @default(false)
   cancellationReason            String?
-  createdAt                     DateTime  @default(now())
-  updatedAt                     DateTime  @updatedAt
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
 
   organization        Organization @relation(fields: [organizationId], references: [id])
   supplier            Supplier     @relation("BaselineSupplier", fields: [supplierId], references: [id])
@@ -352,8 +410,8 @@ model SavingCard {
   alternativeSupplier Supplier?    @relation("AlternativeScenarioSupplier", fields: [alternativeSupplierId], references: [id])
   alternativeMaterial Material?    @relation("AlternativeScenarioMaterial", fields: [alternativeMaterialId], references: [id])
   category            Category     @relation(fields: [categoryId], references: [id])
-  plant               Plant        @relation(fields: [plantId], references: [id])
-  businessUnit        BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  plant               Plant?       @relation(fields: [plantId], references: [id])
+  businessUnit        BusinessUnit? @relation(fields: [businessUnitId], references: [id])
   buyer               Buyer        @relation(fields: [buyerId], references: [id])
 
   forecasts            MaterialConsumptionForecast[]
@@ -363,7 +421,6 @@ model SavingCard {
   alternativeSuppliers SavingCardAlternativeSupplier[]
   alternativeMaterials SavingCardAlternativeMaterial[]
   comments             SavingCardComment[]
-  approvals            Approval[]
   phaseChangeRequests  PhaseChangeRequest[]
   phaseHistory         PhaseHistory[]
   auditLogs            AuditLog[]
@@ -380,7 +437,7 @@ model MaterialConsumptionForecast {
   materialId   String
   supplierId   String?
   period       DateTime
-  forecastQty  Float
+  forecastQty  Decimal        @db.Decimal(18, 4)
   unit         String         @default("units")
   source       ForecastSource @default(MANUAL_ENTRY)
   notes        String?
@@ -403,7 +460,7 @@ model MaterialConsumptionActual {
   materialId    String
   supplierId    String?
   period        DateTime
-  actualQty     Float
+  actualQty     Decimal        @db.Decimal(18, 4)
   unit          String         @default("units")
   source        ForecastSource @default(MANUAL_ENTRY)
   invoiceRef    String?
@@ -432,18 +489,35 @@ model SavingCardStakeholder {
 }
 
 model SavingCardEvidence {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   savingCardId  String
   fileName      String
+  evidenceType  EvidenceType @default(OTHER)
+  sourceDate    DateTime?
+  notes         String?
   storageBucket String
   storagePath   String
   fileSize      Int
   fileType      String
   uploadedById  String?
-  uploadedAt    DateTime @default(now())
+  uploadedAt    DateTime     @default(now())
 
   savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
   uploadedBy User?      @relation("UploadedEvidence", fields: [uploadedById], references: [id])
+}
+
+enum EvidenceType {
+  SUPPLIER_QUOTE
+  PRICE_CONFIRMATION
+  CONTRACT_OR_PO
+  INVOICE_OR_ACTUAL
+  CALCULATION_WORKBOOK
+  TECHNICAL_APPROVAL
+  CUSTOMER_APPROVAL
+  REBATE_AGREEMENT
+  TOLLING_RATE_CARD
+  NEGOTIATION_SUMMARY
+  OTHER
 }
 
 model SavingCardAlternativeSupplier {
@@ -452,7 +526,7 @@ model SavingCardAlternativeSupplier {
   supplierId         String?
   supplierNameManual String?
   country            String
-  quotedPrice        Float
+  quotedPrice        Decimal  @db.Decimal(18, 4)
   currency           Currency
   leadTimeDays       Int
   moq                Int
@@ -475,7 +549,7 @@ model SavingCardAlternativeMaterial {
   supplierId          String?
   supplierNameManual  String?
   specification       String
-  quotedPrice         Float
+  quotedPrice         Decimal  @db.Decimal(18, 4)
   currency            Currency
   performanceImpact   String
   qualificationStatus String
@@ -498,20 +572,6 @@ model SavingCardComment {
 
   savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
   author     User       @relation(fields: [authorId], references: [id])
-}
-
-model Approval {
-  id           String         @id @default(cuid())
-  savingCardId String
-  approverId   String
-  phase        Phase
-  approved     Boolean
-  status       ApprovalStatus @default(APPROVED)
-  comment      String?
-  createdAt    DateTime       @default(now())
-
-  savingCard SavingCard @relation(fields: [savingCardId], references: [id], onDelete: Cascade)
-  approver   User       @relation(fields: [approverId], references: [id])
 }
 
 model PhaseChangeRequest {
@@ -560,14 +620,20 @@ model PhaseHistory {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  message   String
-  readAt    DateTime?
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  organizationId String?
+  userId         String
+  title          String
+  message        String
+  href           String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, userId, createdAt])
 }
 
 model AuditLog {
@@ -597,7 +663,7 @@ model AuditLog {
 model FxRate {
   id        String   @id @default(cuid())
   currency  Currency
-  rateToEUR Float
+  rateToUSD Decimal  @db.Decimal(18, 8)
   validFrom DateTime
   createdAt DateTime @default(now())
 }
@@ -606,7 +672,7 @@ model AnnualTarget {
   id             String   @id @default(cuid())
   organizationId String
   year           Int
-  targetValue    Float
+  targetValue    Decimal  @db.Decimal(18, 4)
   categoryId     String?
   createdAt      DateTime @default(now())
 
@@ -638,6 +704,17 @@ model Job {
   @@index([status, scheduledAt, createdAt])
   @@index([organizationId, status, scheduledAt])
   @@index([reservedAt])
+}
+
+// Singleton row recording the most recent successful job-worker pass (Vercel cron
+// or dedicated worker). Used to surface worker liveness on the admin jobs page.
+model JobRunnerHeartbeat {
+  id                  String   @id
+  lastSuccessfulRunAt DateTime
+  processedJobs       Int      @default(0)
+  durationMs          Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model ProductPlan {
@@ -691,35 +768,35 @@ model BillingCustomer {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  organizationId     String
-  billingCustomerId  String
-  productPlanId      String?
-  planPriceId        String?
-  stripeSubscriptionId String          @unique
-  status             SubscriptionStatus
-  currencyCode       String?
-  quantity           Int                @default(1)
-  cancelAtPeriodEnd  Boolean            @default(false)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  trialStart         DateTime?
-  trialEnd           DateTime?
-  canceledAt         DateTime?
-  endedAt            DateTime?
-  metadata           Json?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                   String             @id @default(cuid())
+  organizationId       String
+  billingCustomerId    String
+  productPlanId        String?
+  planPriceId          String?
+  stripeSubscriptionId String             @unique
+  status               SubscriptionStatus
+  currencyCode         String?
+  quantity             Int                @default(1)
+  cancelAtPeriodEnd    Boolean            @default(false)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id], onDelete: Cascade)
-  productPlan    ProductPlan?   @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
-  planPrice      PlanPrice?     @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+  productPlan     ProductPlan?    @relation(fields: [productPlanId], references: [id], onDelete: SetNull)
+  planPrice       PlanPrice?      @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -729,18 +806,18 @@ model Subscription {
 }
 
 model WebhookEvent {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   organizationId  String?
-  stripeEventId   String   @unique
-  source          String   @default("stripe")
+  stripeEventId   String    @unique
+  source          String    @default("stripe")
   eventType       String
   apiVersion      String?
   livemode        Boolean
   payload         Json
-  receivedAt      DateTime @default(now())
+  receivedAt      DateTime  @default(now())
   processedAt     DateTime?
   processingError String?
-  updatedAt       DateTime @updatedAt
+  updatedAt       DateTime  @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
@@ -828,4 +905,35 @@ model RateLimitBucket {
   @@index([policy, expiresAt])
   @@index([policy, action, expiresAt])
   @@index([scope, expiresAt])
+}
+
+model PilotLead {
+  id                String          @id @default(cuid())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  fullName          String
+  workEmail         String
+  companyName       String
+  jobTitle          String?
+  phone             String?
+  companySize       String?
+  industry          String?
+  country           String          @default("United States")
+  state             String?
+  currentTracking   String?
+  savingsPain       String?
+  monthlyReporting  String?
+  hasSavingsTracker Boolean         @default(false)
+  estimatedSpend    String?
+  timeline          String?
+  message           String?
+  source            String          @default("public_pilot_form")
+  status            PilotLeadStatus @default(NEW)
+  dedupeKey         String
+  ipHash            String?
+  userAgentHash     String?
+
+  @@index([dedupeKey, createdAt])
+  @@index([status, createdAt])
+  @@index([workEmail, createdAt])
 }

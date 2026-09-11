@@ -16,8 +16,10 @@ export {
   getNotificationsForUser,
   getReferenceData,
   getSavingCard,
+  getSavingCardDetailReferenceData,
   getSavingCards,
   mapSavingCardsForExport,
+  savingCardExportColumns,
 } from "@/lib/saving-cards/queries";
 export {
   addApproval,
@@ -25,6 +27,7 @@ export {
   createPhaseChangeRequest,
   getApprovalStatus,
   getPendingApprovals,
+  getPendingPhaseChangeRequests,
 } from "@/lib/workflow/service";
 export { WorkflowError } from "@/lib/workflow/errors";
 export { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surface-cache";

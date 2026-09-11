@@ -148,6 +148,7 @@ describe("lib/jobs", () => {
     vi.useFakeTimers();
     const now = new Date("2026-03-27T10:00:00.000Z");
     vi.setSystemTime(now);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const runningJob = createJobRecord({
       status: JobStatus.RUNNING,
@@ -188,6 +189,9 @@ describe("lib/jobs", () => {
         error: "Remote API timed out.",
       },
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.retry.scheduled"')
+    );
     expect(result).toEqual(retriedJob);
   });
 
@@ -224,6 +228,7 @@ describe("lib/jobs", () => {
 
   it("supports manual retry by resetting attempts and clearing error state", async () => {
     const scheduledAt = new Date("2026-03-27T11:00:00.000Z");
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const retriedJob = createJobRecord({
       status: JobStatus.QUEUED,
       attempts: 0,
@@ -252,6 +257,9 @@ describe("lib/jobs", () => {
         error: null,
       },
     });
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"jobs.retry.manually_queued"')
+    );
     expect(result).toEqual(retriedJob);
   });
 

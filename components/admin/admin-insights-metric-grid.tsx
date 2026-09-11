@@ -14,7 +14,7 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-5">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <p className="text-xs text-[var(--muted-foreground)]">
         {label}
       </p>

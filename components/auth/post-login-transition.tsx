@@ -136,7 +136,6 @@ export function PostLoginTransition({
 
   useEffect(() => {
     let active = true;
-    let timeoutId: number | undefined;
     settledRef.current = false;
     redirectStartedRef.current = false;
 
@@ -179,7 +178,7 @@ export function PostLoginTransition({
       }
     }
 
-    timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       trackClientEvent(
         {
           event: "auth.post_login.bootstrap_timed_out",
@@ -295,7 +294,7 @@ export function PostLoginTransition({
 
               <Link
                 href={loginHref}
-                className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
               >
                 Return to sign in
               </Link>

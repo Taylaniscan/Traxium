@@ -762,7 +762,7 @@ export function KanbanBoard({
       );
       setToast({
         id: Date.now(),
-        message: "Faz değişikliği isteği gönderildi",
+        message: "Phase change request sent",
         tone: "success"
       });
       setSavingCardId(null);
@@ -805,7 +805,7 @@ export function KanbanBoard({
       setCancellationReason("");
       showNotice(
         "warning",
-        `${outcome.card.title} needs a cancellation reason before it can move to Cancelled.`
+        `${outcome.card.title} needs a cancellation reason before it can move to Canceled.`
       );
       return;
     }
@@ -1039,14 +1039,14 @@ export function KanbanBoard({
             <CardDescription>
               {findKanbanCardLocation(columns, cancellationDraft.cardId)?.card
                 ?.title ?? "This saving card"}{" "}
-              needs a reason before it can move to Cancelled.
+              needs a reason before it can move to Canceled.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <textarea
               value={cancellationReason}
               onChange={(event) => setCancellationReason(event.target.value)}
-              placeholder="Explain why this saving card is being cancelled."
+              placeholder="Explain why this saving card is being canceled."
               className="min-h-28 w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
             />
             <div className="flex flex-wrap justify-end gap-3">
@@ -1107,7 +1107,7 @@ export function KanbanBoard({
               >
                 {savingCardId === cancellationDraft.cardId
                   ? "Saving..."
-                  : "Move to Cancelled"}
+                  : "Move to Canceled"}
               </Button>
             </div>
           </CardContent>
@@ -1156,8 +1156,9 @@ function KanbanColumn({
       ref={setNodeRef}
       data-phase={phase}
       className={cn(
-        "min-h-[360px] rounded-3xl border border-[var(--border)] bg-white p-4 transition-colors",
-        isOver && "border-[var(--primary)] bg-blue-50"
+        "min-h-[360px] rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-card)] transition-colors",
+        getPhaseVisuals(phase).columnAccentClassName,
+        isOver && "border-[var(--primary)] bg-[var(--primary-soft)]"
       )}
     >
       <div
@@ -1176,14 +1177,14 @@ function KanbanColumn({
             </p>
             </div>
           </div>
-          <Badge className={cn("border", getPhaseVisuals(phase).countBadgeClassName)}>
+          <Badge className={cn("rounded-full border", getPhaseVisuals(phase).countBadgeClassName)}>
             {cards.length}
           </Badge>
         </div>
-        <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
-          {formatCurrency(totalSavings, "EUR")}
-        </p>
       </div>
+      <p className="text-numeric mb-4 px-1 text-sm font-semibold">
+        {formatCurrency(totalSavings, "USD")}
+      </p>
 
       <SortableContext
         items={cards.map((card) => getKanbanCardDragId(card.id))}
@@ -1203,7 +1204,7 @@ function KanbanColumn({
             ))
           ) : (
             <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--muted)]/20 px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
-              Bu aşamada henüz inisiyatif yok
+              No initiatives in this phase yet
             </div>
           )}
         </div>
@@ -1250,8 +1251,8 @@ function SortableKanbanCard({
         transition,
       }}
       className={cn(
-        "rounded-2xl border border-[var(--border)] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]",
-        isDragging && "opacity-40"
+        "card-interactive rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-card)]",
+        isDragging && "opacity-40 ring-2 ring-[var(--primary)]"
       )}
     >
       <KanbanCardBody
@@ -1293,7 +1294,7 @@ function SortableKanbanCard({
 
 function KanbanDragPreview({ card }: { card: SavingCardPortfolio }) {
   return (
-    <div className="w-[280px] rotate-[1deg] rounded-2xl border border-[var(--border)] bg-white shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+    <div className="w-[280px] rotate-[1deg] rounded-2xl border border-transparent bg-[var(--surface)] shadow-[var(--shadow-pop)] ring-2 ring-[var(--primary)]">
       <KanbanCardBody
         card={card}
         currentPhase={getVisibleKanbanPhase(card)}
@@ -1346,8 +1347,8 @@ function KanbanCardBody({
         <div className="space-y-2 pt-2 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[var(--muted-foreground)]">Savings</span>
-            <span className="font-semibold text-[var(--foreground)]">
-              {formatCurrency(card.calculatedSavings, "EUR")}
+            <span className="text-numeric font-semibold">
+              {formatCurrency(card.calculatedSavings, "USD")}
             </span>
           </div>
           <div className="flex items-center justify-between gap-3">
@@ -1365,7 +1366,7 @@ function KanbanCardBody({
         </div>
 
         {pendingRequest ? (
-          <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div className="mt-3 rounded-xl bg-[var(--warning-surface)] px-3 py-2 text-xs text-[var(--warning)]">
             Pending move to {phaseLabels[pendingRequest.requestedPhase]}. Card
             remains in {phaseLabels[card.phase]} until approval completes.
           </div>
@@ -1378,7 +1379,7 @@ function KanbanCardBody({
           aria-label={`Move ${card.title} to`}
           defaultValue=""
           disabled={Boolean(pendingRequest) || isSaving || !moveOptions.length}
-          className="h-9 flex-1 rounded-lg border border-[var(--input)] bg-white px-3 text-sm text-[var(--foreground)] outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
+          className="h-9 flex-1 rounded-lg border border-[var(--input)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
           onPointerDown={(event) => event.stopPropagation()}
           onChange={(event) => {
             const nextPhase = event.currentTarget.value as KanbanPhase | "";
@@ -1420,10 +1421,10 @@ function StateCard({
   action?: ReactNode;
 }) {
   return (
-    <Card className="border-amber-200 bg-amber-50/80">
+    <Card className="border-transparent bg-[var(--warning-surface)]">
       <CardHeader>
-        <CardTitle className="text-amber-950">{title}</CardTitle>
-        <CardDescription className="text-amber-900">
+        <CardTitle className="text-[var(--warning)]">{title}</CardTitle>
+        <CardDescription className="text-[var(--warning)]">
           {description}
         </CardDescription>
       </CardHeader>
@@ -1443,22 +1444,22 @@ function InlineNotice({
 }) {
   const className =
     tone === "success"
-      ? "border-emerald-200 bg-emerald-50/80"
+      ? "border-transparent bg-[var(--success-surface)]"
       : tone === "error"
-        ? "border-rose-200 bg-rose-50/80"
-        : "border-amber-200 bg-amber-50/80";
+        ? "border-transparent bg-[var(--risk-surface)]"
+        : "border-transparent bg-[var(--warning-surface)]";
   const titleClass =
     tone === "success"
-      ? "text-emerald-950"
+      ? "text-[var(--success)]"
       : tone === "error"
-        ? "text-rose-950"
-        : "text-amber-950";
+        ? "text-[var(--risk)]"
+        : "text-[var(--warning)]";
   const descriptionClass =
     tone === "success"
-      ? "text-emerald-900"
+      ? "text-[var(--success)]"
       : tone === "error"
-        ? "text-rose-900"
-        : "text-amber-900";
+        ? "text-[var(--risk)]"
+        : "text-[var(--warning)]";
 
   return (
     <Card className={className}>

@@ -1,11 +1,13 @@
 import React from "react";
+import { MembershipStatus, OrganizationRole, Role } from "@prisma/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_USER_ID,
   MockAuthGuardError,
-  createAdminUser,
   createAuthGuardJsonResponse,
+  createSessionUser,
 } from "../helpers/security-fixtures";
 
 const redirectMock = vi.hoisted(() =>
@@ -15,7 +17,9 @@ const redirectMock = vi.hoisted(() =>
 );
 
 const requirePermissionMock = vi.hoisted(() => vi.fn());
+const requireOrganizationMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const getOrganizationAccessStateMock = vi.hoisted(() => vi.fn());
 const getReferenceDataMock = vi.hoisted(() => vi.fn());
 const importSavingCardsMock = vi.hoisted(() => vi.fn());
 const enforceRateLimitMock = vi.hoisted(() => vi.fn());
@@ -31,6 +35,7 @@ const RateLimitExceededErrorMock = vi.hoisted(
 );
 const enforceUsageQuotaMock = vi.hoisted(() => vi.fn());
 const recordUsageEventMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 const UsageQuotaExceededErrorMock = vi.hoisted(
   () =>
     class UsageQuotaExceededError extends Error {
@@ -55,6 +60,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   requirePermission: requirePermissionMock,
+  requireOrganization: requireOrganizationMock,
   isAuthGuardError: (error: unknown) => error instanceof MockAuthGuardError,
   createAuthGuardErrorResponse: createAuthGuardJsonResponse,
 }));
@@ -63,6 +69,10 @@ vi.mock("@/lib/data", () => ({
   getWorkspaceReadiness: getWorkspaceReadinessMock,
   getReferenceData: getReferenceDataMock,
   importSavingCards: importSavingCardsMock,
+}));
+
+vi.mock("@/lib/billing/access", () => ({
+  getOrganizationAccessState: getOrganizationAccessStateMock,
 }));
 
 vi.mock("xlsx", () => ({
@@ -82,6 +92,10 @@ vi.mock("@/lib/usage", () => ({
   enforceUsageQuota: enforceUsageQuotaMock,
   recordUsageEvent: recordUsageEventMock,
   UsageQuotaExceededError: UsageQuotaExceededErrorMock,
+}));
+
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
 }));
 
 import AdminPage from "@/app/(app)/admin/page";
@@ -155,19 +169,19 @@ function createWorkspaceReadiness() {
     workflowCoverage: [
       {
         key: "HEAD_OF_GLOBAL_PROCUREMENT",
-        label: "Head of Global Procurement",
+        label: "Procurement Lead",
         count: 1,
         ready: true,
       },
       {
         key: "GLOBAL_CATEGORY_LEADER",
-        label: "Global Category Leader",
+        label: "Category Owner",
         count: 1,
         ready: true,
       },
       {
         key: "FINANCIAL_CONTROLLER",
-        label: "Financial Controller",
+        label: "Finance Reviewer",
         count: 1,
         ready: true,
       },
@@ -204,6 +218,32 @@ function createReferenceData() {
   };
 }
 
+function createActiveAccessState() {
+  return {
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    subscriptionId: "subscription-1",
+    stripeSubscriptionId: "sub_1",
+    rawSubscriptionStatus: "ACTIVE",
+    accessState: "active",
+    isBlocked: false,
+    reasonCode: "active",
+    currentPeriodEnd: new Date("2026-04-20T00:00:00.000Z"),
+    trialEndsAt: null,
+    trialSource: null,
+    plan: {
+      planCode: "growth",
+      planName: "Growth",
+      currencyCode: "usd",
+      unitAmount: 29900,
+      billingInterval: "MONTH",
+      intervalCount: 1,
+      priceType: "LICENSED",
+      planMetadata: null,
+      priceMetadata: null,
+    },
+  };
+}
+
 function createWorkbookFile(content = "sheet-bytes", name = "cards.xlsx", type =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
   return new File([content], name, { type });
@@ -234,8 +274,37 @@ function createFormDataRequest(formData: FormData | Error) {
 describe("admin RBAC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requirePermissionMock.mockResolvedValue(createAdminUser());
+    requirePermissionMock.mockResolvedValue(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        name: "Admin User",
+        email: "admin@example.com",
+        role: Role.HEAD_OF_GLOBAL_PROCUREMENT,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-admin",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.ADMIN,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
+    requireOrganizationMock.mockResolvedValue(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.OWNER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
+    );
     getWorkspaceReadinessMock.mockResolvedValue(createWorkspaceReadiness());
+    getOrganizationAccessStateMock.mockResolvedValue(createActiveAccessState());
     getReferenceDataMock.mockResolvedValue(createReferenceData());
     importSavingCardsMock.mockResolvedValue(undefined);
     enforceRateLimitMock.mockResolvedValue(undefined);
@@ -289,15 +358,25 @@ describe("admin RBAC", () => {
   });
 
   it("blocks normal users from admin-only APIs with a 403 response", async () => {
-    requirePermissionMock.mockRejectedValueOnce(
-      new MockAuthGuardError("Forbidden", 403, "FORBIDDEN")
+    requireOrganizationMock.mockResolvedValueOnce(
+      createSessionUser({
+        id: DEFAULT_USER_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganizationId: DEFAULT_ORGANIZATION_ID,
+        activeOrganization: {
+          membershipId: "membership-1",
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          membershipRole: OrganizationRole.MEMBER,
+          membershipStatus: MembershipStatus.ACTIVE,
+        },
+      })
     );
 
     const response = await postImportRoute(
       createFormDataRequest(createImportForm(createWorkbookFile()))
     );
 
-    expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace", {
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
       redirectTo: null,
     });
     expect(response.status).toBe(403);
@@ -307,10 +386,34 @@ describe("admin RBAC", () => {
 
   it("allows an admin role to open the admin page", async () => {
     const page = await AdminPage();
+    const markup = renderToStaticMarkup(page as React.ReactElement);
 
     expect(page).toBeTruthy();
     expect(requirePermissionMock).toHaveBeenCalledWith("manageWorkspace");
     expect(getWorkspaceReadinessMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(getOrganizationAccessStateMock).toHaveBeenCalledWith(DEFAULT_ORGANIZATION_ID);
+    expect(markup).toContain("Billing &amp; subscription");
+    expect(markup).toContain("Manage billing");
+    expect(markup).toContain("action=\"/billing/recover\"");
+  });
+
+  it("keeps rendering the admin page when workspace readiness fails and reports the exception", async () => {
+    getWorkspaceReadinessMock.mockRejectedValueOnce(
+      new Error("Workspace readiness query failed.")
+    );
+
+    const page = await AdminPage();
+
+    expect(page).toBeTruthy();
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "admin.page.readiness_load_failed",
+        route: "/admin",
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: DEFAULT_USER_ID,
+      })
+    );
   });
 
   it("allows an admin role to call admin-only APIs", async () => {
@@ -320,6 +423,9 @@ describe("admin RBAC", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ count: 1 });
+    expect(requireOrganizationMock).toHaveBeenCalledWith({
+      redirectTo: null,
+    });
     expect(importSavingCardsMock).toHaveBeenCalledWith(
       expect.arrayContaining([
       expect.objectContaining({

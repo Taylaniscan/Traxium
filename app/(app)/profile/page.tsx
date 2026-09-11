@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { ChangePasswordForm } from "@/components/profile/change-password-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { requireUser } from "@/lib/auth";
+import { canManageWorkspaceBilling } from "@/lib/billing/permissions";
 import { roleLabels } from "@/lib/constants";
-import { canManageOrganizationMembers } from "@/lib/organizations";
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const canViewWorkspaceSettings = canManageOrganizationMembers(
-    user.activeOrganization.membershipRole
-  );
+  const canViewWorkspaceSettings = canManageWorkspaceBilling({
+    appRole: user.role,
+    membershipRole: user.activeOrganization.membershipRole,
+  });
 
   return (
     <div className="space-y-6">
@@ -17,7 +19,7 @@ export default async function ProfilePage() {
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>Profil Bilgileri</CardTitle>
+          <CardTitle>Profile Information</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm md:grid-cols-2">
           <ProfileField label="Name" value={user.name} />
@@ -26,26 +28,38 @@ export default async function ProfilePage() {
         </CardContent>
       </Card>
 
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle>Security</CardTitle>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Change your password using your current credentials. This updates the password for your active Traxium sign-in.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ChangePasswordForm />
+        </CardContent>
+      </Card>
+
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Hızlı Bağlantılar
+          Quick Links
         </h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <QuickLinkCard
             href="/saving-cards"
-            title="Saving Kartlarım"
-            description="Tüm saving kartları açın ve buyer görünümünden ilerleyin."
+            title="My Saving Cards"
+            description="Open all saving cards and continue from your buyer view."
           />
           <QuickLinkCard
             href="/open-actions"
-            title="Bekleyen Onaylarım"
-            description="Üzerinizdeki açık onay ve faz değişikliği isteklerini inceleyin."
+            title="My Pending Approvals"
+            description="Review open approvals and phase-change requests assigned to you."
           />
           {canViewWorkspaceSettings ? (
             <QuickLinkCard
-              href="/admin"
-              title="Çalışma Alanı Ayarları"
-              description="Üyeler, ayarlar ve workspace yönetim ekranlarına gidin."
+              href="/admin/settings"
+              title="Workspace Settings"
+              description="Manage workspace identity, billing, and administration settings."
             />
           ) : null}
         </div>
@@ -53,14 +67,14 @@ export default async function ProfilePage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Klavye Kısayolları
+          Keyboard Shortcuts
         </h2>
         <Card className="max-w-3xl bg-[var(--muted)]/25">
           <CardContent className="grid gap-3 px-5 py-5">
-            <ShortcutRow keyLabel="N" action="Yeni saving card oluştur" />
-            <ShortcutRow keyLabel="D" action="Dashboard'a git" />
-            <ShortcutRow keyLabel="K" action="Kanban'a git" />
-            <ShortcutRow keyLabel="O" action="Açık onaylara git" />
+            <ShortcutRow keyLabel="N" action="Create new saving card" />
+            <ShortcutRow keyLabel="D" action="Go to dashboard" />
+            <ShortcutRow keyLabel="K" action="Go to kanban" />
+            <ShortcutRow keyLabel="O" action="Go to open approvals" />
           </CardContent>
         </Card>
       </section>

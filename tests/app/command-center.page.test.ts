@@ -1,15 +1,26 @@
 import React from "react";
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createUtopiaTraxCommandCenterData,
+  createUtopiaTraxReadiness,
+} from "../helpers/utopiatrax-demo-fixtures";
 
 const CommandCenterClientMock = vi.hoisted(() => vi.fn(() => null));
 const requireUserMock = vi.hoisted(() => vi.fn());
 const getCommandCenterDataMock = vi.hoisted(() => vi.fn());
 const getCommandCenterFilterOptionsMock = vi.hoisted(() => vi.fn());
 const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
+const getPendingApprovalsMock = vi.hoisted(() => vi.fn());
+const getPendingPhaseChangeRequestsMock = vi.hoisted(() => vi.fn());
+const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/command-center/command-center-client", () => ({
   CommandCenterClient: CommandCenterClientMock,
+}));
+
+vi.mock("@/components/open-actions/open-actions-list", () => ({
+  OpenActionsList: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -20,6 +31,12 @@ vi.mock("@/lib/data", () => ({
   getCommandCenterData: getCommandCenterDataMock,
   getCommandCenterFilterOptions: getCommandCenterFilterOptionsMock,
   getWorkspaceReadiness: getWorkspaceReadinessMock,
+  getPendingApprovals: getPendingApprovalsMock,
+  getPendingPhaseChangeRequests: getPendingPhaseChangeRequestsMock,
+}));
+
+vi.mock("@/lib/observability", () => ({
+  captureException: captureExceptionMock,
 }));
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -29,7 +46,6 @@ import CommandCenterPage from "@/app/(app)/command-center/page";
 describe("command center page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     requireUserMock.mockResolvedValue({
       id: "user-1",
       role: Role.GLOBAL_CATEGORY_LEADER,
@@ -59,11 +75,20 @@ describe("command center page", () => {
       suppliers: [],
     });
     getWorkspaceReadinessMock.mockResolvedValue(null);
+    getPendingApprovalsMock.mockResolvedValue([]);
+    getPendingPhaseChangeRequestsMock.mockResolvedValue([]);
   });
 
+  // children: [SectionHeading, <section open-actions>, <section command-center>]
+  // Returns the CommandCenterClient element (loose typing mirrors JSX prop access).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function getClientElement(page: any): any {
+    return page.props.children[2].props.children;
+  }
+
   it("passes successful command center payloads through to the client", async () => {
-    const page = await CommandCenterPage();
-    const clientElement = page.props.children[1];
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
 
     expect(clientElement).toMatchObject({
       type: CommandCenterClientMock,
@@ -77,6 +102,27 @@ describe("command center page", () => {
     });
   });
 
+  it("passes populated UtopiaTrax executive queues and indicators", async () => {
+    const data = createUtopiaTraxCommandCenterData();
+    getCommandCenterDataMock.mockResolvedValue(data);
+    getCommandCenterFilterOptionsMock.mockResolvedValue({
+      categories: [{ id: "category-1", name: "Polymer Carriers" }],
+      businessUnits: [{ id: "unit-1", name: "Packaging Colorants" }],
+      buyers: [{ id: "buyer-1", name: "Aylin Demir" }],
+      plants: [{ id: "plant-1", name: "Apeldoorn Plant" }],
+      suppliers: [{ id: "supplier-1", name: "Borealis Polymers" }],
+    });
+    getWorkspaceReadinessMock.mockResolvedValue(createUtopiaTraxReadiness());
+
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
+
+    expect(clientElement.props.initialData.kpis.activeProjects).toBe(23);
+    expect(clientElement.props.initialData.pendingApprovalQueue).not.toHaveLength(0);
+    expect(clientElement.props.initialData.financeLockedItems).not.toHaveLength(0);
+    expect(clientElement.props.filterOptions.categories).not.toHaveLength(0);
+  });
+
   it("surfaces command center data and filter failures as visible client load state", async () => {
     getCommandCenterDataMock.mockRejectedValue(
       new Error("Command center query failed.")
@@ -85,8 +131,8 @@ describe("command center page", () => {
       new Error("Filter lookup failed.")
     );
 
-    const page = await CommandCenterPage();
-    const clientElement = page.props.children[1];
+    const page = await CommandCenterPage({});
+    const clientElement = getClientElement(page);
 
     expect(clientElement).toMatchObject({
       type: CommandCenterClientMock,
@@ -99,5 +145,23 @@ describe("command center page", () => {
         },
       },
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "command_center.page.data_load_failed",
+        route: "/command-center",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        event: "command_center.page.filter_options_load_failed",
+        route: "/command-center",
+        organizationId: "org-1",
+        userId: "user-1",
+      })
+    );
   });
 });

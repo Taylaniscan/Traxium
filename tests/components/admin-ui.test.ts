@@ -78,7 +78,38 @@ describe("admin UI surfaces", () => {
     );
 
     expect(markup).toContain("No admin activity yet");
-    expect(markup).toContain("Workspace settings updates, membership changes, and invitation lifecycle events will appear here");
+    expect(markup).toContain(
+      "Workspace settings, membership changes, workflow decisions, evidence activity, imports, and workbook exports will appear here"
+    );
+  });
+
+  it("renders workflow activity with buyer-facing US phase labels", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(AdminActivityList, {
+        events: [
+          {
+            id: "audit-1",
+            organizationId: "org-1",
+            eventType: "phase_change.completed",
+            action: "phase_change.completed",
+            detail: "Demo phase changed from VALIDATED to REALISED, then CANCELLED.",
+            createdAt: new Date("2026-06-05T12:00:00.000Z"),
+            actorUserId: null,
+            targetUserId: null,
+            targetEntityId: "card-1",
+            payload: null,
+            actor: null,
+          },
+        ],
+      })
+    );
+
+    expect(markup).toContain("Phase Change: Completed");
+    expect(markup).toContain(
+      "Demo phase changed from Finance Validated to Implemented, then Canceled."
+    );
+    expect(markup).not.toContain("REALISED");
+    expect(markup).not.toContain("CANCELLED");
   });
 
   it("renders a loading state for the settings page", () => {
@@ -86,7 +117,7 @@ describe("admin UI surfaces", () => {
 
     expect(markup).toContain("Workspace Settings");
     expect(markup).toContain("Workspace Identity");
-    expect(markup).toContain("Recent Admin Activity");
+    expect(markup).toContain("Recent Workspace Activity");
   });
 
   it("renders populated member and invite rows without styling regressions", () => {

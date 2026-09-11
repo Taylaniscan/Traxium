@@ -18,8 +18,12 @@ vi.mock("next/link", () => ({
 
 vi.mock("recharts", () => {
   function createChartPrimitive(tag: string) {
-    return ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(tag, null, children);
+    function ChartPrimitive({ children }: { children?: React.ReactNode }) {
+      return React.createElement(tag, null, children);
+    }
+
+    ChartPrimitive.displayName = `Mock${tag}`;
+    return ChartPrimitive;
   }
 
   return {
@@ -32,6 +36,7 @@ vi.mock("recharts", () => {
     YAxis: createChartPrimitive("div"),
     Bar: createChartPrimitive("div"),
     Area: createChartPrimitive("div"),
+    Cell: createChartPrimitive("div"),
   };
 });
 
@@ -41,7 +46,13 @@ import {
   DashboardClient,
   deriveDashboardMetrics,
 } from "@/components/dashboard/dashboard-client";
+import { calculateSavings } from "@/lib/calculations";
 import type { DashboardData } from "@/lib/types";
+import {
+  getUtopiaTraxDatasetSummary,
+  UTOPIATRAX_DIRECT_CATEGORIES,
+  UTOPIATRAX_SAVING_CARDS,
+} from "@/scripts/seed-utopiatrax-demo";
 
 function createDashboardCard(
   overrides: Record<string, unknown> = {}
@@ -50,6 +61,10 @@ function createDashboardCard(
     id: "card-1",
     title: "Packaging renegotiation",
     phase: "VALIDATED",
+    savingType: "PRICE_REDUCTION",
+    impactType: "HARD_SAVINGS",
+    impactRecurrence: "RECURRING",
+    budgetImpact: "BUDGET_IMPACT",
     categoryId: "category-1",
     baselinePrice: 12,
     newPrice: 10,
@@ -69,8 +84,60 @@ function createDashboardCard(
     businessUnit: {
       name: "Beverages",
     },
+    evidence: [],
     ...overrides,
-  } as DashboardData["cards"][number];
+  } as unknown as DashboardData["cards"][number];
+}
+
+function resolveUtopiaFxRate(
+  currency: (typeof UTOPIATRAX_SAVING_CARDS)[number]["currency"]
+) {
+  return currency === "USD" ? 0.92 : 1;
+}
+
+function parseUtopiaDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function createUtopiaDashboardCards(): DashboardData["cards"] {
+  return UTOPIATRAX_SAVING_CARDS.map((card) => {
+    const savings = calculateSavings({
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      currency: card.currency,
+      fxRate: resolveUtopiaFxRate(card.currency),
+    });
+
+    return {
+      title: card.title,
+      phase: card.phase,
+      categoryId: `utopiatrax-category-${card.categoryName}`,
+      baselinePrice: card.baselinePrice,
+      newPrice: card.newPrice,
+      annualVolume: card.annualVolume,
+      calculatedSavings: savings.localSavings,
+      frequency: "RECURRING",
+      savingDriver: card.savingDriver,
+      implementationComplexity: card.implementationComplexity,
+      qualificationStatus: card.qualificationStatus,
+      impactStartDate: parseUtopiaDate(card.impactStart),
+      category: {
+        name: card.categoryName,
+      },
+      buyer: {
+        name: card.buyerName,
+      },
+      businessUnit: {
+        name: card.businessUnitName,
+      },
+      evidence: card.evidence.map((item, index) => ({
+        id: `${card.title}-evidence-${index}`,
+        evidenceType: item.evidenceType,
+        uploadedAt: new Date("2026-03-01T00:00:00.000Z"),
+      })),
+    } as unknown as DashboardData["cards"][number];
+  });
 }
 
 describe("dashboard client", () => {
@@ -232,5 +299,51 @@ describe("dashboard client", () => {
         forecast: 48000,
       },
     ]);
+  });
+
+  it("derives populated executive metrics from the UtopiaTrax demo portfolio", () => {
+    const cards = createUtopiaDashboardCards();
+    const metrics = deriveDashboardMetrics(cards);
+    const summary = getUtopiaTraxDatasetSummary();
+
+    expect(cards).toHaveLength(summary.savingCardCount);
+    expect(metrics.pipelineSavings).toBeGreaterThan(0);
+    expect(metrics.realisedSavings).toBeGreaterThan(0);
+    expect(metrics.achievedSavings).toBeGreaterThan(0);
+    expect(metrics.forecastSavings).toBeGreaterThan(metrics.pipelineSavings);
+    expect(metrics.monthlyTrend).toHaveLength(6);
+    expect(metrics.monthlyTrend.every((point) => point.forecast > 0)).toBe(true);
+    expect(metrics.topProjects).toHaveLength(5);
+
+    for (const point of metrics.byPhase) {
+      expect(point.phase).toBeDefined();
+      expect(point.savings).toBeGreaterThan(0);
+      if (point.phase) {
+        expect(summary.phaseCounts[point.phase]).toBeGreaterThan(0);
+      }
+    }
+
+    expect(metrics.byCategory.map((point) => point.label).sort()).toEqual(
+      UTOPIATRAX_DIRECT_CATEGORIES.map((category) => category.name).sort()
+    );
+
+    const markup = renderToStaticMarkup(
+      React.createElement(DashboardClient, {
+        data: {
+          cards,
+        },
+        readiness: null,
+        viewer: {
+          organizationMembershipRole: OrganizationRole.ADMIN,
+        },
+      })
+    );
+
+    expect(markup).toContain("Savings by Phase");
+    expect(markup).toContain("Savings by Category");
+    expect(markup).toContain("Savings Forecast");
+    expect(markup).not.toContain("No live saving cards yet.");
+    expect(markup).not.toContain("No phase savings are available yet.");
+    expect(markup).not.toContain("No savings forecast data is available yet.");
   });
 });

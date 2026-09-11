@@ -53,6 +53,7 @@ export const serverEnvKeys = [
   "JOB_WORKER_IDLE_DELAY_MS",
   "JOB_WORKER_ORGANIZATION_ID",
   "JOB_WORKER_TYPES",
+  "JOB_RUNNER_SECRET",
   "SEED_HEAD_OF_PROCUREMENT_EMAIL",
   "SEED_FINANCIAL_CONTROLLER_EMAIL",
   "SEED_TACTICAL_BUYER_EMAIL",
@@ -454,6 +455,15 @@ export function getDatabaseUrl(source: EnvSource = process.env) {
   });
 }
 
+export function getJobRunnerSecret(source: EnvSource = process.env) {
+  return readServerEnv("JOB_RUNNER_SECRET", {
+    source,
+    requirement: "production",
+    description:
+      "Shared secret required to invoke the protected /api/jobs/run worker endpoint.",
+  });
+}
+
 export function getDirectDatabaseUrl(source: EnvSource = process.env) {
   return readServerEnv("DIRECT_URL", {
     source,
@@ -624,6 +634,7 @@ export function assertEnvironmentConfiguration(
     hasDatabaseUrl: Boolean(databaseUrl),
     hasDirectUrl: Boolean(directUrl),
     hasServiceRoleKey: Boolean(serviceRoleKey),
+    hasJobRunnerSecret: Boolean(getJobRunnerSecret(source)),
     hasServerSentryDsn: Boolean(getSentryDsnForRuntime("server", source)),
     hasClientSentryDsn: Boolean(getSentryDsnForRuntime("client", source)),
     hasServerAnalytics:

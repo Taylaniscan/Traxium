@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, FileStack, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileStack, LockKeyhole, MessageSquareText, PackageSearch, TrendingUp, Users } from "lucide-react";
 import { ApprovalPanel } from "@/components/saving-cards/approval-panel";
 import { CreatableMasterDataField, type CreatableValue } from "@/components/saving-cards/creatable-master-data-field";
 import { ResultsTab } from "@/components/saving-cards/results-tab";
@@ -14,12 +14,30 @@ import { Label } from "@/components/ui/label";
 import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { currencies, phaseLabels, roleLabels } from "@/lib/constants";
+import {
+  currencies,
+  formatPhaseReferencesForDisplay,
+  phaseLabels,
+  roleLabels,
+  savingTypeLabels,
+  savingsBudgetImpactLabels,
+  savingsImpactRecurrenceLabels,
+  savingsImpactTypeLabels,
+} from "@/lib/constants";
+import {
+  evidenceTrustCopy,
+  evidenceTypeLabels,
+  formatEvidenceFileSize,
+} from "@/lib/evidence-config";
+import { getEvidenceStatus } from "@/lib/evidence";
 import { getAllowedPhaseTransitions } from "@/lib/workflow";
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
+import { toNumber } from "@/lib/utils/decimal";
 import type { SavingCardWithRelations } from "@/lib/types";
 
-type ReferenceData = Awaited<ReturnType<typeof import("@/lib/data").getReferenceData>>;
+type ReferenceData = Awaited<
+  ReturnType<typeof import("@/lib/data").getSavingCardDetailReferenceData>
+>;
 
 type SupplierForm = {
   supplier: CreatableValue;
@@ -96,14 +114,14 @@ export function SavingCardDetailWorkspace({
     ...card.alternativeSuppliers.map((item) => ({
       label: item.supplier?.name ?? item.supplierNameManual ?? "Alternative supplier",
       type: "Supplier",
-      price: item.quotedPrice,
+      price: toNumber(item.quotedPrice),
       currency: item.currency,
       selected: item.isSelected
     })),
     ...card.alternativeMaterials.map((item) => ({
       label: item.material?.name ?? item.materialNameManual ?? "Alternative material",
       type: "Material",
-      price: item.quotedPrice,
+      price: toNumber(item.quotedPrice),
       currency: item.currency,
       selected: item.isSelected
     }))
@@ -112,12 +130,22 @@ export function SavingCardDetailWorkspace({
   const pendingPhaseRequest =
     card.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
   const nextPhase = getPrimaryNextPhase(card.phase);
+  const totalEvidenceSize = card.evidence.reduce((total, item) => total + item.fileSize, 0);
+  const latestEvidenceUpload = card.evidence.reduce<Date | null>((latest, item) => {
+    const uploadedAt = new Date(item.uploadedAt);
+    if (!latest || uploadedAt > latest) {
+      return uploadedAt;
+    }
+    return latest;
+  }, null);
   const showPhaseRequestButton =
     !pendingPhaseRequest &&
     canRequestPhaseChange &&
     card.phase !== "ACHIEVED" &&
     card.phase !== "CANCELLED" &&
     Boolean(nextPhase);
+  const selectedSupplierChangeBlocked = card.financeLocked && supplierForm.isSelected;
+  const selectedMaterialChangeBlocked = card.financeLocked && materialForm.isSelected;
 
   async function submitAlternativeSupplier() {
     setError(null);
@@ -232,51 +260,67 @@ export function SavingCardDetailWorkspace({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1.08fr)_360px]">
       <div className="space-y-6">
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
               Record Workspace
             </p>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">Business Detail</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--foreground)]">
+              Narrative, Commercial Detail & Scenario Management
+            </h2>
             <p className="max-w-3xl text-sm leading-6 text-[var(--muted-foreground)]">
-              Core record information stays here. Workflow review and approval activity are separated into the right rail so they do not compete with the business detail.
+              Core record information stays here. Workflow review, finance control, and approval activity remain in the right rail so the operating story and the audit story can be scanned independently.
             </p>
           </div>
 
-          <div className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-sm backdrop-blur">
+          <div
+            id="workflow"
+            className="sticky top-4 z-20 rounded-2xl border border-[var(--border)] bg-[var(--surface)]/95 p-4 shadow-sm backdrop-blur"
+          >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
-                <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
-                <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
-                  {nextPhase ? phaseLabels[nextPhase] : "Sonraki faz yok"}
-                </span>
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+                  Workflow transition
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+                  <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                    {nextPhase ? phaseLabels[nextPhase] : "No next phase"}
+                  </span>
+                  <Badge tone={card.financeLocked ? "lock" : "slate"}>
+                    {card.financeLocked ? "Finance locked" : "Finance open"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Phase change requests continue to use the existing approval flow; this surface only makes the next eligible move easier to see.
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 {pendingPhaseRequest ? (
-                  <Badge tone="amber">Onay Bekleniyor</Badge>
+                  <Badge tone="amber">Pending approval</Badge>
                 ) : null}
                 {showPhaseRequestButton ? (
                   <Button
                     type="button"
                     onClick={() => setPhaseRequestOpen((open) => !open)}
                   >
-                    Faz Değişikliği İste
+                    Request Phase Change
                   </Button>
                 ) : null}
               </div>
             </div>
 
             {phaseRequestOpen && showPhaseRequestButton && nextPhase ? (
-              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/75 p-4">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {phaseLabels[card.phase]} fazından {phaseLabels[nextPhase]} fazına geçiş isteği oluşturulacak.
+                  A request will be created to move this card from {phaseLabels[card.phase]} to {phaseLabels[nextPhase]}.
                 </p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Bu kayıt mevcut onay akışını kullanır ve onay tamamlanana kadar kart mevcut fazında kalır.
+                  This request uses the existing approval flow, and the card will remain in its current phase until approval is complete.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Button
@@ -284,7 +328,7 @@ export function SavingCardDetailWorkspace({
                     onClick={requestPhaseChange}
                     disabled={phaseRequestLoading}
                   >
-                    {phaseRequestLoading ? "Gönderiliyor..." : "İsteği Gönder"}
+                    {phaseRequestLoading ? "Sending..." : "Send Request"}
                   </Button>
                   <Button
                     type="button"
@@ -292,14 +336,15 @@ export function SavingCardDetailWorkspace({
                     onClick={() => setPhaseRequestOpen(false)}
                     disabled={phaseRequestLoading}
                   >
-                    İptal
+                    Cancel
                   </Button>
                 </div>
               </div>
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/45 p-2">
+            <div className="flex flex-wrap gap-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -307,10 +352,10 @@ export function SavingCardDetailWorkspace({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${
                     activeTab === tab.id
-                      ? "border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm"
-                      : "border-[var(--border)] bg-white text-[var(--foreground)] hover:border-blue-200 hover:bg-blue-50"
+                      ? "border-[var(--primary)] bg-[rgba(53,93,122,0.08)] text-[var(--foreground)] shadow-sm"
+                      : "border-transparent bg-transparent text-[var(--muted-foreground)] hover:border-[var(--border)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -318,6 +363,7 @@ export function SavingCardDetailWorkspace({
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
 
@@ -345,9 +391,10 @@ export function SavingCardDetailWorkspace({
 
                 <DetailSection title="Business Context">
                   <Metric label="Phase" value={phaseLabels[card.phase]} />
-                  <Metric label="Saving Type" value={card.savingType} />
-                  <Metric label="Business Unit" value={card.businessUnit.name} />
-                  <Metric label="Plant" value={card.plant.name} />
+                  <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
+                  <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
+                  <Metric label="Business Unit" value={card.businessUnit?.name ?? "Unassigned"} />
+                  <Metric label="Plant" value={card.plant?.name ?? "Unassigned"} />
                 </DetailSection>
               </div>
             </CardContent>
@@ -362,6 +409,8 @@ export function SavingCardDetailWorkspace({
               <Metric label="Saving Driver" value={card.savingDriver ?? "Not set"} />
               <Metric label="Implementation Complexity" value={card.implementationComplexity ?? "Not set"} />
               <Metric label="Qualification Status" value={card.qualificationStatus ?? "Not set"} />
+              <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+              <Metric label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
               <Metric label="Buyer" value={card.buyer.name} />
               <Metric label="Category" value={card.category.name} />
               <Metric label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
@@ -377,12 +426,24 @@ export function SavingCardDetailWorkspace({
             <CardDescription>Commercial inputs first, then scenario comparison and evaluated alternatives.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/65 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
+              Finance validation compares savings type, impact type, recurrence, budget impact, baseline price,
+              new price, annual volume, currency, FX rate, and impact window against supporting evidence and
+              forecast-versus-actual results.
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
               <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-              <Metric label="Calculated Savings" value={formatCurrency(Math.round(card.calculatedSavings), "EUR")} />
-              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(card.calculatedSavingsUSD), "USD")} />
+              <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
+              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
+              <Metric label="In-Year Value (FY)" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
+              <Metric label="Annualized Run-Rate" value={formatCurrency(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
+              <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
+              <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
+              <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+              <Metric label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
               <Metric label="FX Rate" value={card.fxRate.toString()} />
               <Metric
                 label="Alternative Scenario"
@@ -413,7 +474,7 @@ export function SavingCardDetailWorkspace({
               <div className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
                 <div className="space-y-3">
                   {baselineEntries.map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                    <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                       <p className="text-xs text-[var(--muted-foreground)]">{item.label}</p>
                       <p className="mt-1 text-sm font-semibold">{item.value}</p>
                     </div>
@@ -429,7 +490,7 @@ export function SavingCardDetailWorkspace({
                 <div className="grid gap-3 md:grid-cols-2">
                   {comparisonOptions.length ? (
                     comparisonOptions.map((option) => (
-                      <div key={`${option.type}-${option.label}-${option.price}`} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                      <div key={`${option.type}-${option.label}-${option.price}`} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-sm font-semibold">{option.label}</p>
                           {option.selected ? <Badge tone="emerald">Selected</Badge> : <Badge tone="slate">{option.type}</Badge>}
@@ -440,7 +501,7 @@ export function SavingCardDetailWorkspace({
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 p-4 text-sm text-[var(--muted-foreground)]">
+                    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)]/70 p-4 text-sm text-[var(--muted-foreground)]">
                       Add supplier or material alternatives to compare sourcing scenarios.
                     </div>
                   )}
@@ -470,41 +531,106 @@ export function SavingCardDetailWorkspace({
       ) : null}
 
 {activeTab === "evidence" ? (
-  <Card className="rounded-3xl border border-[var(--border)] shadow-sm">
-    <CardHeader>
-      <CardTitle>Evidence</CardTitle>
-      <CardDescription>
-        Files supporting sourcing negotiations and finance validation.
-      </CardDescription>
+  <Card className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
+    <CardHeader
+      id="evidence"
+      className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+            Evidence Register
+          </p>
+          <CardTitle>Evidence</CardTitle>
+          <CardDescription>
+            Quotes, contracts, invoices, and calculation workbooks supporting sourcing negotiations and finance validation.
+          </CardDescription>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge
+            tone={
+              card.evidence.length
+                ? "emerald"
+                : card.phase === "IDEA"
+                  ? "amber"
+                  : "rose"
+            }
+          >
+            {getEvidenceStatus(card.phase, card.evidence.length)}
+          </Badge>
+          <Badge tone="slate">
+            {card.evidence.length} file{card.evidence.length === 1 ? "" : "s"}
+          </Badge>
+          {card.evidence.length ? (
+            <Badge tone="slate">{formatEvidenceFileSize(totalEvidenceSize)} total</Badge>
+          ) : null}
+        </div>
+      </div>
     </CardHeader>
 
     <CardContent className="space-y-3">
+      <div className="flex gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
+        <LockKeyhole className="mt-1 h-4 w-4 shrink-0 text-[var(--finance-lock)]" />
+        <div>
+          <p>
+            Finance validation uses the quote or supplier bid for the new price, the contract or purchase order for the baseline, invoices or actual proof for captured value, and calculation workbooks for the savings bridge.
+          </p>
+          <p className="mt-2">{evidenceTrustCopy.privateStorage}</p>
+          <p className="mt-2">{evidenceTrustCopy.financePurpose}</p>
+        </div>
+      </div>
+
       {card.evidence.length ? (
         card.evidence.map((item) => (
           <div
             key={item.id}
-            className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3"
+            className="grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4 lg:grid-cols-[auto_minmax(0,1fr)_auto]"
           >
-            <div>
-              <div className="text-sm font-medium">{item.fileName}</div>
-              <div className="text-xs text-[var(--muted-foreground)]">
-                {item.fileType}
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted-foreground)]">
+              <FileStack className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                  {item.fileName}
+                </p>
+                <Badge tone="emerald">On record</Badge>
+                <Badge tone="slate">
+                  {evidenceTypeLabels[item.evidenceType]}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
+                <span>{item.fileType}</span>
+                <span>{formatEvidenceFileSize(item.fileSize)}</span>
+                <span>Uploaded {formatDate(item.uploadedAt)}</span>
+                <span>
+                  By {item.uploadedBy?.name ?? "Workspace user"}
+                </span>
+                <span>Private file · Signed download</span>
               </div>
             </div>
 
-            <a
-              href={`/api/evidence/${item.id}/download`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-[var(--primary)] underline-offset-2 hover:underline"
-            >
-              Open file
-            </a>
+            <div className="flex items-start justify-end">
+              <a
+                href={`/api/evidence/${item.id}/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-elevated)]"
+              >
+                Signed download
+              </a>
+            </div>
           </div>
         ))
       ) : (
-        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/60 px-4 py-6 text-sm text-[var(--muted-foreground)]">
-          No evidence uploaded yet.
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-elevated)]/55 px-4 py-8 text-center">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            No evidence uploaded yet
+          </p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Add a supplier quote, price confirmation, contract or purchase order, invoice or actual proof, or calculation workbook before finance validation. Proposed cards can be saved without evidence.
+          </p>
         </div>
       )}
     </CardContent>
@@ -515,11 +641,15 @@ export function SavingCardDetailWorkspace({
         <ResultsTab
           savingCardId={card.id}
           materialName={card.material.name}
-          baselinePrice={card.baselinePrice}
-          newPrice={card.newPrice}
-          annualVolume={card.annualVolume}
+          baselinePrice={toNumber(card.baselinePrice)}
+          newPrice={toNumber(card.newPrice)}
+          annualVolume={toNumber(card.annualVolume)}
           volumeUnit={card.volumeUnit}
           currency={card.currency}
+          savingType={card.savingType}
+          impactType={card.impactType}
+          impactRecurrence={card.impactRecurrence}
+          budgetImpact={card.budgetImpact}
         />
       ) : null}
 
@@ -541,7 +671,7 @@ export function SavingCardDetailWorkspace({
                 <Input value={supplierForm.country} onChange={(event) => setSupplierForm({ ...supplierForm, country: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" step="0.01" />
+                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
               </Field>
               <Field label="Currency">
                 <Select value={supplierForm.currency} onChange={(event) => setSupplierForm({ ...supplierForm, currency: event.target.value as "EUR" | "USD" })}>
@@ -575,11 +705,18 @@ export function SavingCardDetailWorkspace({
                   type="checkbox"
                   checked={supplierForm.isSelected}
                   onChange={(event) => setSupplierForm({ ...supplierForm, isSelected: event.target.checked })}
+                  disabled={card.financeLocked}
                 />
                 Mark as selected supplier
               </label>
+              {card.financeLocked ? (
+                <div className="flex items-start gap-3 rounded-2xl border border-transparent bg-[var(--finance-lock-surface)] px-4 py-3 text-sm text-[var(--finance-lock)] md:col-span-2 xl:col-span-3">
+                  <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>Finance lock is active. You can still track supplier alternatives, but unlock finance before selecting one because selection updates validated price, currency, FX, and savings assumptions.</span>
+                </div>
+              ) : null}
               <div className="flex gap-3">
-                <Button type="button" onClick={submitAlternativeSupplier}>
+                <Button type="button" onClick={submitAlternativeSupplier} disabled={selectedSupplierChangeBlocked}>
                   {editingSupplierId ? "Update Alternative Supplier" : "Add Alternative Supplier"}
                 </Button>
                 {editingSupplierId ? (
@@ -601,7 +738,7 @@ export function SavingCardDetailWorkspace({
           <Card>
             <CardContent className="overflow-x-auto p-0">
               <table className="min-w-full text-sm">
-                <thead className="border-b bg-white/70">
+                <thead className="border-b bg-[var(--surface)]/70">
                   <tr>
                     {["Supplier Name", "Country", "Quoted Price", "Currency", "Lead Time", "MOQ", "Payment Terms", "Quality Rating", "Risk Level", "Notes", "Selected Supplier", "Actions"].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left font-semibold text-[var(--muted-foreground)]">
@@ -686,7 +823,7 @@ export function SavingCardDetailWorkspace({
                 <Input value={materialForm.specification} onChange={(event) => setMaterialForm({ ...materialForm, specification: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" step="0.01" />
+                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
               </Field>
               <Field label="Currency">
                 <Select value={materialForm.currency} onChange={(event) => setMaterialForm({ ...materialForm, currency: event.target.value as "EUR" | "USD" })}>
@@ -714,11 +851,18 @@ export function SavingCardDetailWorkspace({
                   type="checkbox"
                   checked={materialForm.isSelected}
                   onChange={(event) => setMaterialForm({ ...materialForm, isSelected: event.target.checked })}
+                  disabled={card.financeLocked}
                 />
                 Mark as selected material
               </label>
+              {card.financeLocked ? (
+                <div className="flex items-start gap-3 rounded-2xl border border-transparent bg-[var(--finance-lock-surface)] px-4 py-3 text-sm text-[var(--finance-lock)] md:col-span-2 xl:col-span-3">
+                  <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>Finance lock is active. You can still track material alternatives, but unlock finance before selecting one because selection updates validated material, supplier, price, currency, FX, and savings assumptions.</span>
+                </div>
+              ) : null}
               <div className="flex gap-3">
-                <Button type="button" onClick={submitAlternativeMaterial}>
+                <Button type="button" onClick={submitAlternativeMaterial} disabled={selectedMaterialChangeBlocked}>
                   {editingMaterialId ? "Update Alternative Material" : "Add Alternative Material"}
                 </Button>
                 {editingMaterialId ? (
@@ -740,7 +884,7 @@ export function SavingCardDetailWorkspace({
           <Card>
             <CardContent className="overflow-x-auto p-0">
               <table className="min-w-full text-sm">
-                <thead className="border-b bg-white/70">
+                <thead className="border-b bg-[var(--surface)]/70">
                   <tr>
                     {["Material Name", "Supplier", "Specification", "Quoted Price", "Currency", "Performance Impact", "Qualification Status", "Risk Level", "Notes", "Selected Material", "Actions"].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left font-semibold text-[var(--muted-foreground)]">
@@ -819,7 +963,7 @@ export function SavingCardDetailWorkspace({
               ))
             ) : (
               <p className="text-sm text-[var(--muted-foreground)]">
-                Henüz yorum yok. Finans ekibi veya onaylayıcılarla notlarınızı burada paylaşabilirsiniz.
+                No comments yet. Share notes here with finance reviewers or approvers.
               </p>
             )}
           </CardContent>
@@ -829,6 +973,14 @@ export function SavingCardDetailWorkspace({
       </div>
 
       <div className="space-y-6 self-start xl:sticky xl:top-6">
+        <RecordSummaryRail
+          card={card}
+          nextPhase={nextPhase}
+          pendingPhaseRequest={pendingPhaseRequest}
+          totalEvidenceSize={totalEvidenceSize}
+          latestEvidenceUpload={latestEvidenceUpload}
+          selectedAlternativeCount={comparisonOptions.filter((option) => option.selected).length}
+        />
         <ApprovalPanel card={card} canApprove={canApprove} canLock={canLock} currentUserId={currentUserId} />
         <WorkflowActivityPanel card={card} />
       </div>
@@ -863,6 +1015,114 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
+function RecordSummaryRail({
+  card,
+  nextPhase,
+  pendingPhaseRequest,
+  totalEvidenceSize,
+  latestEvidenceUpload,
+  selectedAlternativeCount,
+}: {
+  card: SavingCardWithRelations;
+  nextPhase: SavingCardWithRelations["phase"] | null;
+  pendingPhaseRequest: SavingCardWithRelations["phaseChangeRequests"][number] | null;
+  totalEvidenceSize: number;
+  latestEvidenceUpload: Date | null;
+  selectedAlternativeCount: number;
+}) {
+  const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
+    request.approvals
+      .filter((approval) => approval.status !== "PENDING")
+      .map((approval) => ({ ...approval, requestedPhase: request.requestedPhase }))
+  );
+  const approvalStatusTone = pendingPhaseRequest ? "amber" : decidedApprovals.length ? "emerald" : "slate";
+  const approvalStatusLabel = pendingPhaseRequest
+    ? "Pending phase request"
+    : decidedApprovals.length
+      ? `${decidedApprovals.length} logged approval${decidedApprovals.length === 1 ? "" : "s"}`
+      : "No logged approvals";
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
+        <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">
+          Record Summary
+        </p>
+        <CardTitle>Audit Snapshot</CardTitle>
+        <CardDescription>
+          High-value commercial, ownership, evidence, and control signals stay pinned here while you review the record.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]/75 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
+            <Badge tone={card.financeLocked ? "lock" : "slate"}>
+              {card.financeLocked ? "Finance locked" : "Finance open"}
+            </Badge>
+            <Badge tone={approvalStatusTone}>{approvalStatusLabel}</Badge>
+          </div>
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            Next eligible phase:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {nextPhase ? phaseLabels[nextPhase] : "No further transition"}
+            </span>
+          </p>
+        </div>
+
+        <RailSection title="Financial Summary">
+          <RailRow label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
+          <RailRow label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
+          <RailRow label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
+          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
+        </RailSection>
+
+        <RailSection title="Savings Classification">
+          <RailRow label="Savings Type" value={savingTypeLabels[card.savingType]} />
+          <RailRow label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
+          <RailRow label="Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
+          <RailRow label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
+        </RailSection>
+
+        <RailSection title="Ownership & Scope">
+          <RailRow label="Buyer" value={card.buyer.name} />
+          <RailRow label="Category" value={card.category.name} />
+          <RailRow label="Business Unit" value={card.businessUnit?.name ?? "Unassigned"} />
+          <RailRow label="Plant" value={card.plant?.name ?? "Unassigned"} />
+        </RailSection>
+
+        <RailSection title="Evidence & Scenario">
+          <RailRow label="Evidence Files" value={String(card.evidence.length)} />
+          <RailRow label="Evidence Size" value={card.evidence.length ? formatEvidenceFileSize(totalEvidenceSize) : "No files"} />
+          <RailRow label="Latest Upload" value={latestEvidenceUpload ? formatDate(latestEvidenceUpload) : "No uploads"} />
+          <RailRow
+            label="Selected Alternative"
+            value={selectedAlternativeCount ? `${selectedAlternativeCount} marked as selected` : "No alternative selected"}
+          />
+        </RailSection>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{title}</p>
+      <div className="space-y-2.5">{children}</div>
+    </div>
+  );
+}
+
+function RailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3">
+      <span className="text-sm text-[var(--muted-foreground)]">{label}</span>
+      <span className="text-right text-sm font-semibold text-[var(--foreground)]">{value}</span>
+    </div>
+  );
+}
+
 function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
   const allowedTransitions = getAllowedPhaseTransitions(currentPhase);
 
@@ -874,27 +1134,40 @@ function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
 }
 
 function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
+  const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
+    request.approvals
+      .filter((approval) => approval.status !== "PENDING")
+      .map((approval) => ({ ...approval, requestedPhase: request.requestedPhase }))
+  );
+
   return (
-    <Card>
-      <CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/75">
         <CardTitle>Workflow Activity</CardTitle>
         <CardDescription>Phase requests, approvals, and phase progression are separated from the main business record.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <Metric label="Phase Requests" value={String(card.phaseChangeRequests.length)} />
-          <Metric label="Approval Log" value={String(card.approvals.length)} />
+          <Metric label="Approval Log" value={String(decidedApprovals.length)} />
           <Metric label="Phase Events" value={String(card.phaseHistory.length)} />
         </div>
 
-        <WorkflowSection title="Phase-change Requests">
+        <WorkflowSection title="Request Ledger">
           {card.phaseChangeRequests.length ? (
             card.phaseChangeRequests.map((request) => (
               <WorkflowEventCard
                 key={request.id}
                 title={`${phaseLabels[request.currentPhase]} to ${phaseLabels[request.requestedPhase]}`}
                 subtitle={`Requested by ${request.requestedBy.name} on ${formatDate(request.createdAt)}`}
-                detail={request.comment ?? "No request comment provided."}
+                detail={formatPhaseReferencesForDisplay(
+                  request.comment ?? "No request comment provided."
+                )}
+                badge={
+                  <Badge tone={getApprovalTone(request.approvalStatus)}>
+                    {request.approvalStatus.toLowerCase()}
+                  </Badge>
+                }
               />
             ))
           ) : (
@@ -902,14 +1175,17 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
           )}
         </WorkflowSection>
 
-        <WorkflowSection title="Approval Log">
-          {card.approvals.length ? (
-            card.approvals.map((approval) => (
+        <WorkflowSection title="Approval Ledger">
+          {decidedApprovals.length ? (
+            decidedApprovals.map((approval) => (
               <WorkflowEventCard
                 key={approval.id}
-                title={`${phaseLabels[approval.phase]} · ${approval.approver.name}`}
+                title={`${phaseLabels[approval.requestedPhase]} · ${approval.approver.name}`}
                 subtitle={approval.status.toLowerCase()}
-                detail={approval.comment ?? "No comment"}
+                detail={formatPhaseReferencesForDisplay(
+                  approval.comment ?? "No comment"
+                )}
+                badge={<Badge tone={getApprovalTone(approval.status)}>{approval.status.toLowerCase()}</Badge>}
               />
             ))
           ) : (
@@ -949,14 +1225,19 @@ function WorkflowEventCard({
   title,
   subtitle,
   detail,
+  badge,
 }: {
   title: string;
   subtitle: string;
   detail: string;
+  badge?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-      <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+        {badge ? <div className="shrink-0">{badge}</div> : null}
+      </div>
       <p className="mt-1 text-xs text-[var(--muted-foreground)]">{subtitle}</p>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">{detail}</p>
     </div>
@@ -976,7 +1257,7 @@ function emptySupplierForm(): SupplierForm {
     supplier: { mode: "existing", id: undefined, name: "" },
     country: "",
     quotedPrice: "",
-    currency: "EUR",
+    currency: "USD",
     leadTimeDays: "",
     moq: "",
     paymentTerms: "",
@@ -993,7 +1274,7 @@ function emptyMaterialForm(): MaterialForm {
     supplier: { mode: "existing", id: undefined, name: "" },
     specification: "",
     quotedPrice: "",
-    currency: "EUR",
+    currency: "USD",
     performanceImpact: "",
     qualificationStatus: "",
     riskLevel: "",
@@ -1004,4 +1285,16 @@ function emptyMaterialForm(): MaterialForm {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(date));
+}
+
+function getApprovalTone(status: string): "amber" | "emerald" | "error" {
+  if (status === "PENDING") {
+    return "amber";
+  }
+
+  if (status === "APPROVED") {
+    return "emerald";
+  }
+
+  return "error";
 }

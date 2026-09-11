@@ -7,22 +7,22 @@ This file is the contributor-facing guidance for future Codex runs. It is not an
 
 Saving cards follow one canonical lifecycle:
 
-- New cards must start in `Idea`.
-- Allowed non-cancelled progression is `Idea -> Validated -> Realised -> Achieved`.
-- Any non-cancelled phase may move to `Cancelled` only with a cancellation reason.
-- No skipping is allowed between non-cancelled phases.
+- New cards must start as Proposed (`IDEA` internal enum).
+- Allowed non-canceled progression is Proposed (`IDEA`) -> Finance Validated (`VALIDATED`) -> Implemented (`REALISED`) -> Captured (`ACHIEVED`).
+- Any non-canceled phase may move to Canceled (`CANCELLED`) only with a cancellation reason.
+- No skipping is allowed between non-canceled phases.
 
 Target-phase approval requirements:
 
-- `Idea`: initial phase for new cards rather than a normal requested destination
-- `Validated`: `Head of Global Procurement` and `Financial Controller`
-- `Realised`: `Financial Controller`
-- `Achieved`: `Financial Controller`
-- `Cancelled`: requires a reason and follows the implemented phase-change approval path
+- Proposed (`IDEA`): initial phase for new cards rather than a normal requested destination
+- Finance Validated (`VALIDATED`): Procurement Lead and Finance Reviewer
+- Implemented (`REALISED`): Finance Reviewer
+- Captured (`ACHIEVED`): Finance Reviewer
+- Canceled (`CANCELLED`): requires a reason and follows the implemented phase-change approval path
 
 Finance lock:
 
-- Finance lock is only allowed for `Validated` savings.
+- Finance lock is only allowed for Finance Validated (`VALIDATED`) savings.
 - Locked fields remain:
   - baseline price
   - new price
@@ -51,7 +51,7 @@ Do not invent a second workflow matrix in routes, components, tests, or prompts.
 - Kanban groups cards by persisted `savingCard.phase`.
 - Pending phase requests are UI metadata, not actual phase movement.
 - A pending request must not visually relocate the card into the destination column.
-- Invalid move options such as `Idea -> Achieved` must not be offered.
+- Invalid move options such as Proposed (`IDEA`) -> Captured (`ACHIEVED`) must not be offered.
 - Cancellation actions must require a reason.
 - Rejected or blocked moves must show visible feedback so the board does not feel broken.
 

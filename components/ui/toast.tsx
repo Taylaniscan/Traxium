@@ -8,9 +8,16 @@ export function Toast({
   onDone,
 }: {
   message: string;
-  tone: "success" | "error";
+  tone: "success" | "warning" | "error";
   onDone?: () => void;
 }) {
+  const toneStyles =
+    tone === "success"
+      ? "border-l-[var(--success-solid)] text-[var(--success)]"
+      : tone === "warning"
+        ? "border-l-[var(--warning-solid)] text-[var(--warning)]"
+        : "border-l-[var(--risk-solid)] text-[var(--risk)]";
+
   return (
     <div
       role="status"
@@ -18,16 +25,14 @@ export function Toast({
       onAnimationEnd={onDone}
       style={{ animation: "toast-fade 3s ease forwards" }}
       className={cn(
-        "fixed bottom-4 right-4 z-50 flex items-start gap-3 rounded-xl border px-4 py-3 opacity-0 shadow-lg",
-        tone === "success"
-          ? "border-[#6ee7b7] bg-[#d1fae5] text-[#064e3b]"
-          : "border-[#fca5a5] bg-[#fee2e2] text-[#7f1d1d]"
+        "fixed bottom-4 right-4 z-50 flex min-w-[280px] max-w-[420px] items-start gap-3 rounded-lg border border-[var(--border)] border-l-4 bg-[var(--surface)] px-4 py-3 opacity-0 shadow-[var(--shadow-pop)]",
+        toneStyles
       )}
     >
       <span className="mt-0.5 text-sm font-semibold" aria-hidden="true">
-        {tone === "success" ? "✓" : "✗"}
+        {tone === "success" ? "✓" : tone === "warning" ? "!" : "✗"}
       </span>
-      <span className="text-sm font-medium">{message}</span>
+      <span className="text-sm font-medium leading-6">{message}</span>
     </div>
   );
 }

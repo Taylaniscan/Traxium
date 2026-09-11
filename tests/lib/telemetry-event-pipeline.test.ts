@@ -59,6 +59,11 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabasePublicClient: createSupabasePublicClientMock,
 }));
 
+vi.mock("@/lib/supabase/service", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock,
+  createSupabasePublicClient: createSupabasePublicClientMock,
+}));
+
 import { createInitialWorkspaceOnboarding } from "@/lib/auth";
 import {
   acceptOrganizationInvitation,
@@ -116,6 +121,16 @@ function createInvitationRecord(
     invitedByUserId: string;
     createdAt: Date;
     updatedAt: Date;
+    organization: {
+      id: string;
+      name: string;
+      slug: string;
+    };
+    invitedBy: {
+      id: string;
+      name: string;
+      email: string;
+    };
   }> = {}
 ) {
   return {
@@ -207,6 +222,9 @@ function createTransactionMock() {
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    plant: {
+      create: vi.fn(),
+    },
     organizationMembership: {
       findUnique: vi.fn(),
       count: vi.fn(),
@@ -218,6 +236,9 @@ function createTransactionMock() {
       updateMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+    },
+    notification: {
+      create: vi.fn().mockResolvedValue({ id: "notification-1" }),
     },
     auditLog: {
       create: vi.fn(),
@@ -429,10 +450,25 @@ describe("step 8 telemetry event pipeline", () => {
 
   it("emits invitation.accepted only on the first successful acceptance", async () => {
     tx.invitation.findUnique
-      .mockResolvedValueOnce(createInvitationRecord())
+      .mockResolvedValueOnce(
+        createInvitationRecord({
+          invitedByUserId: "admin-user-1",
+          invitedBy: {
+            id: "admin-user-1",
+            name: "Admin User",
+            email: "admin@example.com",
+          },
+        })
+      )
       .mockResolvedValueOnce(
         createInvitationRecord({
           status: InvitationStatus.ACCEPTED,
+          invitedByUserId: "admin-user-1",
+          invitedBy: {
+            id: "admin-user-1",
+            name: "Admin User",
+            email: "admin@example.com",
+          },
         })
       );
     tx.organizationMembership.upsert.mockResolvedValueOnce({
@@ -465,6 +501,15 @@ describe("step 8 telemetry event pipeline", () => {
         invitationId: "invite-1",
         invitationRole: OrganizationRole.MEMBER,
         acceptanceSource: "authenticated_user",
+      },
+    });
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        userId: "admin-user-1",
+        title: "Invitation accepted",
+        message: "new.user@example.com joined the workspace.",
+        href: "/admin/members",
       },
     });
 
