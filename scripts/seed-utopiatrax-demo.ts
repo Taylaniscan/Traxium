@@ -2263,18 +2263,20 @@ async function seedBillingAccess(prisma: PrismaClient, organizationId: string) {
 
 function getSupabaseAdminClientFromEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const secretKey =
+    process.env.SUPABASE_SECRET_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-  if (!url || !serviceRoleKey) {
+  if (!url || !secretKey) {
     return {
       client: null,
       warning:
-        "Supabase Admin Auth and Storage were skipped because NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing.",
+        "Supabase Admin Auth and Storage were skipped because NEXT_PUBLIC_SUPABASE_URL or a Supabase server key is missing.",
     };
   }
 
   return {
-    client: createClient(url, serviceRoleKey, {
+    client: createClient(url, secretKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,

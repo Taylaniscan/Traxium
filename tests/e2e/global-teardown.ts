@@ -12,15 +12,17 @@ const prisma = new PrismaClient();
 
 export default async function globalTeardown() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const secretKey =
+    process.env.SUPABASE_SECRET_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const emails = new Set<string>([
     personas.foreignOwner.email,
     personas.financeMember.email,
     personas.normalMember.email,
   ]);
 
-  if (url && serviceRoleKey) {
-    const supabase = createClient(url, serviceRoleKey, {
+  if (url && secretKey) {
+    const supabase = createClient(url, secretKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,

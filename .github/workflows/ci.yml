@@ -26,8 +26,8 @@ jobs:
       DATABASE_URL: postgresql://postgres.previewci:preview-ci-password@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
       DIRECT_URL: postgresql://postgres.previewci:preview-ci-password@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
       NEXT_PUBLIC_SUPABASE_URL: https://previewci.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InByZXZpZXdjaSJ9.sig
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwicmVmIjoicHJldmlld2NpIn0.sig
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_previewci000000000000000000000000
+      SUPABASE_SECRET_KEY: sb_secret_previewci000000000000000000000000000000
       SUPABASE_STORAGE_BUCKET: evidence-private
       STRIPE_SECRET_KEY: sk_test_previewcibillingsecretkey000000000000000000000000
       STRIPE_WEBHOOK_SECRET: whsec_previewcibillingwebhooksecret000000000000000000000000

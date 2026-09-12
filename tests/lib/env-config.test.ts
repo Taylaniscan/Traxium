@@ -4,6 +4,8 @@ import {
   assertEnvironmentConfiguration,
   getDatabaseUrl,
   getPublicAppUrl,
+  getSupabasePublishableKey,
+  getSupabaseSecretKey,
   readClientEnv,
   readClientUrlEnv,
   readServerBooleanEnv,
@@ -47,6 +49,29 @@ function createBillingEnv(overrides: Record<string, string | undefined> = {}) {
 }
 
 describe("env configuration helpers", () => {
+  it("prefers the Supabase publishable key and supports the legacy anon fallback", () => {
+    expect(
+      getSupabasePublishableKey(
+        createBaseEnv({
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+            "sb_publishable_previewkey",
+        })
+      )
+    ).toBe("sb_publishable_previewkey");
+    expect(getSupabasePublishableKey(createBaseEnv())).toBe("anon-key");
+  });
+
+  it("prefers the Supabase secret key and supports the legacy service-role fallback", () => {
+    expect(
+      getSupabaseSecretKey(
+        createBaseEnv({
+          SUPABASE_SECRET_KEY: "sb_secret_previewkey",
+        })
+      )
+    ).toBe("sb_secret_previewkey");
+    expect(getSupabaseSecretKey(createBaseEnv())).toBe("service-role-key");
+  });
+
   it("throws a controlled error when DATABASE_URL is missing in production", () => {
     expect(() =>
       getDatabaseUrl(
@@ -167,10 +192,10 @@ describe("env configuration helpers", () => {
       appEnvironment: "preview",
       publicAppUrl: "http://localhost:3000",
       supabaseUrl: "https://localdev.supabase.co",
-      hasSupabaseAnonKey: true,
+      hasSupabasePublishableKey: true,
       hasDatabaseUrl: true,
       hasDirectUrl: true,
-      hasServiceRoleKey: true,
+      hasSupabaseSecretKey: true,
       hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
@@ -185,10 +210,10 @@ describe("env configuration helpers", () => {
       appEnvironment: "development",
       publicAppUrl: "http://localhost:3000",
       supabaseUrl: "https://localdev.supabase.co",
-      hasSupabaseAnonKey: true,
+      hasSupabasePublishableKey: true,
       hasDatabaseUrl: true,
       hasDirectUrl: true,
-      hasServiceRoleKey: true,
+      hasSupabaseSecretKey: true,
       hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,
@@ -255,10 +280,10 @@ describe("env configuration helpers", () => {
       appEnvironment: "preview",
       publicAppUrl: "http://localhost:3000",
       supabaseUrl: "https://localdev.supabase.co",
-      hasSupabaseAnonKey: true,
+      hasSupabasePublishableKey: true,
       hasDatabaseUrl: true,
       hasDirectUrl: true,
-      hasServiceRoleKey: true,
+      hasSupabaseSecretKey: true,
       hasJobRunnerSecret: true,
       hasServerSentryDsn: false,
       hasClientSentryDsn: false,

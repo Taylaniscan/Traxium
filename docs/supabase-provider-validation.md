@@ -2,7 +2,7 @@
 
 This document records the Step 31 validation contract for Supabase Auth and Storage. The local app tests prove route behavior, tenant checks, and URL construction; this provider check proves the configured Supabase project matches the app contract where the provider exposes enough read-only evidence.
 
-For release signoff, use [provider-flow-validation.md](provider-flow-validation.md) as the master Gap 1 checklist. This Supabase-specific document remains the detailed reference for Auth, redirect allow-list, private Storage, signed URL, and anon/public evidence-denial proof.
+For release signoff, use [provider-flow-validation.md](provider-flow-validation.md) as the master Gap 1 checklist. This Supabase-specific document remains the detailed reference for Auth, redirect allow-list, private Storage, signed URL, and unauthenticated public-key evidence-denial proof.
 
 ## Read-Only Provider Check
 
@@ -16,7 +16,7 @@ The script is read-only. It does not create users, send emails, upload evidence,
 
 It checks:
 
-- `NEXT_PUBLIC_SUPABASE_URL`, anon key, and service-role key project/role alignment.
+- `NEXT_PUBLIC_SUPABASE_URL`, the publishable key (or legacy anon key), and secret key (or legacy service-role key) configuration.
 - Service-role Auth Admin read reachability without printing user emails.
 - The configured evidence bucket exists.
 - The evidence bucket is private (`public: false`).
@@ -24,8 +24,8 @@ It checks:
 - Existing evidence metadata remains tied to a saving card and organization-owned managed path.
 - Service-role storage can create a 60-second signed URL for an existing evidence object.
 - The signed URL is reachable with `HEAD`.
-- The anon key cannot create a signed URL for the same evidence object.
-- The anon key cannot download the same evidence object directly.
+- The unauthenticated publishable/anon key cannot create a signed URL for the same evidence object.
+- The unauthenticated publishable/anon key cannot download the same evidence object directly.
 - The unauthenticated public storage URL is not readable.
 - Application exports expose evidence coverage metadata only, never provider paths or signed URLs.
 
@@ -74,6 +74,6 @@ These prove app-side behavior, not provider dashboard settings.
 ## Result Interpretation
 
 - If `private_evidence_bucket` fails, create or correct the private Supabase Storage bucket before demos or pilots.
-- If any anon evidence check fails, remove the public/read policy before handling buyer evidence.
-- If service-role signed URL creation fails, verify `SUPABASE_SERVICE_ROLE_KEY`, bucket name, storage object existence, and service-role storage permissions.
+- If any unauthenticated public-key evidence check fails, remove the public/read policy before handling buyer evidence.
+- If server-key signed URL creation fails, verify `SUPABASE_SECRET_KEY` or the legacy `SUPABASE_SERVICE_ROLE_KEY`, bucket name, storage object existence, and server-key storage permissions.
 - If only `auth_redirect_allow_list` is blocked, finish the dashboard checks above before calling Step 31 fully provider-proven.

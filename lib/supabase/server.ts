@@ -6,7 +6,7 @@ import { createServerClient } from "@supabase/ssr";
 import {
   createSupabaseAdminClient,
   createSupabasePublicClient,
-  getSupabaseAnonKey,
+  getSupabasePublishableKey,
   getSupabaseUrl,
 } from "@/lib/supabase/service";
 
@@ -47,7 +47,7 @@ export async function createSupabaseServerClient() {
 export function createSupabaseRouteClient(cookies: SupabaseCookieAdapter) {
   return createServerClient(
     getSupabaseUrl(),
-    getSupabaseAnonKey(),
+    getSupabasePublishableKey(),
     {
       cookies,
     }

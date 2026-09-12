@@ -165,7 +165,8 @@ export default async function globalSetup() {
 
   const supabase = createClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    process.env.SUPABASE_SECRET_KEY?.trim() ||
+      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
       auth: {
         autoRefreshToken: false,

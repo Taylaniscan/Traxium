@@ -14,15 +14,6 @@ function readProjectFile(relativePath: string) {
   return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 }
 
-function createJwt(payload: Record<string, unknown>) {
-  const header = Buffer.from(
-    JSON.stringify({ alg: "HS256", typ: "JWT" })
-  ).toString("base64url");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
-  return `${header}.${body}.signature`;
-}
-
 function findWorkflowLineIndex(workflow: string, line: string) {
   return workflow.indexOf(`\n        ${line}\n`);
 }
@@ -37,9 +28,9 @@ describe("release safety consistency", () => {
       "DATABASE_URL",
       "DIRECT_URL",
       "NEXT_PUBLIC_SUPABASE_URL",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
       "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_SECRET_KEY",
       "SUPABASE_STORAGE_BUCKET",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
@@ -162,7 +153,9 @@ describe("release safety consistency", () => {
 
     expect(nextConfig).not.toMatch(/\benv\s*:/u);
     expect(nextConfig).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(nextConfig).not.toContain("SUPABASE_SECRET_KEY");
     expect(nextConfig).not.toContain("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    expect(nextConfig).not.toContain("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
     expect(nextConfig).toContain("Content-Security-Policy");
     expect(nextConfig).toContain("Strict-Transport-Security");
     expect(nextConfig).toContain("Permissions-Policy");
@@ -278,14 +271,9 @@ describe("release safety consistency", () => {
   });
 
   it("keeps predeploy summaries secret-safe while accepting preview-safe config", () => {
-    const anonKey = createJwt({
-      role: "anon",
-      ref: "previewci",
-    });
-    const serviceRoleKey = createJwt({
-      role: "service_role",
-      ref: "previewci",
-    });
+    const publishableKey =
+      "sb_publishable_previewci000000000000000000000000";
+    const secretKey = "sb_secret_previewci000000000000000000000000";
     const result = assertPredeployConfiguration({
       APP_ENV: "preview",
       VERCEL_ENV: "preview",
@@ -297,8 +285,8 @@ describe("release safety consistency", () => {
       DIRECT_URL:
         "postgresql://postgres.previewci:preview-ci-password@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30",
       NEXT_PUBLIC_SUPABASE_URL: "https://previewci.supabase.co",
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
-      SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+      SUPABASE_SECRET_KEY: secretKey,
       STRIPE_SECRET_KEY:
         "sk_test_FAKE",
       STRIPE_WEBHOOK_SECRET:
@@ -327,8 +315,8 @@ describe("release safety consistency", () => {
       productionAliasHost: "app.traxium.com",
       stripeKeyMode: "test",
     });
-    expect(serializedResult).not.toContain(anonKey);
-    expect(serializedResult).not.toContain(serviceRoleKey);
+    expect(serializedResult).not.toContain(publishableKey);
+    expect(serializedResult).not.toContain(secretKey);
     expect(serializedResult).not.toContain("preview-ci-password");
   });
 });

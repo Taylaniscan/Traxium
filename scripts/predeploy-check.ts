@@ -6,19 +6,19 @@ import {
   getDatabaseUrl,
   getDirectDatabaseUrl,
   getPublicAppUrl,
-  getSupabaseAnonKey,
   getSupabaseProjectUrl,
-  getSupabaseServiceRoleKey,
+  getSupabasePublishableKey,
+  getSupabaseSecretKey,
   resolveAppEnvironment,
 } from "../lib/env";
+import {
+  validateSupabasePublicApiKey,
+  validateSupabaseSecretApiKey,
+} from "../lib/supabase/api-key";
 
 type EnvSource = Record<string, string | undefined>;
 type DeployEnvironment = "preview" | "production";
 type HostingEnvironment = "development" | "preview" | "production" | null;
-type JwtClaims = {
-  role?: string;
-  ref?: string;
-};
 
 export type PredeployCheckResult = {
   appEnvironment: DeployEnvironment;
@@ -149,48 +149,6 @@ function normalizeHostingEnvironment(source: EnvSource): HostingEnvironment {
   }
 }
 
-function decodeJwtClaims(name: string, token: string): JwtClaims {
-  const [, payload = ""] = token.split(".");
-
-  if (!payload) {
-    throw new Error(`${name} must be a JWT-like value.`);
-  }
-
-  try {
-    const normalizedPayload = payload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
-
-    return JSON.parse(
-      Buffer.from(normalizedPayload, "base64").toString("utf8")
-    ) as JwtClaims;
-  } catch {
-    throw new Error(`${name} must be a valid JWT-like value.`);
-  }
-}
-
-function assertSupabaseJwt(input: {
-  name: string;
-  token: string;
-  expectedRole: "anon" | "service_role";
-  expectedProjectRef: string;
-}) {
-  const claims = decodeJwtClaims(input.name, input.token);
-
-  if (claims.role !== input.expectedRole) {
-    throw new Error(
-      `${input.name} must carry the ${input.expectedRole} role claim.`
-    );
-  }
-
-  if (claims.ref !== input.expectedProjectRef) {
-    throw new Error(
-      `${input.name} project ref mismatch. Expected ${input.expectedProjectRef}, received ${claims.ref ?? "unknown"}.`
-    );
-  }
-}
-
 function assertPreviewProductionSeparation(input: {
   appEnvironment: DeployEnvironment;
   appHost: string;
@@ -243,8 +201,8 @@ export function assertPredeployConfiguration(
   );
   const databaseUrl = parsePostgresUrl("DATABASE_URL", getDatabaseUrl(source));
   const directUrl = parsePostgresUrl("DIRECT_URL", getDirectDatabaseUrl(source));
-  const anonKey = getSupabaseAnonKey(source);
-  const serviceRoleKey = getSupabaseServiceRoleKey(source);
+  const publicKey = getSupabasePublishableKey(source);
+  const secretKey = getSupabaseSecretKey(source);
   const hostingEnvironment = normalizeHostingEnvironment(source);
   const productionAliasHost = parseHostFromDomainLikeValue(
     "VERCEL_PROJECT_PRODUCTION_URL",
@@ -262,22 +220,18 @@ export function assertPredeployConfiguration(
 
   const supabaseProjectRef = getSupabaseProjectRefFromUrl(supabaseUrl);
 
-  assertSupabaseJwt({
-    name: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    token: anonKey,
-    expectedRole: "anon",
-    expectedProjectRef: supabaseProjectRef,
+  validateSupabasePublicApiKey({
+    expectedUrl: supabaseUrl.toString(),
+    key: publicKey,
   });
-  assertSupabaseJwt({
-    name: "SUPABASE_SERVICE_ROLE_KEY",
-    token: serviceRoleKey,
-    expectedRole: "service_role",
-    expectedProjectRef: supabaseProjectRef,
+  validateSupabaseSecretApiKey({
+    expectedUrl: supabaseUrl.toString(),
+    key: secretKey,
   });
 
-  if (anonKey === serviceRoleKey) {
+  if (publicKey === secretKey) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY must not be identical."
+      "The Supabase public and server keys must not be identical."
     );
   }
 

@@ -21,8 +21,8 @@ Required in `development`, `preview`, and `production`:
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (preferred), or the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SECRET_KEY` (preferred), or the legacy `SUPABASE_SERVICE_ROLE_KEY`
 
 Required in `preview` and `production`, and required in `development` only when you want to exercise Stripe-backed billing locally:
 
@@ -59,8 +59,8 @@ Optional in all environments:
    - `DATABASE_URL`
    - `DIRECT_URL`
    - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+   - `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`)
 5. Add the Stripe billing values below if you need local checkout, portal, or webhook testing:
    - Optional: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` if a client Stripe integration needs it
    - `STRIPE_SECRET_KEY`
@@ -121,6 +121,7 @@ Only these variables are intended for browser exposure:
 
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_SENTRY_DSN`
@@ -133,6 +134,7 @@ Never expose:
 
 - `DATABASE_URL`
 - `DIRECT_URL`
+- `SUPABASE_SECRET_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SENTRY_DSN`
 - `ANALYTICS_HOST`

@@ -55,7 +55,7 @@ Traxium123!
 | taylaniscan+6@gmail.com | Aylin Demir | Category Owner / Member |
 | taylaniscan+7@gmail.com | Can Kaya | Buyer / Operations Stakeholder |
 
-When `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available, the seed creates or updates these Supabase Auth users safely through the Admin API. Supabase stores password hashes outside the application database. The script does not write plaintext passwords to Prisma tables and does not send invitation emails.
+When `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) are available, the seed creates or updates these Supabase Auth users safely through the Admin API. Supabase stores password hashes outside the application database. The script does not write plaintext passwords to Prisma tables and does not send invitation emails.
 
 If Supabase Admin Auth is unavailable, the script still creates the Prisma workspace, users, and memberships, then prints clear auth-linking instructions.
 

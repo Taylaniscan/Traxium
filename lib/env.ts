@@ -16,6 +16,7 @@ const DEFAULT_SUPABASE_STORAGE_BUCKET = "evidence-private";
 export const clientEnvKeys = [
   "NEXT_PUBLIC_APP_URL",
   "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_SENTRY_DSN",
@@ -29,6 +30,7 @@ export const serverEnvKeys = [
   "APP_ENV",
   "DATABASE_URL",
   "DIRECT_URL",
+  "SUPABASE_SECRET_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SUPABASE_STORAGE_BUCKET",
   "STRIPE_SECRET_KEY",
@@ -431,20 +433,63 @@ export function getSupabaseProjectUrl(source: EnvSource = process.env) {
   });
 }
 
-export function getSupabaseAnonKey(source: EnvSource = process.env) {
-  return readClientEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", {
+export function getSupabasePublishableKey(source: EnvSource = process.env) {
+  const publishableKey = readOptionalClientEnv(
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    { source }
+  );
+
+  if (publishableKey) {
+    return publishableKey;
+  }
+
+  const legacyAnonKey = readOptionalClientEnv(
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    { source }
+  );
+
+  if (legacyAnonKey) {
+    return legacyAnonKey;
+  }
+
+  return readClientEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", {
     source,
     requirement: "non-test",
-    description: "Supabase anon key.",
+    description:
+      "Supabase publishable key. The legacy NEXT_PUBLIC_SUPABASE_ANON_KEY is also supported.",
+  });
+}
+
+export function getSupabaseAnonKey(source: EnvSource = process.env) {
+  return getSupabasePublishableKey(source);
+}
+
+export function getSupabaseSecretKey(source: EnvSource = process.env) {
+  const secretKey = readOptionalServerEnv("SUPABASE_SECRET_KEY", { source });
+
+  if (secretKey) {
+    return secretKey;
+  }
+
+  const legacyServiceRoleKey = readOptionalServerEnv(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    { source }
+  );
+
+  if (legacyServiceRoleKey) {
+    return legacyServiceRoleKey;
+  }
+
+  return readServerEnv("SUPABASE_SECRET_KEY", {
+    source,
+    requirement: "non-test",
+    description:
+      "Supabase server secret key. The legacy SUPABASE_SERVICE_ROLE_KEY is also supported.",
   });
 }
 
 export function getSupabaseServiceRoleKey(source: EnvSource = process.env) {
-  return readServerEnv("SUPABASE_SERVICE_ROLE_KEY", {
-    source,
-    requirement: "non-test",
-    description: "Supabase service role key.",
-  });
+  return getSupabaseSecretKey(source);
 }
 
 export function getDatabaseUrl(source: EnvSource = process.env) {
@@ -621,19 +666,19 @@ export function assertEnvironmentConfiguration(
   const appEnvironment = resolveAppEnvironment(source);
   const publicAppUrl = getPublicAppUrl(source);
   const supabaseUrl = getSupabaseProjectUrl(source);
-  const supabaseAnonKey = getSupabaseAnonKey(source);
+  const supabasePublishableKey = getSupabasePublishableKey(source);
   const databaseUrl = getDatabaseUrl(source);
   const directUrl = getDirectDatabaseUrl(source);
-  const serviceRoleKey = getSupabaseServiceRoleKey(source);
+  const supabaseSecretKey = getSupabaseSecretKey(source);
 
   return {
     appEnvironment,
     publicAppUrl,
     supabaseUrl,
-    hasSupabaseAnonKey: Boolean(supabaseAnonKey),
+    hasSupabasePublishableKey: Boolean(supabasePublishableKey),
     hasDatabaseUrl: Boolean(databaseUrl),
     hasDirectUrl: Boolean(directUrl),
-    hasServiceRoleKey: Boolean(serviceRoleKey),
+    hasSupabaseSecretKey: Boolean(supabaseSecretKey),
     hasJobRunnerSecret: Boolean(getJobRunnerSecret(source)),
     hasServerSentryDsn: Boolean(getSentryDsnForRuntime("server", source)),
     hasClientSentryDsn: Boolean(getSentryDsnForRuntime("client", source)),

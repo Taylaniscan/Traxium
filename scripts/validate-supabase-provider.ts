@@ -1,12 +1,15 @@
 import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  getSupabasePublishableKey,
+  getSupabaseSecretKey,
+} from "@/lib/env";
 import { prisma } from "@/lib/prisma";
-
-type SupabaseJwtClaims = {
-  ref?: string;
-  role?: string;
-};
+import {
+  validateSupabasePublicApiKey,
+  validateSupabaseSecretApiKey,
+} from "@/lib/supabase/api-key";
 
 type CheckResult = {
   details?: Record<string, unknown>;
@@ -26,26 +29,8 @@ function readRequiredEnv(name: string) {
   return value;
 }
 
-function decodeJwtPayload(token: string) {
-  const payload = token.split(".")[1] ?? "";
-  const normalizedPayload = payload
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-    .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
-
-  return JSON.parse(Buffer.from(normalizedPayload, "base64").toString()) as SupabaseJwtClaims;
-}
-
 function getProjectRefFromUrl(url: string) {
   return new URL(url).hostname.split(".")[0] ?? "";
-}
-
-function getTokenClaims(name: string, token: string) {
-  try {
-    return decodeJwtPayload(token);
-  } catch {
-    throw new Error(`${name} is not a valid JWT.`);
-  }
 }
 
 function stableHash(value: string) {
@@ -81,68 +66,42 @@ function assertManagedEvidencePath(storagePath: string) {
 
 async function main() {
   const supabaseUrl = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const anonKey = readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  const serviceRoleKey = readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const publicKey = getSupabasePublishableKey();
+  const secretKey = getSupabaseSecretKey();
   const appUrl = readRequiredEnv("NEXT_PUBLIC_APP_URL");
   const storageBucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_EVIDENCE_BUCKET;
   const projectRef = getProjectRefFromUrl(supabaseUrl);
-  const anonClaims = getTokenClaims("NEXT_PUBLIC_SUPABASE_ANON_KEY", anonKey);
-  const serviceClaims = getTokenClaims("SUPABASE_SERVICE_ROLE_KEY", serviceRoleKey);
+  const publicKeyValidation = validateSupabasePublicApiKey({
+    expectedUrl: supabaseUrl,
+    key: publicKey,
+  });
+  const secretKeyValidation = validateSupabaseSecretApiKey({
+    expectedUrl: supabaseUrl,
+    key: secretKey,
+  });
   const results: CheckResult[] = [];
 
   results.push(
     buildResult("supabase_env_project_alignment", "passed", {
       projectRef,
-      anonRole: anonClaims.role,
-      serviceRole: serviceClaims.role,
-      anonProjectMatchesUrl: !anonClaims.ref || anonClaims.ref === projectRef,
+      publicKeyKind: publicKeyValidation.kind,
+      serverKeyKind: secretKeyValidation.kind,
+      publicKeyProjectClaimMatchesUrl:
+        publicKeyValidation.kind === "legacy-anon"
+          ? !publicKeyValidation.claims.ref ||
+            publicKeyValidation.claims.ref === projectRef
+          : null,
       appUrlOrigin: new URL(appUrl).origin,
     })
   );
 
-  if (anonClaims.role !== "anon") {
-    results.push(
-      buildResult("anon_key_role", "failed", {
-        expected: "anon",
-        actual: anonClaims.role ?? "unknown",
-      })
-    );
-  }
-
-  if (serviceClaims.role !== "service_role") {
-    results.push(
-      buildResult("service_role_key_role", "failed", {
-        expected: "service_role",
-        actual: serviceClaims.role ?? "unknown",
-      })
-    );
-  }
-
-  if (anonClaims.ref && anonClaims.ref !== projectRef) {
-    results.push(
-      buildResult("anon_key_project_ref", "failed", {
-        expected: projectRef,
-        actual: anonClaims.ref,
-      })
-    );
-  }
-
-  if (serviceClaims.ref && serviceClaims.ref !== projectRef) {
-    results.push(
-      buildResult("service_role_key_project_ref", "failed", {
-        expected: projectRef,
-        actual: serviceClaims.ref,
-      })
-    );
-  }
-
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
+  const admin = createClient(supabaseUrl, secretKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   });
-  const anon = createClient(supabaseUrl, anonKey, {
+  const anon = createClient(supabaseUrl, publicKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

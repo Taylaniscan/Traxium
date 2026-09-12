@@ -20,7 +20,9 @@ describe("supabase provider validation docs", () => {
     expect(docs).toContain("npm run supabase:validate");
     expect(docs).toContain("The script is read-only.");
     expect(docs).toContain("The evidence bucket is private");
-    expect(docs).toContain("The anon key cannot create a signed URL");
+    expect(docs).toContain(
+      "The unauthenticated publishable/anon key cannot create a signed URL"
+    );
     expect(docs).toContain("The unauthenticated public storage URL is not readable.");
     expect(docs).toContain("auth_redirect_allow_list");
     expect(docs).toContain("${NEXT_PUBLIC_APP_URL}/invite/*");

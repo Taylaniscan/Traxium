@@ -5,15 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import { assertPredeployConfiguration } from "@/scripts/predeploy-check";
 
-function createJwt(payload: Record<string, unknown>) {
-  const header = Buffer.from(
-    JSON.stringify({ alg: "HS256", typ: "JWT" })
-  ).toString("base64url");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
-  return `${header}.${body}.signature`;
-}
-
 function createDeployEnv(
   overrides: Record<string, string | undefined> = {}
 ) {
@@ -26,14 +17,9 @@ function createDeployEnv(
     DIRECT_URL:
       `postgresql://postgres.${projectRef}:secret@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30`,
     NEXT_PUBLIC_SUPABASE_URL: `https://${projectRef}.supabase.co`,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: createJwt({
-      role: "anon",
-      ref: projectRef,
-    }),
-    SUPABASE_SERVICE_ROLE_KEY: createJwt({
-      role: "service_role",
-      ref: projectRef,
-    }),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+      "sb_publishable_previewkey000000000000000000",
+    SUPABASE_SECRET_KEY: "sb_secret_previewkey000000000000000000000000",
     JOB_RUNNER_SECRET: "job-runner-secret",
     STRIPE_SECRET_KEY:
       "sk_test_FAKE",
@@ -70,11 +56,11 @@ describe("deploy guard", () => {
           VERCEL_ENV: "production",
           NEXT_PUBLIC_APP_URL: "https://app.traxium.com",
           PROJECT_REF: "prodproj",
-          SUPABASE_SERVICE_ROLE_KEY: undefined,
+          SUPABASE_SECRET_KEY: undefined,
         })
       )
     ).toThrow(
-      "Missing SUPABASE_SERVICE_ROLE_KEY. Supabase service role key. Required in development, preview, and production environments. Current environment: production."
+      "Missing SUPABASE_SECRET_KEY. Supabase server secret key. The legacy SUPABASE_SERVICE_ROLE_KEY is also supported. Required in development, preview, and production environments. Current environment: production."
     );
   });
 
