@@ -179,7 +179,7 @@ describe("export route", () => {
         ["Column / Term", "Definition", "Accepted Values / Review Note"],
         [
           "Savings Formula",
-          "(Baseline Price - New Price) × Annual Volume",
+          "(Effective Baseline - New Price) × Annual Volume",
           "",
         ],
       ],

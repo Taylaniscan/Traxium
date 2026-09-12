@@ -79,11 +79,12 @@ The fields are required and schema-backed. Imports may omit them and receive the
 
 When finance lock is active, all four classification fields are locked. Finance validation depends on both the amount and the nature of the claimed benefit.
 
-The existing formula remains:
+The canonical formula is:
 
-`Savings = (Baseline Price - New Price) x Annual Volume`
+`Savings = (Effective Baseline - New Price) x Annual Volume`
 
-Classification does not change calculation semantics.
+For Cost Avoidance, Effective Baseline is the avoided Reference Price. For all
+other impact types, Effective Baseline is the approved Baseline Price.
 
 ## D. What This Classification Does Not Do
 

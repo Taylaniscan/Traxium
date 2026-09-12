@@ -93,12 +93,17 @@ The saving-card register includes:
 - Business Unit
 - Baseline Price
 - New Price
+- Reference Price
 - Annual Volume
 - Volume Unit
 - Currency
 - Calculated Savings (Local)
 - Savings EUR / reporting currency
 - Savings USD
+- Current Fiscal Year Value (USD)
+- Impact-Start Fiscal Year Value (Local)
+- Annualized Run-Rate (Local)
+- Annualized Run-Rate (USD)
 - Impact Start Date
 - Impact End Date
 - Finance Lock Status
@@ -118,7 +123,10 @@ Fallback relation names are used when an alternative supplier or material was en
 
 The data dictionary defines every exported column, customer-facing phase labels, finance-lock meaning, evidence-status meaning, reporting basis, and the core savings formula:
 
-`(Baseline Price - New Price) × Annual Volume`
+`(Effective Baseline - New Price) × Annual Volume`
+
+Effective Baseline is Reference Price for Cost Avoidance and Baseline Price for
+all other impact types.
 
 It also states that workbook values do not constitute audited accounting recognition, GAAP treatment, ERP actual matching, or finance-system posting.
 
@@ -132,7 +140,7 @@ The import template contains:
 - `Proposed` as the operational import phase
 - Guidance that all rows are validated and committed together
 
-Required fields are Title, Supplier, Material, Category, Plant, Business Unit, Buyer, Baseline Price, New Price, Annual Volume, Currency, Start Date, and End Date.
+Required fields are Title, Supplier, Material, Category, Plant, Business Unit, Buyer, Baseline Price, New Price, Annual Volume, Currency, Start Date, and End Date. Reference Price is conditionally required for Cost Avoidance.
 
 ## Evidence Summary
 

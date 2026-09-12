@@ -152,7 +152,7 @@ Export includes:
 
 - `Portfolio Summary` with reporting basis, active cards, reconciled savings totals, implemented/captured value, finance locks, evidence coverage, phase counts, category totals, buyer totals, last update, and a zero-difference check against exported rows.
 - `Saving Cards` with controller-friendly headers, commercial assumptions, phases, ownership, plant/business-unit/category/supplier/material context, finance-lock status, workflow status, last update, cancellation reason, and fallback relation names.
-- `Data Dictionary` with field definitions, phase definitions, evidence/finance-lock meaning, exclusions, and the formula `(Baseline Price - New Price) × Annual Volume`.
+- `Data Dictionary` with field definitions, phase definitions, evidence/finance-lock meaning, exclusions, and the formula `(Effective Baseline - New Price) × Annual Volume`; Cost Avoidance uses Reference Price as the effective baseline.
 - `Import Template` with required columns, accepted finance-classification values, and one manufacturing example row.
 - `Evidence Summary` with card-level coverage metadata only.
 - Customer-facing Savings Type, Impact Type, Impact Recurrence, and Budget Impact columns, plus classification totals in the summary sheet.
