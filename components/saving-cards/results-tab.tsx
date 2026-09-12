@@ -45,6 +45,7 @@ import {
   savingsImpactRecurrenceLabels,
   savingsImpactTypeLabels,
 } from "@/lib/constants";
+import { resolveUnitSaving } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 type EditableField = "forecast" | "actual";
@@ -78,6 +79,7 @@ export function ResultsTab({
   materialName,
   baselinePrice,
   newPrice,
+  referencePrice,
   annualVolume,
   volumeUnit,
   currency,
@@ -90,6 +92,7 @@ export function ResultsTab({
   materialName: string;
   baselinePrice: number;
   newPrice: number;
+  referencePrice: number | null;
   annualVolume: number;
   volumeUnit: string;
   currency: "EUR" | "USD";
@@ -142,7 +145,13 @@ export function ResultsTab({
     void loadTimeline();
   }, [loadTimeline]);
 
-  const staticForecastSaving = (baselinePrice - newPrice) * annualVolume;
+  const staticForecastSaving =
+    resolveUnitSaving({
+      baselinePrice,
+      newPrice,
+      impactType,
+      referencePrice,
+    }) * annualVolume;
   const todayPeriodLabel = getCurrentPeriodLabel();
   const chartRows = useMemo(() => {
     let cumulativeForecast = 0;
@@ -340,13 +349,13 @@ export function ResultsTab({
             tone="slate"
           />
           <ResultMetric
-            label="YTD Forecast Saving"
+            label="Fiscal YTD Forecast Saving"
             value={formatCurrency(Math.round(data.summary.ytdForecastSaving), currency)}
             detail={`${data.summary.totalForecastMonths} planned month${data.summary.totalForecastMonths === 1 ? "" : "s"}`}
             tone="blue"
           />
           <ResultMetric
-            label="YTD Actual Saving"
+            label="Fiscal YTD Actual Saving"
             value={formatCurrency(Math.round(data.summary.ytdActualSaving), currency)}
             detail={`${data.summary.confirmedMonths} confirmed month${data.summary.confirmedMonths === 1 ? "" : "s"}`}
             tone="emerald"

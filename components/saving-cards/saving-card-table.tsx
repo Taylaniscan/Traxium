@@ -68,7 +68,10 @@ export function SavingCardTable({
   }, [cards, phaseFilter, search]);
 
   const activeFilters = Boolean(search.trim() || phaseFilter);
-  const totalSavings = filteredCards.reduce((sum, card) => sum + toNumber(card.calculatedSavings), 0);
+  const totalSavings = filteredCards.reduce(
+    (sum, card) => sum + toNumber(card.calculatedSavingsUSD),
+    0
+  );
   const lockedCount = filteredCards.filter((card) => card.financeLocked).length;
   const capturedCount = filteredCards.filter((card) => card.phase === "REALISED" || card.phase === "ACHIEVED").length;
   const totalLockedCount = cards.filter((card) => card.financeLocked).length;
@@ -306,10 +309,10 @@ export function SavingCardTable({
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-numeric text-base font-semibold">
-                      {formatCurrency(Math.round(toNumber(card.calculatedSavings)), "USD")}
+                      {formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")}
                     </p>
                     <p className="text-[12px] text-[var(--muted-foreground)]">
-                      {card.currency} basis
+                      USD reporting basis
                     </p>
                   </div>
                   <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>

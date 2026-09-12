@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { CommandCenterData, DashboardData } from "@/lib/types";
+import { calculateFiscalYearValue } from "@/lib/calculations";
 import {
   savingTypeLabels,
   savingsBudgetImpactLabels,
@@ -68,11 +69,23 @@ export function ExecutiveSavingsSummary({
     ? dashboardData.cards.filter((card) => card.phase !== "CANCELLED")
     : [];
   const inYearValue = activePortfolioCards.reduce(
-    (sum, card) => sum + normalizeMetricValue(card.inYearValue),
+    (sum, card) =>
+      sum +
+      calculateFiscalYearValue({
+        annualizedValue: normalizeMetricValue(card.annualizedRunRateUSD),
+        impactStartDate: normalizeMetricDate(card.impactStartDate),
+        impactEndDate: normalizeMetricDate(card.impactEndDate),
+        fiscalYear: {
+          startMonth: dashboardData.fiscalYearStartMonth ?? 1,
+        },
+        reportingDate: normalizeMetricDate(
+          dashboardData.reportingDate ?? new Date()
+        ),
+      }),
     0
   );
   const annualizedRunRate = activePortfolioCards.reduce(
-    (sum, card) => sum + normalizeMetricValue(card.annualizedRunRate),
+    (sum, card) => sum + normalizeMetricValue(card.annualizedRunRateUSD),
     0
   );
   const pendingApprovals = normalizeMetricValue(
@@ -242,7 +255,7 @@ export function ExecutiveSavingsSummary({
 
           <div className="grid gap-4 border-t border-[var(--border)] pt-5 lg:grid-cols-2">
             <ExecutiveMetric
-              label="In-Year Value (FY)"
+              label="Current Fiscal Year Value"
               value={formatCurrency(inYearValue, "USD")}
               detail="Prorated savings landing inside the current fiscal year across live initiatives."
             />
@@ -467,12 +480,21 @@ function buildClassificationBreakdown(
 
   for (const card of cards) {
     const label = getLabel(card);
-    totals.set(label, (totals.get(label) ?? 0) + normalizeMetricValue(card.calculatedSavings));
+    totals.set(
+      label,
+      (totals.get(label) ?? 0) +
+        normalizeMetricValue(card.calculatedSavingsUSD)
+    );
   }
 
   return [...totals.entries()]
     .map(([label, savings]) => ({ label, savings }))
     .sort((left, right) => right.savings - left.savings);
+}
+
+function normalizeMetricDate(value: unknown) {
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+  return Number.isNaN(date.getTime()) ? new Date(NaN) : date;
 }
 
 function ExecutiveSummaryNotice({

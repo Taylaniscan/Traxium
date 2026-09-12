@@ -327,4 +327,27 @@ describe("saving card form", () => {
     expect(markup).toContain("Hard Savings");
     expect(markup).toContain("Recurring");
   });
+
+  it("shows the canonical reference-price formula for cost avoidance", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(SavingCardForm, {
+        mode: "edit",
+        referenceData: createReferenceData(),
+        card: {
+          ...createLockedSavingCard(),
+          impactType: "COST_AVOIDANCE",
+          baselinePrice: 10,
+          newPrice: 11,
+          referencePrice: 12,
+          annualVolume: 100,
+          financeLocked: false,
+        } as unknown as NonNullable<SavingCardFormProps["card"]>,
+      })
+    );
+
+    expect(markup).toContain(
+      "(Reference price - New price) × Annual volume"
+    );
+    expect(markup).toContain("Calculated Savings: $100");
+  });
 });

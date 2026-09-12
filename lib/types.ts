@@ -565,6 +565,7 @@ export const dashboardCardSelect = {
   fxRate: true,
   annualVolume: true,
   calculatedSavings: true,
+  calculatedSavingsUSD: true,
   annualizedRunRate: true,
   annualizedRunRateUSD: true,
   inYearValue: true,
@@ -606,6 +607,8 @@ export type DashboardCardSummary = Prisma.SavingCardGetPayload<{
 
 export type DashboardData = {
   cards: DashboardCardSummary[];
+  fiscalYearStartMonth?: number;
+  reportingDate?: Date | string;
   annualTarget?: number;
   capturedActuals?: {
     actualizedUSD: number;
@@ -618,6 +621,7 @@ export type WorkspaceIdentity = {
   name: string;
   description?: string | null;
   slug: string;
+  fiscalYearStartMonth?: number;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  calculateFiscalYearValue,
   calculatePeriodizedSavings,
   impactDurationYears,
 } from "@/lib/calculations";
@@ -107,5 +108,73 @@ describe("calculatePeriodizedSavings", () => {
     expect(result.annualizedRunRate).toBe(0);
     expect(result.inYearValue).toBe(0);
     expect(result.totalValue).toBe(0);
+  });
+});
+
+describe("calculateFiscalYearValue", () => {
+  it("includes carryover impact in the fiscal year containing the reporting date", () => {
+    const value = calculateFiscalYearValue({
+      annualizedValue: 1200,
+      impactStartDate: new Date(Date.UTC(2025, 9, 1)),
+      impactEndDate: new Date(Date.UTC(2026, 8, 30)),
+      fiscalYear: { startMonth: 1 },
+      reportingDate: new Date(Date.UTC(2026, 8, 12)),
+    });
+
+    expect(value).toBeCloseTo(900, 6);
+  });
+
+  it("uses a non-January workspace fiscal year", () => {
+    const value = calculateFiscalYearValue({
+      annualizedValue: 1200,
+      impactStartDate: new Date(Date.UTC(2026, 0, 1)),
+      impactEndDate: new Date(Date.UTC(2026, 11, 31)),
+      fiscalYear: { startMonth: 4 },
+      reportingDate: new Date(Date.UTC(2026, 4, 15)),
+    });
+
+    expect(value).toBeCloseTo(900, 6);
+  });
+
+  it("prorates partial leap-month coverage by day", () => {
+    const value = calculateFiscalYearValue({
+      annualizedValue: 1200,
+      impactStartDate: new Date(Date.UTC(2024, 1, 15)),
+      impactEndDate: new Date(Date.UTC(2024, 1, 29)),
+      fiscalYear: { startMonth: 1 },
+      reportingDate: new Date(Date.UTC(2024, 5, 1)),
+    });
+
+    expect(value).toBeCloseTo(100 * (15 / 29), 6);
+  });
+
+  it("excludes future, expired, and malformed impact windows", () => {
+    const common = {
+      annualizedValue: 1200,
+      fiscalYear: { startMonth: 1 },
+      reportingDate: new Date(Date.UTC(2026, 5, 1)),
+    };
+
+    expect(
+      calculateFiscalYearValue({
+        ...common,
+        impactStartDate: new Date(Date.UTC(2027, 0, 1)),
+        impactEndDate: new Date(Date.UTC(2027, 11, 31)),
+      })
+    ).toBe(0);
+    expect(
+      calculateFiscalYearValue({
+        ...common,
+        impactStartDate: new Date(Date.UTC(2025, 0, 1)),
+        impactEndDate: new Date(Date.UTC(2025, 11, 31)),
+      })
+    ).toBe(0);
+    expect(
+      calculateFiscalYearValue({
+        ...common,
+        impactStartDate: new Date(NaN),
+        impactEndDate: new Date(Date.UTC(2026, 11, 31)),
+      })
+    ).toBe(0);
   });
 });

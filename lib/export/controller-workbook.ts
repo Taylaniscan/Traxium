@@ -14,7 +14,10 @@ import {
   savingsImpactTypeLabels,
   savingsImpactTypes,
 } from "@/lib/constants";
-import { resolveUnitSaving } from "@/lib/calculations";
+import {
+  calculateFiscalYearValue,
+  resolveUnitSaving,
+} from "@/lib/calculations";
 import { getEvidenceStatus, isFinanceEvidenceReviewPhase } from "@/lib/evidence";
 import { evidenceTypeLabels } from "@/lib/evidence-config";
 import { monthKey } from "@/lib/monthly-close";
@@ -40,13 +43,16 @@ export const controllerSavingCardColumns = [
   "Business Unit",
   "Baseline Price",
   "New Price",
+  "Reference Price",
   "Annual Volume",
   "Volume Unit",
   "Currency",
   "Calculated Savings (Local)",
   "Savings USD",
-  "In-Year Value (FY)",
-  "Annualized Run-Rate",
+  "Current Fiscal Year Value (USD)",
+  "Impact-Start Fiscal Year Value (Local)",
+  "Annualized Run-Rate (Local)",
+  "Annualized Run-Rate (USD)",
   "Impact Start Date",
   "Impact End Date",
   "Finance Lock Status",
@@ -100,6 +106,7 @@ export const importTemplateColumns = [
   "Business Unit",
   "Baseline Price",
   "New Price",
+  "Reference Price",
   "Annual Volume",
   "Currency",
   "Start Date",
@@ -161,15 +168,21 @@ const columnDefinitions: Record<
   "Business Unit": "Business unit in scope.",
   "Baseline Price": "Approved baseline unit price used in the savings calculation.",
   "New Price": "Negotiated or implemented unit price.",
+  "Reference Price":
+    "Avoided reference unit price used as the effective baseline for Cost Avoidance cards.",
   "Annual Volume": "Annualized quantity used in the savings calculation.",
   "Volume Unit": "Unit of measure for annual volume.",
   Currency: "Commercial assumption currency.",
   "Calculated Savings (Local)": "Calculated savings in the card currency.",
   "Savings USD": "Calculated savings in USD, the Traxium reporting currency.",
-  "In-Year Value (FY)":
-    "Prorated savings landing inside the fiscal year of the impact start, in the card currency.",
-  "Annualized Run-Rate":
+  "Current Fiscal Year Value (USD)":
+    "Prorated USD savings landing inside the workspace fiscal year containing the export timestamp.",
+  "Impact-Start Fiscal Year Value (Local)":
+    "Stored historical value prorated into the fiscal year containing the impact start, in the card currency.",
+  "Annualized Run-Rate (Local)":
     "Full-year steady-state savings once impact is fully ramped, in the card currency.",
+  "Annualized Run-Rate (USD)":
+    "Full-year steady-state savings once impact is fully ramped, in USD.",
   "Impact Start Date": "Date the financial or operational impact begins.",
   "Impact End Date": "Date the financial or operational impact ends.",
   "Finance Lock Status": "Whether finance-controlled assumptions are locked against normal edits.",
@@ -197,26 +210,28 @@ function sumSavings(cards: SavingCardPortfolio[]) {
   );
 }
 
-// The card's annualized run-rate equals its annual (USD) calculated savings, so the
-// USD run-rate total reconciles with the canonical savings basis.
 function sumAnnualizedRunRateUsd(cards: SavingCardPortfolio[]) {
-  return sumSavings(cards);
+  return cards.reduce(
+    (sum, card) => sum + normalizeNumber(card.annualizedRunRateUSD),
+    0
+  );
 }
 
-// In-year value as a fraction of the run-rate, applied to the USD savings basis so the
-// USD in-year total stays currency-consistent with the rest of the workbook.
-function getInYearFraction(card: SavingCardPortfolio) {
-  const runRate = normalizeNumber(card.annualizedRunRate);
-  if (runRate === 0) {
-    return 0;
-  }
-  return normalizeNumber(card.inYearValue) / runRate;
-}
-
-function sumInYearValueUsd(cards: SavingCardPortfolio[]) {
+function sumCurrentFiscalYearValueUsd(
+  cards: SavingCardPortfolio[],
+  reportingDate: Date,
+  fiscalYearStartMonth: number
+) {
   return cards.reduce(
     (sum, card) =>
-      sum + normalizeNumber(card.calculatedSavingsUSD) * getInYearFraction(card),
+      sum +
+      calculateFiscalYearValue({
+        annualizedValue: normalizeNumber(card.annualizedRunRateUSD),
+        impactStartDate: card.impactStartDate,
+        impactEndDate: card.impactEndDate,
+        fiscalYear: { startMonth: fiscalYearStartMonth },
+        reportingDate,
+      }),
     0
   );
 }
@@ -248,8 +263,15 @@ function getEvidenceTypes(card: SavingCardPortfolio) {
 }
 
 export function mapSavingCardsForControllerExport(
-  cards: SavingCardPortfolio[]
+  cards: SavingCardPortfolio[],
+  reporting: {
+    reportingDate?: Date;
+    fiscalYearStartMonth?: number;
+  } = {}
 ): ControllerWorkbookRow[] {
+  const reportingDate = reporting.reportingDate ?? new Date();
+  const fiscalYearStartMonth = reporting.fiscalYearStartMonth ?? 1;
+
   return cards.map((card) => ({
     "Saving Card Title": card.title,
     Phase: phaseLabels[card.phase],
@@ -273,13 +295,23 @@ export function mapSavingCardsForControllerExport(
     "Business Unit": card.businessUnit?.name ?? "",
     "Baseline Price": normalizeNumber(card.baselinePrice),
     "New Price": normalizeNumber(card.newPrice),
+    "Reference Price":
+      card.referencePrice === null ? "" : normalizeNumber(card.referencePrice),
     "Annual Volume": normalizeNumber(card.annualVolume),
     "Volume Unit": card.volumeUnit || "units",
     Currency: card.currency,
     "Calculated Savings (Local)": getLocalSavings(card),
     "Savings USD": normalizeNumber(card.calculatedSavingsUSD),
-    "In-Year Value (FY)": normalizeNumber(card.inYearValue),
-    "Annualized Run-Rate": normalizeNumber(card.annualizedRunRate),
+    "Current Fiscal Year Value (USD)": calculateFiscalYearValue({
+      annualizedValue: normalizeNumber(card.annualizedRunRateUSD),
+      impactStartDate: card.impactStartDate,
+      impactEndDate: card.impactEndDate,
+      fiscalYear: { startMonth: fiscalYearStartMonth },
+      reportingDate,
+    }),
+    "Impact-Start Fiscal Year Value (Local)": normalizeNumber(card.inYearValue),
+    "Annualized Run-Rate (Local)": normalizeNumber(card.annualizedRunRate),
+    "Annualized Run-Rate (USD)": normalizeNumber(card.annualizedRunRateUSD),
     "Impact Start Date": card.impactStartDate,
     "Impact End Date": card.impactEndDate,
     "Finance Lock Status": card.financeLocked ? "Locked" : "Not Locked",
@@ -313,7 +345,12 @@ function buildPortfolioSummaryRows(input: {
     ? Math.round((cardsWithEvidence.length / activeCards.length) * 100)
     : 0;
   const activeSavings = sumSavings(activeCards);
-  const savingCardRows = mapSavingCardsForControllerExport(cards);
+  const fiscalYearStartMonth =
+    workspaceReadiness.workspace.fiscalYearStartMonth ?? 1;
+  const savingCardRows = mapSavingCardsForControllerExport(cards, {
+    reportingDate: generatedAt,
+    fiscalYearStartMonth,
+  });
   const activeRowSavings = savingCardRows.reduce((sum, row, index) => {
     return cards[index]?.phase === "CANCELLED"
       ? sum
@@ -340,9 +377,13 @@ function buildPortfolioSummaryRows(input: {
     ["Active Cards", activeCards.length, "Excludes canceled cards"],
     ["Active Forecast / Pipeline Value (USD)", activeSavings, "Sum of active saving-card rows"],
     [
-      "In-Year Value (USD)",
-      sumInYearValueUsd(activeCards),
-      "Prorated active savings landing inside the fiscal year of impact start",
+      "Current Fiscal Year Value (USD)",
+      sumCurrentFiscalYearValueUsd(
+        activeCards,
+        generatedAt,
+        fiscalYearStartMonth
+      ),
+      "Prorated active savings landing inside the workspace fiscal year containing the export timestamp",
     ],
     [
       "Annualized Run-Rate (USD)",
@@ -480,8 +521,8 @@ function buildDataDictionaryRows() {
     ["Column / Term", "Definition", "Accepted Values / Review Note"],
     [
       "Savings Formula",
-      "(Baseline Price - New Price) × Annual Volume",
-      "Traxium does not calculate accounting recognition.",
+      "(Effective Baseline - New Price) × Annual Volume",
+      "Effective Baseline is Reference Price for Cost Avoidance; otherwise Baseline Price. Traxium does not calculate accounting recognition.",
     ],
     [
       "Reporting Basis",
@@ -537,6 +578,7 @@ function buildImportTemplateRows(): ControllerWorkbookRow[] {
       "Business Unit": "Packaging Colorants",
       "Baseline Price": 1.42,
       "New Price": 1.31,
+      "Reference Price": "",
       "Annual Volume": 850000,
       Currency: "USD",
       "Start Date": "2026-01-01",
@@ -705,7 +747,11 @@ export function buildControllerWorkbookModel(input: {
     generatedAt: input.generatedAt,
     reportingCurrency: "USD",
     portfolioSummaryRows: summary.rows,
-    savingCardRows: mapSavingCardsForControllerExport(input.cards),
+    savingCardRows: mapSavingCardsForControllerExport(input.cards, {
+      reportingDate: input.generatedAt,
+      fiscalYearStartMonth:
+        input.workspaceReadiness.workspace.fiscalYearStartMonth ?? 1,
+    }),
     dataDictionaryRows: buildDataDictionaryRows(),
     importTemplateRows: buildImportTemplateRows(),
     evidenceSummaryRows: buildEvidenceSummaryRows(input.cards),

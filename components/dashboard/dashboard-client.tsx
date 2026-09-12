@@ -50,6 +50,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getPhaseVisuals } from "@/components/ui/phase-badge";
+import { calculateFiscalYearValue } from "@/lib/calculations";
 import { phaseLabels, phases } from "@/lib/constants";
 import type {
   DashboardCardSummary,
@@ -105,6 +106,11 @@ type DashboardMetrics = {
   byCategory: DashboardChartDatum[];
   monthlyTrend: DashboardForecastDatum[];
   topProjects: DashboardProjectRow[];
+};
+
+type DashboardReportingContext = {
+  fiscalYearStartMonth?: number;
+  reportingDate?: Date | string;
 };
 
 type DashboardDataWarning = {
@@ -243,38 +249,51 @@ function buildSavingsBreakdown(
         label,
         savings: 0,
       };
-      acc[label].savings += normalizeDashboardNumber(card.calculatedSavings);
+      acc[label].savings += normalizeDashboardNumber(card.calculatedSavingsUSD);
       return acc;
     }, {})
   );
 }
 
-export function deriveDashboardMetrics(cards: DashboardData["cards"]): DashboardMetrics {
+export function deriveDashboardMetrics(
+  cards: DashboardData["cards"],
+  reporting: DashboardReportingContext = {}
+): DashboardMetrics {
+  const reportingDate = parseDashboardDate(reporting.reportingDate ?? new Date());
+  const fiscalYearStartMonth = reporting.fiscalYearStartMonth ?? 1;
   const pipelineSavings = cards
     .filter((card) => card.phase !== "CANCELLED")
     .reduce(
-      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavingsUSD),
       0
     );
   const realisedSavings = cards
     .filter((card) => card.phase === "REALISED")
     .reduce(
-      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavingsUSD),
       0
     );
   const achievedSavings = cards
     .filter((card) => card.phase === "ACHIEVED")
     .reduce(
-      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+      (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavingsUSD),
       0
     );
   const activeCards = cards.filter((card) => card.phase !== "CANCELLED");
   const inYearValue = activeCards.reduce(
-    (sum, card) => sum + normalizeDashboardNumber(card.inYearValue),
+    (sum, card) =>
+      sum +
+      calculateFiscalYearValue({
+        annualizedValue: normalizeDashboardNumber(card.annualizedRunRateUSD),
+        impactStartDate: parseDashboardDate(card.impactStartDate) ?? new Date(NaN),
+        impactEndDate: parseDashboardDate(card.impactEndDate) ?? new Date(NaN),
+        fiscalYear: { startMonth: fiscalYearStartMonth },
+        reportingDate: reportingDate ?? new Date(NaN),
+      }),
     0
   );
   const annualizedRunRate = activeCards.reduce(
-    (sum, card) => sum + normalizeDashboardNumber(card.annualizedRunRate),
+    (sum, card) => sum + normalizeDashboardNumber(card.annualizedRunRateUSD),
     0
   );
 
@@ -289,7 +308,7 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
     >((acc, card) => {
       const bucket = resolveDashboardMonthBucket(card.impactStartDate);
       const key = `${bucket.sortValue}:${bucket.month}`;
-      const savings = normalizeDashboardNumber(card.calculatedSavings);
+      const savings = normalizeDashboardNumber(card.calculatedSavingsUSD);
 
       acc[key] ??= {
         month: bucket.month,
@@ -322,7 +341,7 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
       savings: cards
         .filter((card) => card.phase === phase)
         .reduce(
-          (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavings),
+          (sum, card) => sum + normalizeDashboardNumber(card.calculatedSavingsUSD),
           0
         ),
     })),
@@ -336,8 +355,8 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
     topProjects: [...cards]
       .sort(
         (left, right) =>
-          normalizeDashboardNumber(right.calculatedSavings) -
-          normalizeDashboardNumber(left.calculatedSavings)
+          normalizeDashboardNumber(right.calculatedSavingsUSD) -
+          normalizeDashboardNumber(left.calculatedSavingsUSD)
       )
       .slice(0, 5)
       .map((card) => ({
@@ -349,7 +368,7 @@ export function deriveDashboardMetrics(cards: DashboardData["cards"]): Dashboard
         phase:
           phaseLabels[card.phase] ??
           normalizeDashboardLabel(card.phase, "Unknown phase"),
-        value: normalizeDashboardNumber(card.calculatedSavings),
+        value: normalizeDashboardNumber(card.calculatedSavingsUSD),
       })),
   };
 }
@@ -358,9 +377,9 @@ function inspectDashboardData(cards: DashboardData["cards"]): DashboardDataWarni
   return {
     hasInvalidSavings: cards.some((card) => {
       const value =
-        typeof card.calculatedSavings === "number"
-          ? card.calculatedSavings
-          : Number(card.calculatedSavings);
+        typeof card.calculatedSavingsUSD === "number"
+          ? card.calculatedSavingsUSD
+          : Number(card.calculatedSavingsUSD);
       return !Number.isFinite(value);
     }),
     hasInvalidDates: cards.some((card) => {
@@ -430,7 +449,7 @@ function buildDashboardExceptions(
         impactStartTimestamp === null
           ? null
           : Math.round((impactStartTimestamp - todayTimestamp) / DAY_MS);
-      const value = normalizeDashboardNumber(card.calculatedSavings);
+      const value = normalizeDashboardNumber(card.calculatedSavingsUSD);
       const meta = `${normalizeDashboardLabel(
         card.buyer?.name,
         "Unassigned buyer"
@@ -595,7 +614,10 @@ export function DashboardClient({
 }) {
   const dataError = loadState?.dataError?.trim() || null;
   const readinessError = loadState?.readinessError?.trim() || null;
-  const metrics = deriveDashboardMetrics(data.cards);
+  const metrics = deriveDashboardMetrics(data.cards, {
+    fiscalYearStartMonth: data.fiscalYearStartMonth,
+    reportingDate: data.reportingDate,
+  });
   const debugInfo = inspectDashboardData(data.cards);
   const annualTarget = normalizeDashboardNumber(
     (data as DashboardData & { annualTarget?: unknown }).annualTarget
@@ -830,7 +852,7 @@ export function DashboardClient({
           <KpiCard
             label="In-Year Value"
             value={formatCurrency(Math.round(metrics.inYearValue), "USD")}
-            description="Prorated savings landing inside the current fiscal year, based on each card's impact start date."
+            description="Prorated savings landing inside the current workspace fiscal year, based on each card's impact window."
             tone="neutral"
             size="hero"
             icon={<CalendarRange />}
@@ -925,7 +947,7 @@ export function DashboardClient({
                     {recentAchievements[0].title} reached Captured in the last
                     24 hours for {recentAchievements[0].buyer.name} at{" "}
                     {formatCurrency(
-                      recentAchievements[0].calculatedSavings,
+                      recentAchievements[0].calculatedSavingsUSD,
                       "USD"
                     )}
                     .

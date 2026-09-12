@@ -48,6 +48,7 @@ export async function getWorkspaceReadiness(
             name: true,
             description: true,
             slug: true,
+            fiscalYearStartMonth: true,
             createdAt: true,
             updatedAt: true,
           },

@@ -1,5 +1,9 @@
 import { ForecastSource } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
+import {
+  resolveFiscalYearWindow,
+  resolveUnitSaving,
+} from "@/lib/calculations";
 import { prisma } from "@/lib/prisma";
 import {
   buildTenantOwnedRelationWhere,
@@ -104,6 +108,13 @@ const scopedVolumeCardSelect = {
   volumeUnit: true,
   baselinePrice: true,
   newPrice: true,
+  referencePrice: true,
+  impactType: true,
+  organization: {
+    select: {
+      fiscalYearStartMonth: true,
+    },
+  },
 } satisfies Prisma.SavingCardSelect;
 
 type ScopedVolumeCard = Prisma.SavingCardGetPayload<{
@@ -318,7 +329,15 @@ function buildVolumeTimelineResult(
   forecasts: VolumeForecastRow[],
   actuals: VolumeActualRow[]
 ): VolumeTimelineResult {
-  const priceDelta = toNumber(card.baselinePrice) - toNumber(card.newPrice);
+  const priceDelta = resolveUnitSaving({
+    baselinePrice: toNumber(card.baselinePrice),
+    newPrice: toNumber(card.newPrice),
+    impactType: card.impactType,
+    referencePrice:
+      card.referencePrice === null || card.referencePrice === undefined
+        ? null
+        : toNumber(card.referencePrice),
+  });
   const rows = new Map<string, TimelineAccumulator>();
   const defaultUnit = card.volumeUnit ?? "units";
 
@@ -397,11 +416,15 @@ function buildVolumeTimelineResult(
     });
 
   const currentMonth = getCurrentMonthStartUtc();
-  const currentYear = currentMonth.getUTCFullYear();
+  const fiscalYear = resolveFiscalYearWindow(
+    currentMonth,
+    card.organization.fiscalYearStartMonth
+  );
   const ytdRows = timeline.filter((row) => {
     const period = new Date(row.periodDate);
     return (
-      period.getUTCFullYear() === currentYear &&
+      fiscalYear !== null &&
+      period.getTime() >= fiscalYear.start.getTime() &&
       period.getTime() <= currentMonth.getTime()
     );
   });

@@ -81,11 +81,19 @@ function createDashboardCard(
     newPrice: 10,
     annualVolume: 1000,
     calculatedSavings: 125000,
+    calculatedSavingsUSD: 125000,
+    annualizedRunRate: 125000,
+    annualizedRunRateUSD: 125000,
+    inYearValue: 93750,
+    inYearValueUSD: 93750,
+    currency: "USD",
+    fxRate: 1,
     frequency: "RECURRING",
     savingDriver: "Price renegotiation",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
     impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
     category: {
       name: "Packaging",
     },
@@ -125,6 +133,7 @@ describe("dashboard client runtime regression", () => {
         title: "Packaging recovery",
         phase: "VALIDATED",
         calculatedSavings: -25000,
+        calculatedSavingsUSD: -25000,
         impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
         category: {
           name: "Packaging",
@@ -134,6 +143,7 @@ describe("dashboard client runtime regression", () => {
         title: "Freight correction",
         phase: "REALISED",
         calculatedSavings: -10000,
+        calculatedSavingsUSD: -10000,
         impactStartDate: new Date("2026-05-01T00:00:00.000Z"),
         category: {
           name: "Logistics",
@@ -159,6 +169,7 @@ describe("dashboard client runtime regression", () => {
         title: "Valid savings line",
         phase: "VALIDATED",
         calculatedSavings: 50000,
+        calculatedSavingsUSD: 50000,
         impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
         category: {
           name: "Resins",
@@ -168,6 +179,7 @@ describe("dashboard client runtime regression", () => {
         title: "Malformed savings line",
         phase: "REALISED",
         calculatedSavings: Number.NaN,
+        calculatedSavingsUSD: Number.NaN,
         impactStartDate: "not-a-real-date",
         category: {
           name: "",

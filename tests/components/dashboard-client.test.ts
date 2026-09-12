@@ -70,11 +70,19 @@ function createDashboardCard(
     newPrice: 10,
     annualVolume: 1000,
     calculatedSavings: 125000,
+    calculatedSavingsUSD: 125000,
+    annualizedRunRate: 125000,
+    annualizedRunRateUSD: 125000,
+    inYearValue: 93750,
+    inYearValueUSD: 93750,
+    currency: "USD",
+    fxRate: 1,
     frequency: "RECURRING",
     savingDriver: "Price renegotiation",
     implementationComplexity: "Low",
     qualificationStatus: "Approved",
     impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
+    impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
     category: {
       name: "Packaging",
     },
@@ -117,11 +125,19 @@ function createUtopiaDashboardCards(): DashboardData["cards"] {
       newPrice: card.newPrice,
       annualVolume: card.annualVolume,
       calculatedSavings: savings.localSavings,
+      calculatedSavingsUSD: savings.savingsUSD,
+      annualizedRunRate: savings.localSavings,
+      annualizedRunRateUSD: savings.savingsUSD,
+      inYearValue: savings.localSavings,
+      inYearValueUSD: savings.savingsUSD,
+      currency: card.currency,
+      fxRate: resolveUtopiaFxRate(card.currency),
       frequency: "RECURRING",
       savingDriver: card.savingDriver,
       implementationComplexity: card.implementationComplexity,
       qualificationStatus: card.qualificationStatus,
       impactStartDate: parseUtopiaDate(card.impactStart),
+      impactEndDate: parseUtopiaDate(card.impactEnd),
       category: {
         name: card.categoryName,
       },
@@ -207,6 +223,7 @@ describe("dashboard client", () => {
           cards: [
             createDashboardCard({
               calculatedSavings: 0,
+              calculatedSavingsUSD: 0,
               phase: "IDEA",
             }),
           ],
@@ -230,6 +247,7 @@ describe("dashboard client", () => {
           cards: [
             createDashboardCard({
               calculatedSavings: -25000,
+              calculatedSavingsUSD: -25000,
               phase: "VALIDATED",
             }),
           ],
@@ -257,11 +275,13 @@ describe("dashboard client", () => {
             createDashboardCard({
               title: "Valid card",
               calculatedSavings: 50000,
+              calculatedSavingsUSD: 50000,
               impactStartDate: new Date("2026-04-01T00:00:00.000Z"),
             }),
             createDashboardCard({
               title: "Malformed card",
               calculatedSavings: Number.NaN,
+              calculatedSavingsUSD: Number.NaN,
               impactStartDate: "not-a-real-date",
               category: {
                 name: "",
@@ -289,6 +309,7 @@ describe("dashboard client", () => {
       createDashboardCard({
         impactStartDate: "not-a-real-date",
         calculatedSavings: 40000,
+        calculatedSavingsUSD: 40000,
       }),
     ]);
 
@@ -299,6 +320,91 @@ describe("dashboard client", () => {
         forecast: 48000,
       },
     ]);
+  });
+
+  it("aggregates every USD-labelled dashboard metric from persisted USD values", () => {
+    const metrics = deriveDashboardMetrics([
+      createDashboardCard({
+        id: "usd-card",
+        title: "USD card",
+        phase: "REALISED",
+        calculatedSavings: 100,
+        calculatedSavingsUSD: 100,
+        annualizedRunRate: 100,
+        annualizedRunRateUSD: 100,
+        inYearValue: 100,
+        inYearValueUSD: 100,
+        impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+      }),
+      createDashboardCard({
+        id: "eur-card",
+        title: "EUR card",
+        phase: "ACHIEVED",
+        currency: "EUR",
+        calculatedSavings: 100,
+        calculatedSavingsUSD: 120,
+        annualizedRunRate: 100,
+        annualizedRunRateUSD: 120,
+        inYearValue: 100,
+        inYearValueUSD: 120,
+        impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+      }),
+    ], {
+      fiscalYearStartMonth: 1,
+      reportingDate: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(metrics.pipelineSavings).toBe(220);
+    expect(metrics.realisedSavings).toBe(100);
+    expect(metrics.achievedSavings).toBe(120);
+    expect(metrics.inYearValue).toBe(220);
+    expect(metrics.annualizedRunRate).toBe(220);
+    expect(metrics.byCategory).toEqual([
+      {
+        label: "Packaging",
+        savings: 220,
+      },
+    ]);
+    expect(metrics.topProjects.map((project) => project.value)).toEqual([
+      120,
+      100,
+    ]);
+  });
+
+  it("reports value in the workspace fiscal year and excludes non-overlapping cards", () => {
+    const metrics = deriveDashboardMetrics(
+      [
+        createDashboardCard({
+          id: "carryover-card",
+          annualizedRunRateUSD: 1200,
+          impactStartDate: new Date("2025-10-01T00:00:00.000Z"),
+          impactEndDate: new Date("2026-09-30T00:00:00.000Z"),
+          inYearValueUSD: 300,
+        }),
+        createDashboardCard({
+          id: "future-card",
+          annualizedRunRateUSD: 2400,
+          impactStartDate: new Date("2027-01-01T00:00:00.000Z"),
+          impactEndDate: new Date("2027-12-31T00:00:00.000Z"),
+          inYearValueUSD: 2400,
+        }),
+        createDashboardCard({
+          id: "expired-card",
+          annualizedRunRateUSD: 3600,
+          impactStartDate: new Date("2025-01-01T00:00:00.000Z"),
+          impactEndDate: new Date("2025-12-31T00:00:00.000Z"),
+          inYearValueUSD: 3600,
+        }),
+      ],
+      {
+        fiscalYearStartMonth: 1,
+        reportingDate: new Date("2026-09-12T00:00:00.000Z"),
+      }
+    );
+
+    expect(metrics.inYearValue).toBeCloseTo(900, 6);
   });
 
   it("derives populated executive metrics from the UtopiaTrax demo portfolio", () => {

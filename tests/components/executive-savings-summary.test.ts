@@ -103,6 +103,10 @@ function createDashboardData(
         impactRecurrence: "RECURRING",
         budgetImpact: "BUDGET_IMPACT",
         calculatedSavings: 100000,
+        calculatedSavingsUSD: 100000,
+        annualizedRunRateUSD: 100000,
+        impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
         evidence: [
           {
             id: "evidence-1",
@@ -119,6 +123,10 @@ function createDashboardData(
         impactRecurrence: "TEMPORARY",
         budgetImpact: "FORECAST_AVOIDANCE",
         calculatedSavings: 50000,
+        calculatedSavingsUSD: 50000,
+        annualizedRunRateUSD: 50000,
+        impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
         evidence: [],
       },
       {
@@ -129,9 +137,15 @@ function createDashboardData(
         impactRecurrence: "ONE_TIME",
         budgetImpact: "BUDGET_IMPACT",
         calculatedSavings: 25000,
+        calculatedSavingsUSD: 25000,
+        annualizedRunRateUSD: 25000,
+        impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
         evidence: [],
       },
     ],
+    fiscalYearStartMonth: 1,
+    reportingDate: new Date("2026-06-01T00:00:00.000Z"),
     annualTarget: 350000,
     ...overrides,
   } as unknown as DashboardData;
@@ -197,5 +211,64 @@ describe("executive savings summary", () => {
     expect(markup).toContain("No executive savings data is available yet");
     expect(markup).toContain("Create saving card");
     expect(markup).toContain("Open command center");
+  });
+
+  it("uses USD values and the reporting fiscal year for report breakdowns", () => {
+    const baseCard = {
+      phase: "VALIDATED",
+      savingType: "PRICE_REDUCTION",
+      impactType: "HARD_SAVINGS",
+      impactRecurrence: "RECURRING",
+      budgetImpact: "BUDGET_IMPACT",
+      impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+      impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+      evidence: [],
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ExecutiveSavingsSummary, {
+        commandCenterData: createCommandCenterData({
+          kpis: {
+            totalPipelineSavings: 220,
+            realisedSavings: 0,
+            achievedSavings: 0,
+            savingsForecast: 220,
+            activeProjects: 2,
+            pendingApprovals: 0,
+          },
+          pendingApprovalQueue: [],
+          overdueItems: [],
+          financeLockedItems: [],
+          recentDecisions: [],
+        }),
+        dashboardData: {
+          cards: [
+            {
+              ...baseCard,
+              id: "usd-card",
+              title: "USD card",
+              currency: "USD",
+              calculatedSavings: 100,
+              calculatedSavingsUSD: 100,
+              annualizedRunRateUSD: 100,
+            },
+            {
+              ...baseCard,
+              id: "eur-card",
+              title: "EUR card",
+              currency: "EUR",
+              calculatedSavings: 100,
+              calculatedSavingsUSD: 120,
+              annualizedRunRateUSD: 120,
+            },
+          ] as unknown as DashboardData["cards"],
+          fiscalYearStartMonth: 1,
+          reportingDate: new Date("2026-06-01T00:00:00.000Z"),
+        },
+      })
+    );
+
+    expect(markup).toContain("Current Fiscal Year Value");
+    expect(markup).toContain("$220");
+    expect(markup).not.toContain("$200");
   });
 });

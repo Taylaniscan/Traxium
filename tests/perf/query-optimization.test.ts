@@ -452,6 +452,9 @@ describe("query optimization helpers", () => {
 
   it("keeps short-lived dashboard caching tenant-scoped", async () => {
     process.env.ENABLE_SHORT_LIVED_CACHE_IN_TESTS = "true";
+    mockPrisma.organization.findUnique
+      .mockResolvedValueOnce({ fiscalYearStartMonth: 4 })
+      .mockResolvedValueOnce({ fiscalYearStartMonth: 7 });
     mockPrisma.savingCard.findMany
       .mockResolvedValueOnce([
         {
@@ -471,7 +474,9 @@ describe("query optimization helpers", () => {
     const otherDashboard = await getDashboardData(OTHER_ORGANIZATION_ID);
 
     expect(firstDashboard).toEqual(secondDashboard);
-    expect(otherDashboard).toEqual({
+    expect(firstDashboard.fiscalYearStartMonth).toBe(4);
+    expect(otherDashboard).toMatchObject({
+      fiscalYearStartMonth: 7,
       cards: [
         {
           id: "card-2",
@@ -479,6 +484,7 @@ describe("query optimization helpers", () => {
         },
       ],
     });
+    expect(otherDashboard.reportingDate).toBeInstanceOf(Date);
     expect(mockPrisma.savingCard.findMany).toHaveBeenCalledTimes(2);
     expect(mockPrisma.savingCard.findMany).toHaveBeenNthCalledWith(1, {
       where: {

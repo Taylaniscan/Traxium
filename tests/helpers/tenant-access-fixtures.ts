@@ -12,8 +12,13 @@ export function createScopedSavingCard(
     volumeUnit: string;
     baselinePrice: number;
     newPrice: number;
+    referencePrice: number | null;
+    impactType: "HARD_SAVINGS" | "COST_AVOIDANCE";
+    fiscalYearStartMonth: number;
   }> = {}
 ) {
+  const { fiscalYearStartMonth = 1, ...cardOverrides } = overrides;
+
   return {
     id: "card-1",
     organizationId: DEFAULT_ORGANIZATION_ID,
@@ -22,7 +27,12 @@ export function createScopedSavingCard(
     volumeUnit: "kg",
     baselinePrice: 10,
     newPrice: 8,
-    ...overrides,
+    referencePrice: null,
+    impactType: "HARD_SAVINGS" as const,
+    organization: {
+      fiscalYearStartMonth,
+    },
+    ...cardOverrides,
   };
 }
 

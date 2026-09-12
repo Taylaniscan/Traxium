@@ -594,8 +594,8 @@ function getKanbanDebugWarning(columns: KanbanColumns) {
   const allCards = phases.flatMap((phase) => columns[phase]);
   const hasInvalidSavings = allCards.some(
     (card) =>
-      typeof card.calculatedSavings !== "number" ||
-      !Number.isFinite(card.calculatedSavings)
+      typeof card.calculatedSavingsUSD !== "number" ||
+      !Number.isFinite(card.calculatedSavingsUSD)
   );
 
   return hasInvalidSavings
@@ -1147,7 +1147,7 @@ function KanbanColumn({
   });
 
   const totalSavings = cards.reduce(
-    (sum, card) => sum + normalizeSavings(card.calculatedSavings),
+    (sum, card) => sum + normalizeSavings(card.calculatedSavingsUSD),
     0
   );
 
@@ -1348,7 +1348,7 @@ function KanbanCardBody({
           <div className="flex items-center justify-between gap-3">
             <span className="text-[var(--muted-foreground)]">Savings</span>
             <span className="text-numeric font-semibold">
-              {formatCurrency(card.calculatedSavings, "USD")}
+              {formatCurrency(card.calculatedSavingsUSD, "USD")}
             </span>
           </div>
           <div className="flex items-center justify-between gap-3">

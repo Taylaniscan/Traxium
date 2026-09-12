@@ -65,6 +65,13 @@ describe("tenant isolation queries", () => {
         volumeUnit: true,
         baselinePrice: true,
         newPrice: true,
+        referencePrice: true,
+        impactType: true,
+        organization: {
+          select: {
+            fiscalYearStartMonth: true,
+          },
+        },
       },
     });
     expect(mockPrisma.materialConsumptionForecast.findMany).not.toHaveBeenCalled();
@@ -140,10 +147,97 @@ describe("tenant isolation queries", () => {
         volumeUnit: true,
         baselinePrice: true,
         newPrice: true,
+        referencePrice: true,
+        impactType: true,
+        organization: {
+          select: {
+            fiscalYearStartMonth: true,
+          },
+        },
       },
     });
     expect(mockPrisma.materialConsumptionForecast.findMany).toHaveBeenCalledTimes(1);
     expect(mockPrisma.materialConsumptionActual.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the avoided reference price for cost-avoidance volume savings", async () => {
+    const period = DEFAULT_TENANT_PERIOD;
+    mockPrisma.savingCard.findFirst.mockResolvedValueOnce({
+      ...createScopedSavingCard({
+        baselinePrice: 10,
+        newPrice: 11,
+      }),
+      impactType: "COST_AVOIDANCE",
+      referencePrice: 12,
+    });
+    mockPrisma.materialConsumptionForecast.findMany.mockResolvedValueOnce([
+      {
+        period,
+        forecastQty: 100,
+        unit: "kg",
+        source: ForecastSource.MANUAL_ENTRY,
+      },
+    ]);
+    mockPrisma.materialConsumptionActual.findMany.mockResolvedValueOnce([
+      {
+        period,
+        actualQty: 100,
+        unit: "kg",
+        source: ForecastSource.ERP_CSV_UPLOAD,
+      },
+    ]);
+
+    const timeline = await getVolumeTimeline(
+      "card-1",
+      DEFAULT_ORGANIZATION_ID
+    );
+
+    expect(timeline.timeline[0]).toMatchObject({
+      forecastSaving: 100,
+      actualSaving: 100,
+    });
+  });
+
+  it("scopes volume YTD summaries to the workspace fiscal year", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-12T00:00:00.000Z"));
+
+    try {
+      mockPrisma.savingCard.findFirst.mockResolvedValueOnce(
+        createScopedSavingCard({ fiscalYearStartMonth: 4 })
+      );
+      mockPrisma.materialConsumptionForecast.findMany.mockResolvedValueOnce([
+        {
+          period: new Date("2026-03-01T00:00:00.000Z"),
+          forecastQty: 10,
+          unit: "kg",
+          source: ForecastSource.MANUAL_ENTRY,
+        },
+        {
+          period: new Date("2026-04-01T00:00:00.000Z"),
+          forecastQty: 20,
+          unit: "kg",
+          source: ForecastSource.MANUAL_ENTRY,
+        },
+        {
+          period: new Date("2026-09-01T00:00:00.000Z"),
+          forecastQty: 30,
+          unit: "kg",
+          source: ForecastSource.MANUAL_ENTRY,
+        },
+      ]);
+      mockPrisma.materialConsumptionActual.findMany.mockResolvedValueOnce([]);
+
+      const timeline = await getVolumeTimeline(
+        "card-1",
+        DEFAULT_ORGANIZATION_ID
+      );
+
+      expect(timeline.summary.ytdForecastQty).toBe(50);
+      expect(timeline.summary.ytdForecastSaving).toBe(100);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not update a record from another tenant", async () => {

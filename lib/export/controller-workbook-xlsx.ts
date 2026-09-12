@@ -85,8 +85,10 @@ function applyColumnFormats(
     "Reference Price",
     "Calculated Savings (Local)",
     "Savings USD",
-    "In-Year Value (FY)",
-    "Annualized Run-Rate",
+    "Current Fiscal Year Value (USD)",
+    "Impact-Start Fiscal Year Value (Local)",
+    "Annualized Run-Rate (Local)",
+    "Annualized Run-Rate (USD)",
   ]);
   const numberHeaders = new Set(["Annual Volume", "Evidence Count"]);
   const dateHeaders = new Set([

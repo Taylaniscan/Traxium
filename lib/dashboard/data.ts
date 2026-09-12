@@ -71,7 +71,8 @@ export async function getDashboardData(
   context: TenantContextSource
 ): Promise<DashboardData> {
   const scope = resolveTenantScope(context);
-  const currentYear = new Date().getUTCFullYear();
+  const reportingDate = new Date();
+  const currentYear = reportingDate.getUTCFullYear();
 
   return getScopedCachedValue(
     {
@@ -97,12 +98,20 @@ export async function getDashboardData(
               },
             });
 
-      const [cards, annualTargetSummary] = await Promise.all([
+      const [cards, annualTargetSummary, organization] = await Promise.all([
         prisma.savingCard.findMany({
           where: buildTenantScopeWhere(scope),
           select: dashboardCardSelect,
         }),
         annualTargetAggregate,
+        prisma.organization.findUnique({
+          where: {
+            id: scope.organizationId,
+          },
+          select: {
+            fiscalYearStartMonth: true,
+          },
+        }),
       ]);
       const annualTarget = toNumber(annualTargetSummary._sum.targetValue);
       const capturedActuals = await getCapturedActualizedValue(
@@ -110,8 +119,12 @@ export async function getDashboardData(
         cards
       );
 
-      const base =
-        capturedActuals.cardsWithActuals > 0 ? { cards, capturedActuals } : { cards };
+      const base = {
+        cards,
+        fiscalYearStartMonth: organization?.fiscalYearStartMonth ?? 1,
+        reportingDate,
+        ...(capturedActuals.cardsWithActuals > 0 ? { capturedActuals } : {}),
+      };
       return annualTarget > 0 ? { ...base, annualTarget } : base;
     }
   );

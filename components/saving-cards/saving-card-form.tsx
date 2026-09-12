@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { PhaseBadge } from "@/components/ui/phase-badge";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { calculateSavings } from "@/lib/calculations";
+import { calculateSavings, resolveUnitSaving } from "@/lib/calculations";
 import {
   currencies,
   frequencies,
@@ -205,6 +205,16 @@ export function SavingCardForm({
     form.impactType,
     form.referencePrice
   ]);
+  const liveUnitSaving = resolveUnitSaving({
+    baselinePrice: Number(form.baselinePrice || 0),
+    newPrice: Number(form.newPrice || 0),
+    impactType: form.impactType,
+    referencePrice:
+      form.impactType === "COST_AVOIDANCE" && form.referencePrice
+        ? Number(form.referencePrice)
+        : null,
+  });
+  const savingsFormula = `(${form.impactType === "COST_AVOIDANCE" ? "Reference" : "Baseline"} price - New price) × Annual volume`;
   const isNegativeSavings = liveSavings.savingsUSD < 0;
   const missingCoreSetup = workspaceReadiness?.missingCoreSetup ?? [];
   const showSetupCallout = mode === "create" && missingCoreSetup.length > 0;
@@ -804,7 +814,7 @@ export function SavingCardForm({
                       />
                       <InlineCalculationCue
                         label="Unit Delta"
-                        value={formatCurrency(Math.round(Number(form.baselinePrice || 0) - Number(form.newPrice || 0)), form.currency)}
+                        value={formatCurrency(Math.round(liveUnitSaving), form.currency)}
                         detail="Per-unit price difference"
                       />
                       {multiCurrencyEnabled ? (
@@ -828,7 +838,7 @@ export function SavingCardForm({
                         Calculated Savings: {formatCurrency(Math.round(liveSavings.savingsUSD), "USD")}
                       </p>
                       <p className="mt-1 text-sm">
-                        (Baseline price - New price) × Annual volume
+                        {savingsFormula}
                       </p>
                       {isNegativeSavings ? (
                         <p className="mt-1 text-sm">This is not a positive savings case. Check whether this is cost avoidance or another impact type.</p>
@@ -838,9 +848,9 @@ export function SavingCardForm({
                     <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/18 p-4 md:p-5">
                       <SectionLabel title="Calculated View" description="Use this as a quick cross-check before submitting the card; finance will review the baseline, new price, annual volume, currency, FX, impact dates, and evidence together." />
                       <div className="grid gap-4 md:grid-cols-3">
-                        <SummaryMetric label="Calculated Savings" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
+                        <SummaryMetric label={`Calculated Savings (${form.currency})`} value={formatCurrency(Math.round(liveSavings.localSavings), form.currency)} />
                         <SummaryMetric label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-                        <SummaryMetric label="Savings Formula" value="(Baseline price - New price) × Annual volume" muted />
+                        <SummaryMetric label="Savings Formula" value={savingsFormula} muted />
                       </div>
                     </div>
                   </div>
@@ -1164,9 +1174,9 @@ export function SavingCardForm({
             </SummaryGroup>
 
             <SummaryGroup title="Calculation Summary">
+              <InfoRow label={`Calculated Savings (${form.currency})`} value={formatCurrency(Math.round(liveSavings.localSavings), form.currency)} />
               <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-              <InfoRow label="Calculated Savings (USD)" value={formatCurrency(Math.round(liveSavings.savingsUSD), "USD")} />
-              <InfoRow label="Formula" value="(Baseline price - New price) × Annual volume" />
+              <InfoRow label="Formula" value={savingsFormula} />
               <InfoRow label="Frequency" value={form.frequency.replaceAll("_", " ")} />
             </SummaryGroup>
 

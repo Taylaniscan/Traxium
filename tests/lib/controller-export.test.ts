@@ -100,6 +100,7 @@ function createReadiness(): WorkspaceReadiness {
       id: "org-1",
       name: "Atlas Manufacturing",
       slug: "atlas-manufacturing",
+      fiscalYearStartMonth: 1,
       description: "Manufacturing procurement workspace.",
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       updatedAt: new Date("2026-04-01T00:00:00.000Z"),
@@ -219,8 +220,8 @@ describe("controller workbook model", () => {
     });
     expect(model.dataDictionaryRows).toContainEqual([
       "Savings Formula",
-      "(Baseline Price - New Price) × Annual Volume",
-      "Traxium does not calculate accounting recognition.",
+      "(Effective Baseline - New Price) × Annual Volume",
+      "Effective Baseline is Reference Price for Cost Avoidance; otherwise Baseline Price. Traxium does not calculate accounting recognition.",
     ]);
     expect(
       model.portfolioSummaryRows.find(
@@ -230,6 +231,47 @@ describe("controller workbook model", () => {
       "Reconciliation Difference (USD)",
       0,
       "Expected to equal zero",
+    ]);
+  });
+
+  it("separates current workspace fiscal-year value from the stored impact-start-year value", () => {
+    const readiness = createReadiness();
+    const model = buildControllerWorkbookModel({
+      cards: [
+        createCard({
+          calculatedSavings: 1200,
+          calculatedSavingsUSD: 1200,
+          annualizedRunRate: 1200,
+          annualizedRunRateUSD: 1200,
+          inYearValue: 1200,
+          inYearValueUSD: 1200,
+          impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+          impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
+        }),
+      ],
+      generatedAt: new Date("2026-06-05T12:00:00.000Z"),
+      workspaceReadiness: {
+        ...readiness,
+        workspace: {
+          ...readiness.workspace,
+          fiscalYearStartMonth: 4,
+        },
+      },
+    });
+
+    expect(model.savingCardRows[0]).toMatchObject({
+      "Current Fiscal Year Value (USD)": 900,
+      "Impact-Start Fiscal Year Value (Local)": 1200,
+      "Annualized Run-Rate (USD)": 1200,
+    });
+    expect(
+      model.portfolioSummaryRows.find(
+        (row) => row[0] === "Current Fiscal Year Value (USD)"
+      )
+    ).toEqual([
+      "Current Fiscal Year Value (USD)",
+      900,
+      "Prorated active savings landing inside the workspace fiscal year containing the export timestamp",
     ]);
   });
 

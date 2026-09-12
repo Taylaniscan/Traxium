@@ -16,6 +16,11 @@ export type FiscalYearDefinition = {
   startMonth: number;
 };
 
+export type FiscalYearWindow = {
+  start: Date;
+  end: Date;
+};
+
 export type PeriodizedSavingsArgs = SavingsArgs & {
   impactStartDate: Date;
   impactEndDate: Date;
@@ -158,7 +163,14 @@ function coveredMonthFraction(
 }
 
 /** Fiscal year (inclusive start/end) that contains the given date for a startMonth (1-12). */
-function fiscalYearWindow(date: Date, startMonth: number) {
+export function resolveFiscalYearWindow(
+  date: Date,
+  startMonth: number
+): FiscalYearWindow | null {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+
   const normalizedStartMonth = Math.min(Math.max(Math.trunc(startMonth) || 1, 1), 12);
   const startMonthIndex = normalizedStartMonth - 1;
   const year = date.getUTCFullYear();
@@ -170,6 +182,45 @@ function fiscalYearWindow(date: Date, startMonth: number) {
   const end = new Date(Date.UTC(fyStartYear + 1, startMonthIndex, 1) - MS_PER_DAY);
 
   return { start, end };
+}
+
+/**
+ * Prorate an annualized value into the workspace fiscal year containing the
+ * reporting date. The impact window and fiscal-year boundaries are inclusive.
+ */
+export function calculateFiscalYearValue(input: {
+  annualizedValue: number;
+  impactStartDate: Date;
+  impactEndDate: Date;
+  fiscalYear: FiscalYearDefinition;
+  reportingDate: Date;
+}) {
+  const annualizedValue = Number(input.annualizedValue);
+  const start = input.impactStartDate;
+  const end = input.impactEndDate;
+  const fiscalYear = resolveFiscalYearWindow(
+    input.reportingDate,
+    input.fiscalYear.startMonth
+  );
+  const validImpactWindow =
+    start instanceof Date &&
+    end instanceof Date &&
+    !Number.isNaN(start.getTime()) &&
+    !Number.isNaN(end.getTime()) &&
+    end.getTime() >= start.getTime();
+
+  if (!isFiniteNumber(annualizedValue) || !validImpactWindow || !fiscalYear) {
+    return 0;
+  }
+
+  const coveredMonths = coveredMonthFraction(
+    start,
+    end,
+    fiscalYear.start,
+    fiscalYear.end
+  );
+
+  return annualizedValue * (coveredMonths / 12);
 }
 
 /**
@@ -222,15 +273,15 @@ export function calculatePeriodizedSavings(
     !Number.isNaN(end.getTime()) &&
     end.getTime() >= start.getTime();
 
-  const fy = validWindow
-    ? fiscalYearWindow(start, args.fiscalYear.startMonth)
-    : null;
-
-  const inYearMonths =
-    validWindow && fy ? coveredMonthFraction(start, end, fy.start, fy.end) : 0;
   const totalMonths = validWindow ? coveredMonthFraction(start, end) : 0;
 
-  const inYearValue = annualizedRunRate * (inYearMonths / 12);
+  const inYearValue = calculateFiscalYearValue({
+    annualizedValue: annualizedRunRate,
+    impactStartDate: start,
+    impactEndDate: end,
+    fiscalYear: args.fiscalYear,
+    reportingDate: start,
+  });
   const totalValue = annualizedRunRate * (totalMonths / 12);
 
   const toUsd = (localValue: number) =>
@@ -256,4 +307,3 @@ export function getValueBadgeTone(phase: Phase) {
   if (phase === "CANCELLED") return "rose";
   return "blue";
 }
-

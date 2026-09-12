@@ -438,7 +438,7 @@ export function SavingCardDetailWorkspace({
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
               <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
               <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
-              <Metric label="In-Year Value (FY)" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
+              <Metric label="Impact-Start Fiscal Year Value" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
               <Metric label="Annualized Run-Rate" value={formatCurrency(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
               <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
               <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
@@ -643,6 +643,9 @@ export function SavingCardDetailWorkspace({
           materialName={card.material.name}
           baselinePrice={toNumber(card.baselinePrice)}
           newPrice={toNumber(card.newPrice)}
+          referencePrice={
+            card.referencePrice === null ? null : toNumber(card.referencePrice)
+          }
           annualVolume={toNumber(card.annualVolume)}
           volumeUnit={card.volumeUnit}
           currency={card.currency}
