@@ -164,7 +164,11 @@ model Organization {
   slug                 String    @unique
   fiscalYearStartMonth Int       @default(1)
   defaultCurrency      Currency  @default(USD)
+  reportingCurrency    Currency  @default(USD)
   multiCurrencyEnabled Boolean   @default(false)
+  locale               String    @default("en-US")
+  timeZone             String    @default("UTC")
+  measurementSystem    String    @default("metric")
   workspaceTrialEndsAt DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -378,13 +382,15 @@ model SavingCard {
   plantId                       String?
   businessUnitId                String?
   buyerId                       String
-  baselinePrice                 Decimal                 @db.Decimal(18, 4)
-  newPrice                      Decimal                 @db.Decimal(18, 4)
-  referencePrice                Decimal?                @db.Decimal(18, 4)
-  annualVolume                  Decimal                 @db.Decimal(18, 4)
+  baselinePrice                 Decimal                 @db.Decimal(22, 8)
+  newPrice                      Decimal                 @db.Decimal(22, 8)
+  referencePrice                Decimal?                @db.Decimal(22, 8)
+  annualVolume                  Decimal                 @db.Decimal(22, 6)
   volumeUnit                    String                  @default("units")
   currency                      Currency
-  fxRate                        Decimal                 @db.Decimal(18, 8)
+  fxRate                        Decimal                 @db.Decimal(20, 10)
+  fxRateEffectiveDate           DateTime?
+  fxRateSource                  String?
   calculatedSavings             Decimal                 @db.Decimal(18, 4)
   calculatedSavingsUSD          Decimal                 @db.Decimal(18, 4)
   annualizedRunRate             Decimal                 @default(0) @db.Decimal(18, 4)
@@ -526,7 +532,8 @@ model SavingCardAlternativeSupplier {
   supplierId         String?
   supplierNameManual String?
   country            String
-  quotedPrice        Decimal  @db.Decimal(18, 4)
+  quotedPrice        Decimal  @db.Decimal(22, 8)
+  quotedUnit         String?
   currency           Currency
   leadTimeDays       Int
   moq                Int
@@ -549,7 +556,8 @@ model SavingCardAlternativeMaterial {
   supplierId          String?
   supplierNameManual  String?
   specification       String
-  quotedPrice         Decimal  @db.Decimal(18, 4)
+  quotedPrice         Decimal  @db.Decimal(22, 8)
+  quotedUnit          String?
   currency            Currency
   performanceImpact   String
   qualificationStatus String
@@ -663,7 +671,7 @@ model AuditLog {
 model FxRate {
   id        String   @id @default(cuid())
   currency  Currency
-  rateToUSD Decimal  @db.Decimal(18, 8)
+  rateToUSD Decimal  @db.Decimal(20, 10)
   validFrom DateTime
   createdAt DateTime @default(now())
 }
@@ -918,7 +926,7 @@ model PilotLead {
   phone             String?
   companySize       String?
   industry          String?
-  country           String          @default("United States")
+  country           String
   state             String?
   currentTracking   String?
   savingsPain       String?

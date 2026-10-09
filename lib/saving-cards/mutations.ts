@@ -21,7 +21,6 @@ import { WorkflowError } from "@/lib/workflow/errors";
 import {
   buildSavingCardPayload,
   DEFAULT_FISCAL_YEAR_START_MONTH,
-  getLatestFxRate,
   getScopedAlternativeMaterial,
   getScopedAlternativeSupplier,
   getScopedSavingCard,
@@ -33,15 +32,33 @@ import {
   savingCardDetailInclude,
 } from "@/lib/saving-cards/shared";
 import { invalidatePortfolioSurfaceCaches } from "@/lib/workspace/portfolio-surface-cache";
+import { unitConversionFactor, validateUnit } from "@/lib/units";
 
 function buildSavingCardPath(savingCardId: string) {
   return `/saving-cards/${savingCardId}`;
+}
+
+function resolveQuoteUnit(input: string | undefined, fallback: string | null): string | null {
+  const value = input ?? fallback ?? null;
+  if (value === null) return null;
+  const result = validateUnit(value);
+  if (!result.valid) throw new WorkflowError(result.error, 422);
+  return result.code;
+}
+
+function quotePriceInCardUnit(quotedPrice: number, quotedUnit: string | null, cardUnit: string) {
+  if (!quotedUnit) throw new WorkflowError("The quote unit was not recorded. Select an explicit unit before applying this historical alternative.", 409);
+  const factor = unitConversionFactor(quotedUnit, cardUnit);
+  if (factor === null || factor <= 0) throw new WorkflowError(`Quote unit ${quotedUnit} is incompatible with card unit ${cardUnit}. Choose a compatible unit before applying the alternative.`, 409);
+  return quotedPrice / factor;
 }
 
 type WorkspaceFinancialSettings = {
   fiscalYearStartMonth: number;
   defaultCurrency: Currency;
   multiCurrencyEnabled: boolean;
+  defaultFxRate: number;
+  defaultFxEffectiveDate: Date | null;
 };
 
 async function getWorkspaceFinancialSettings(
@@ -55,17 +72,27 @@ async function getWorkspaceFinancialSettings(
       multiCurrencyEnabled: true,
     },
   });
+  let defaultFxRate = 1;
+  let defaultFxEffectiveDate: Date | null = null;
+  if (organization?.defaultCurrency === Currency.EUR && !organization.multiCurrencyEnabled) {
+    const rate = await prisma.fxRate.findFirst({ where: { currency: Currency.EUR, validFrom: { lte: new Date() } }, orderBy: { validFrom: "desc" } });
+    defaultFxRate = rate ? toNumber(rate.rateToUSD) : NaN;
+    defaultFxEffectiveDate = rate?.validFrom ?? null;
+    if (!Number.isFinite(defaultFxRate) || defaultFxRate <= 0) throw new Error("A positive EUR-to-USD FX rate is required to create EUR cards. Ask an admin to configure the rate.");
+  }
 
   return {
     fiscalYearStartMonth:
       organization?.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
     defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
     multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+    defaultFxRate,
+    defaultFxEffectiveDate,
   };
 }
 
 /**
- * In a single-currency (USD-only) workspace the buyer never sees a currency or fx
+ * In a single-currency workspace the buyer never sees a currency or fx
  * field, so any client-supplied currency/fxRate is ignored: cards are forced to the
  * workspace default currency at a 1.0 rate regardless of payload.
  */
@@ -80,7 +107,8 @@ function applyWorkspaceCurrencyMode(
   return {
     ...input,
     currency: settings.defaultCurrency,
-    fxRate: 1,
+    fxRate: settings.defaultFxRate,
+    fxRateEffectiveDate: settings.defaultFxEffectiveDate?.toISOString() ?? null,
   };
 }
 
@@ -156,7 +184,8 @@ async function createSavingCardRecord(
   tx: Prisma.TransactionClient,
   payload: ReturnType<typeof buildSavingCardPayload>,
   actorId: string,
-  organizationId: string
+  organizationId: string,
+  fxRateSource: "MANUAL" | "WORKSPACE_RATE"
 ) {
   const resolved = await resolveMasterData(tx, actorId, organizationId, payload);
 
@@ -188,8 +217,11 @@ async function createSavingCardRecord(
       newPrice: payload.newPrice,
       referencePrice: payload.referencePrice,
       annualVolume: payload.annualVolume,
+      volumeUnit: payload.volumeUnit,
       currency: payload.currency,
       fxRate: payload.fxRate,
+      fxRateEffectiveDate: payload.currency === Currency.EUR ? payload.fxRateEffectiveDate ?? null : null,
+      fxRateSource: payload.currency === Currency.EUR ? fxRateSource : null,
       calculatedSavings: payload.calculatedSavings,
       calculatedSavingsUSD: payload.calculatedSavingsUSD,
       annualizedRunRate: payload.annualizedRunRate,
@@ -252,7 +284,7 @@ export async function createSavingCard(
   assertInitialSavingCardPhase(payload.phase);
 
   const card = await prisma.$transaction(
-    (tx) => createSavingCardRecord(tx, payload, actorId, organizationId),
+    (tx) => createSavingCardRecord(tx, payload, actorId, organizationId, settings.multiCurrencyEnabled ? "MANUAL" : "WORKSPACE_RATE"),
     SAVING_CARD_CREATE_TRANSACTION_OPTIONS
   );
 
@@ -350,8 +382,11 @@ export async function updateSavingCard(
         annualVolume: existing.financeLocked
           ? existing.annualVolume
           : payload.annualVolume,
+        volumeUnit: existing.financeLocked ? existing.volumeUnit : payload.volumeUnit,
         currency: existing.financeLocked ? existing.currency : payload.currency,
         fxRate: existing.financeLocked ? existing.fxRate : payload.fxRate,
+        fxRateEffectiveDate: existing.financeLocked ? existing.fxRateEffectiveDate : payload.currency === Currency.EUR ? payload.fxRateEffectiveDate ?? existing.fxRateEffectiveDate : null,
+        fxRateSource: existing.financeLocked ? existing.fxRateSource : payload.currency === Currency.EUR ? settings.multiCurrencyEnabled ? "MANUAL" : "WORKSPACE_RATE" : null,
         calculatedSavings: existing.financeLocked
           ? existing.calculatedSavings
           : payload.calculatedSavings,
@@ -429,7 +464,7 @@ export async function createAlternativeSupplier(
   const payload = alternativeSupplierSchema.parse(input);
 
   const alternative = await prisma.$transaction(async (tx) => {
-    await getScopedSavingCard(tx, savingCardId, organizationId);
+    const card = await getScopedSavingCard(tx, savingCardId, organizationId);
 
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
@@ -449,6 +484,7 @@ export async function createAlternativeSupplier(
         supplierNameManual: supplierId ? null : normalizeName(payload.supplier?.name),
         country: payload.country,
         quotedPrice: payload.quotedPrice,
+        quotedUnit: resolveQuoteUnit(payload.quotedUnit, card.volumeUnit),
         currency: payload.currency,
         leadTimeDays: payload.leadTimeDays,
         moq: payload.moq,
@@ -501,7 +537,6 @@ export async function updateAlternativeSupplier(
     if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
       throw new Error("Alternative supplier not found.");
     }
-
     const supplierId = payload.supplier
       ? (await resolveOrCreateSupplier(tx, organizationId, payload.supplier)).id
       : null;
@@ -520,6 +555,7 @@ export async function updateAlternativeSupplier(
         supplierNameManual: supplierId ? null : normalizeName(payload.supplier?.name),
         country: payload.country,
         quotedPrice: payload.quotedPrice,
+        quotedUnit: resolveQuoteUnit(payload.quotedUnit, existing.quotedUnit),
         currency: payload.currency,
         leadTimeDays: payload.leadTimeDays,
         moq: payload.moq,
@@ -586,7 +622,7 @@ export async function createAlternativeMaterial(
   const payload = alternativeMaterialSchema.parse(input);
 
   const alternative = await prisma.$transaction(async (tx) => {
-    await getScopedSavingCard(tx, savingCardId, organizationId);
+    const card = await getScopedSavingCard(tx, savingCardId, organizationId);
 
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
@@ -612,6 +648,7 @@ export async function createAlternativeMaterial(
         supplierNameManual: supplierId ? null : normalizeName(payload.supplier?.name),
         specification: payload.specification,
         quotedPrice: payload.quotedPrice,
+        quotedUnit: resolveQuoteUnit(payload.quotedUnit, card.volumeUnit),
         currency: payload.currency,
         performanceImpact: payload.performanceImpact,
         qualificationStatus: payload.qualificationStatus,
@@ -662,7 +699,6 @@ export async function updateAlternativeMaterial(
     if (expectedSavingCardId && existing.savingCardId !== expectedSavingCardId) {
       throw new Error("Alternative material not found.");
     }
-
     const materialId = payload.material
       ? (await resolveOrCreateMaterial(tx, organizationId, payload.material)).id
       : null;
@@ -687,6 +723,7 @@ export async function updateAlternativeMaterial(
         supplierNameManual: supplierId ? null : normalizeName(payload.supplier?.name),
         specification: payload.specification,
         quotedPrice: payload.quotedPrice,
+        quotedUnit: resolveQuoteUnit(payload.quotedUnit, existing.quotedUnit),
         currency: payload.currency,
         performanceImpact: payload.performanceImpact,
         qualificationStatus: payload.qualificationStatus,
@@ -771,16 +808,16 @@ async function applySelectedAlternativeSupplier(
     );
   }
 
+  if (alternative.currency !== card.currency) throw new WorkflowError(`Quote currency ${alternative.currency} differs from card currency ${card.currency}. Convert the quote explicitly before applying it.`, 409);
+  const scenarioPrice = quotePriceInCardUnit(toNumber(alternative.quotedPrice), alternative.quotedUnit, card.volumeUnit);
+
   const settings = await getWorkspaceFinancialSettings(organizationId);
-  const scenarioCurrency = settings.multiCurrencyEnabled
-    ? alternative.currency
-    : settings.defaultCurrency;
-  const fxRate = settings.multiCurrencyEnabled
-    ? await getLatestFxRate(tx, scenarioCurrency)
-    : 1;
+  const scenarioCurrency = card.currency;
+  const fxRate = toNumber(card.fxRate);
+  if (!Number.isFinite(fxRate) || fxRate <= 0) throw new WorkflowError("The card FX rate is invalid. Review the financial assumptions before applying this quote.", 409);
   const financials = computeCardScenarioFinancials({
     baselinePrice: toNumber(card.baselinePrice),
-    newPrice: toNumber(alternative.quotedPrice),
+    newPrice: scenarioPrice,
     annualVolume: toNumber(card.annualVolume),
     fxRate,
     currency: scenarioCurrency,
@@ -800,7 +837,7 @@ async function applySelectedAlternativeSupplier(
       alternativeSupplierManualName: alternative.supplierId
         ? null
         : alternative.supplierNameManual,
-      newPrice: alternative.quotedPrice,
+      newPrice: scenarioPrice,
       currency: scenarioCurrency,
       fxRate,
       ...financials,
@@ -847,16 +884,16 @@ async function applySelectedAlternativeMaterial(
     );
   }
 
+  if (alternative.currency !== card.currency) throw new WorkflowError(`Quote currency ${alternative.currency} differs from card currency ${card.currency}. Convert the quote explicitly before applying it.`, 409);
+  const scenarioPrice = quotePriceInCardUnit(toNumber(alternative.quotedPrice), alternative.quotedUnit, card.volumeUnit);
+
   const settings = await getWorkspaceFinancialSettings(organizationId);
-  const scenarioCurrency = settings.multiCurrencyEnabled
-    ? alternative.currency
-    : settings.defaultCurrency;
-  const fxRate = settings.multiCurrencyEnabled
-    ? await getLatestFxRate(tx, scenarioCurrency)
-    : 1;
+  const scenarioCurrency = card.currency;
+  const fxRate = toNumber(card.fxRate);
+  if (!Number.isFinite(fxRate) || fxRate <= 0) throw new WorkflowError("The card FX rate is invalid. Review the financial assumptions before applying this quote.", 409);
   const financials = computeCardScenarioFinancials({
     baselinePrice: toNumber(card.baselinePrice),
-    newPrice: toNumber(alternative.quotedPrice),
+    newPrice: scenarioPrice,
     annualVolume: toNumber(card.annualVolume),
     fxRate,
     currency: scenarioCurrency,
@@ -881,7 +918,7 @@ async function applySelectedAlternativeMaterial(
       alternativeSupplierManualName: alternative.supplierId
         ? null
         : alternative.supplierNameManual,
-      newPrice: alternative.quotedPrice,
+      newPrice: scenarioPrice,
       currency: scenarioCurrency,
       fxRate,
       ...financials,
@@ -991,7 +1028,7 @@ export async function importSavingCards(
   await prisma.$transaction(
     async (tx) => {
       for (const payload of payloads) {
-        await createSavingCardRecord(tx, payload, actorId, organizationId);
+        await createSavingCardRecord(tx, payload, actorId, organizationId, settings.multiCurrencyEnabled ? "MANUAL" : "WORKSPACE_RATE");
       }
 
       await writeAuditEvent(tx, {

@@ -1,6 +1,6 @@
 # Traxium
 
-Traxium is finance-trusted savings governance for 50-500 employee US manufacturing SMEs. It centralizes saving cards, approvals, supporting evidence, open actions, and portfolio reporting in one auditable paid-pilot workspace for procurement and finance teams.
+Traxium offers finance-trusted procurement savings tracking for SMEs worldwide. Small procurement and finance teams use saving cards, approvals, supporting evidence, open actions, and clear reporting in one workspace. Manufacturing and industrial SMEs are strong use cases; Traxium is designed for SME workflows rather than large enterprises with complex global procurement requirements.
 
 ## Why Traxium exists
 
@@ -39,7 +39,7 @@ Traxium is designed for:
 - buyers
 - finance reviewers
 - business operations teams
-- 50-500 employee US manufacturing SMEs with recurring savings targets
+- SMEs with recurring savings work, including manufacturing and industrial businesses
 
 ## Current product scope
 
@@ -58,7 +58,9 @@ Current modules in the application include:
 
 ## Paid Pilot Buyer Package
 
-The current first-buyer story is a guided paid pilot for 50-500 employee US manufacturing SMEs that need finance-trusted savings governance before a broader rollout decision.
+The current first-buyer story is a guided paid pilot for SMEs that need finance-trusted savings governance before a broader rollout decision. Around 50–500 employees is a commercial best-fit guideline, not an eligibility rule or a universal SME definition. Saving cards support USD and EUR only, and each workspace chooses USD or EUR for reporting. Country-specific tax, accounting, legal, and localization requirements are not represented as product capabilities.
+
+See [global-sme-regional-settings.md](docs/global-sme-regional-settings.md) for workspace locale, time zone, units, currency, FX, import conventions, migration behavior, and billing provider setup.
 
 See [paid-pilot-buyer-package.md](docs/paid-pilot-buyer-package.md) for the landing-page promise, demo script, trust page needs, support expectations, export expectations, and explicit first-pilot exclusions. See [paid-pilot-offer-and-pricing.md](docs/paid-pilot-offer-and-pricing.md) for the paid-pilot offer, pricing hypothesis, and Stripe plan-name relationship.
 

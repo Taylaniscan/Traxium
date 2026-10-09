@@ -10,6 +10,8 @@ export function createScopedSavingCard(
     materialId: string;
     supplierId: string | null;
     volumeUnit: string;
+    currency: "USD" | "EUR";
+    fxRate: number;
     baselinePrice: number;
     newPrice: number;
     referencePrice: number | null;
@@ -25,6 +27,8 @@ export function createScopedSavingCard(
     materialId: "material-1",
     supplierId: "supplier-1",
     volumeUnit: "kg",
+    currency: "USD" as const,
+    fxRate: 1,
     baselinePrice: 10,
     newPrice: 8,
     referencePrice: null,

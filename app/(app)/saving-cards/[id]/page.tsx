@@ -15,6 +15,8 @@ import {
 import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
 import { serializeDecimals, toNumber } from "@/lib/utils/decimal";
 import { canLockFinance, hasPermission } from "@/lib/permissions";
+import { getOrganizationSettings } from "@/lib/organizations";
+import { formatRegionalDateOnly } from "@/lib/regional";
 
 export default async function SavingCardDetailPage({
   params,
@@ -33,6 +35,7 @@ export default async function SavingCardDetailPage({
   if (!card) notFound();
 
   const referenceData = await getSavingCardDetailReferenceData(user.organizationId);
+  const { locale } = await getOrganizationSettings(user.organizationId);
 
   const alternativeSupplierLabel =
     card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified";
@@ -109,18 +112,18 @@ export default async function SavingCardDetailPage({
             </p>
             <CardTitle className="text-[1.75rem] tracking-[-0.03em]">Financial Case</CardTitle>
             <CardDescription className="max-w-2xl text-[14px] leading-6">
-              Baseline {formatCurrency(card.baselinePrice, card.currency)} to new price{" "}
-              {formatCurrency(card.newPrice, card.currency)} across annual volume of{" "}
-              {formatPlainNumber(card.annualVolume)}.
+              Baseline {formatCurrency(card.baselinePrice, card.currency, locale)} per {card.volumeUnit} to new price{" "}
+              {formatCurrency(card.newPrice, card.currency, locale)} per {card.volumeUnit} across annual volume of{" "}
+              {formatPlainNumber(card.annualVolume, locale)} {card.volumeUnit}.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6 p-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <TopMetric label={`Indicative Savings (${card.currency})`} value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} emphasis />
-            <TopMetric label="Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
-            <TopMetric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
-            <TopMetric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
+            <TopMetric label={`Indicative Savings (${card.currency})`} value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency, locale)} emphasis />
+            <TopMetric label="Savings (USD audit basis)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD", locale)} />
+            <TopMetric label={`Baseline Price (per ${card.volumeUnit})`} value={formatCurrency(card.baselinePrice, card.currency, locale)} />
+            <TopMetric label={`Annual Volume (${card.volumeUnit})`} value={formatPlainNumber(card.annualVolume, locale)} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
@@ -138,7 +141,7 @@ export default async function SavingCardDetailPage({
               <InfoStrip label="Baseline Material" value={card.material.name} />
               <InfoStrip label="Alternative Supplier" value={alternativeSupplierLabel} />
               <InfoStrip label="Alternative Material" value={alternativeMaterialLabel} />
-              <InfoStrip label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
+              <InfoStrip label="Impact Window" value={`${formatRegionalDateOnly(card.impactStartDate, locale)} - ${formatRegionalDateOnly(card.impactEndDate, locale)}`} />
               <InfoStrip label="Buyer / Category" value={`${card.buyer.name} · ${card.category.name}`} />
             </div>
           </div>
@@ -155,10 +158,6 @@ export default async function SavingCardDetailPage({
       />
     </div>
   );
-}
-
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(date));
 }
 
 function InfoStrip({ label, value }: { label: string; value: string }) {

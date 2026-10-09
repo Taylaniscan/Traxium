@@ -199,7 +199,7 @@ describe("controller workbook model", () => {
 
     expect(model.savingCardRows).toHaveLength(3);
     expect(model.evidenceSummaryRows).toHaveLength(3);
-    expect(model.importTemplateRows).toHaveLength(1);
+    expect(model.importTemplateRows).toHaveLength(3);
     expect(importTemplateColumns).toContain("Business Case / Notes");
     expect(model.importTemplateRows[0]).toMatchObject({
       Phase: "Proposed",
@@ -304,7 +304,7 @@ describe("controller workbook model", () => {
     ).toHaveLength(1);
     expect(
       XLSX.utils.sheet_to_json(workbook.Sheets["Import Template"])
-    ).toHaveLength(1);
+    ).toHaveLength(3);
     expect(
       XLSX.utils.sheet_to_json(workbook.Sheets["Portfolio Summary"], {
         header: 1,
@@ -316,7 +316,7 @@ describe("controller workbook model", () => {
     ]);
   });
 
-  it("formats export cells with US currency and date number formats", () => {
+  it("formats export cells as numeric amounts and ISO dates", () => {
     const model = buildControllerWorkbookModel({
       cards: [createCard()],
       generatedAt: new Date("2026-06-05T12:00:00.000Z"),
@@ -346,10 +346,8 @@ describe("controller workbook model", () => {
     const cellAt = (header: string) =>
       sheet[XLSX.utils.encode_cell({ r: 1, c: headerColumn(header) })];
 
-    // US currency: dollar sign, thousands separators, no cents.
-    expect(cellAt("Baseline Price").z).toBe('"$"#,##0');
-    expect(cellAt("Savings USD").z).toBe('"$"#,##0');
-    // US date format MM/DD/YYYY.
-    expect(cellAt("Impact Start Date").z).toBe("mm/dd/yyyy");
+    expect(cellAt("Baseline Price").z).toBe('#,##0.0000');
+    expect(cellAt("Savings USD").z).toBe('#,##0.0000');
+    expect(cellAt("Impact Start Date").z).toBe("yyyy-mm-dd");
   });
 });

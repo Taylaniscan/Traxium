@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import {
   createInitialWorkspaceForAuthenticatedUser,
   createInitialWorkspaceForUser,
+  type InitialRegionalPreferences,
 } from "@/lib/organizations";
 import { resolveLegacyMembershipRole } from "@/lib/organization-membership-backfill";
 import { hasAnyRole, hasPermission } from "@/lib/permissions";
@@ -748,7 +749,8 @@ export async function getWorkspaceOnboardingState(): Promise<WorkspaceOnboarding
 
 export async function createInitialWorkspaceOnboarding(
   workspaceName: string,
-  workspaceDescription?: string | null
+  workspaceDescription?: string | null,
+  regional?: InitialRegionalPreferences
 ): Promise<WorkspaceOnboardingResult> {
   const resolved = await resolveAuthenticatedAppUser();
 
@@ -767,7 +769,8 @@ export async function createInitialWorkspaceOnboarding(
     result = await createInitialWorkspaceForUser(
       resolved.user.id,
       workspaceName,
-      workspaceDescription
+      workspaceDescription,
+      regional
     );
     persistedUserId = resolved.user.id;
   } else {
@@ -776,6 +779,7 @@ export async function createInitialWorkspaceOnboarding(
       email: resolved.email,
       workspaceName,
       workspaceDescription,
+      regional,
     });
 
     result = provisionedResult;

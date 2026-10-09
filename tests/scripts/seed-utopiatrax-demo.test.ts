@@ -330,7 +330,7 @@ describe("UtopiaTrax demo seed dataset", () => {
     expect(model.savingCardRows).toHaveLength(25);
     expect(model.portfolioSummaryRows.length).toBeGreaterThan(20);
     expect(model.dataDictionaryRows.length).toBeGreaterThan(30);
-    expect(model.importTemplateRows).toHaveLength(1);
+    expect(model.importTemplateRows).toHaveLength(3);
     expect(model.evidenceSummaryRows).toHaveLength(25);
     expect(
       new Set(model.savingCardRows.map((row) => row.Category)).size

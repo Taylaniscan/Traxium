@@ -13,6 +13,7 @@ import {
 import { registerJobHandlers } from "@/lib/job-runner";
 import { jobTypes } from "@/lib/jobs";
 import { processMonthlyCloseReminderJob } from "@/lib/monthly-close-reminder";
+import { processPilotLeadNotificationJob } from "@/lib/pilot-leads/notification";
 
 /**
  * Registers the canonical set of job handlers. Shared by the standalone worker
@@ -28,5 +29,7 @@ export function registerDefaultJobHandlers() {
     [jobTypes.OBSERVABILITY_MESSAGE]: processObservabilityMessageJob,
     [jobTypes.OBSERVABILITY_EXCEPTION]: processObservabilityExceptionJob,
     [jobTypes.MONTHLY_CLOSE_REMINDER]: processMonthlyCloseReminderJob,
+    [jobTypes.PILOT_LEAD_NOTIFICATION]: (context) =>
+      processPilotLeadNotificationJob(context),
   });
 }

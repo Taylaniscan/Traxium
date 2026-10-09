@@ -207,6 +207,7 @@ describe("tenant-scoped mutations", () => {
         supplierNameManual: null,
         country: "DE",
         quotedPrice: 7.5,
+        quotedUnit: null,
         currency: Currency.EUR,
         leadTimeDays: 14,
         moq: 100,
@@ -259,6 +260,7 @@ describe("tenant-scoped mutations", () => {
         supplierId: "supplier-2",
         supplierNameManual: null,
         quotedPrice: 7.5,
+        quotedUnit: "each",
         currency: Currency.EUR,
       });
     tx.savingCard.findFirst.mockResolvedValueOnce({
@@ -268,6 +270,13 @@ describe("tenant-scoped mutations", () => {
       alternativeSupplierId: null,
       baselinePrice: 10,
       annualVolume: 100,
+      volumeUnit: "each",
+      currency: Currency.EUR,
+      fxRate: 1,
+      impactType: "HARD_SAVINGS",
+      referencePrice: null,
+      impactStartDate: new Date("2026-01-01T00:00:00.000Z"),
+      impactEndDate: new Date("2026-12-31T00:00:00.000Z"),
     });
 
     await updateAlternativeSupplier(
@@ -437,6 +446,7 @@ describe("tenant-scoped mutations", () => {
         supplierNameManual: null,
         specification: "Food grade",
         quotedPrice: 6.25,
+        quotedUnit: null,
         currency: Currency.EUR,
         performanceImpact: "Neutral",
         qualificationStatus: "Approved",

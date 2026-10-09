@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateUnit } from "@/lib/units";
 import {
   currencies,
   frequencies,
@@ -66,8 +67,13 @@ export const savingCardSchema = z
         .optional()
     ),
     annualVolume: positiveNumberField("Annual volume must be greater than zero."),
+    volumeUnit: z.string().trim().default("units").superRefine((value, ctx) => {
+      const result = validateUnit(value);
+      if (!result.valid) ctx.addIssue({ code: "custom", message: result.error });
+    }),
     currency: z.enum(currencies),
     fxRate: positiveNumberField("FX rate must be greater than zero."),
+    fxRateEffectiveDate: z.preprocess((value) => value === "" ? undefined : value, z.coerce.date().optional().nullable()),
     frequency: z.enum(frequencies),
     savingDriver: z.enum(savingDrivers).optional().nullable().or(z.literal("")),
     implementationComplexity: z.enum(implementationComplexities).optional().nullable().or(z.literal("")),
@@ -89,6 +95,9 @@ export const savingCardSchema = z
       .default([])
   })
   .superRefine((value, ctx) => {
+    if (value.currency === "USD" && value.fxRate !== 1) {
+      ctx.addIssue({ code: "custom", path: ["fxRate"], message: "USD cards use an FX rate of 1. Set an EUR-to-USD rate only on EUR cards." });
+    }
     // Hard savings must reduce against the approved baseline. Cost avoidance can
     // mitigate a price increase, so it is measured against a quoted reference price
     // rather than requiring newPrice <= baselinePrice.
@@ -156,6 +165,7 @@ export const alternativeSupplierSchema = z.object({
   supplier: masterDataField.optional().default({}),
   country: z.string().min(2),
   quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
+  quotedUnit: z.string().trim().optional(),
   currency: z.enum(currencies),
   leadTimeDays: z.coerce.number().int().nonnegative(),
   moq: z.coerce.number().int().nonnegative(),
@@ -171,6 +181,7 @@ export const alternativeMaterialSchema = z.object({
   supplier: masterDataField.optional().default({}),
   specification: z.string().min(2),
   quotedPrice: nonNegativeNumberField("Quoted price must be zero or greater."),
+  quotedUnit: z.string().trim().optional(),
   currency: z.enum(currencies),
   performanceImpact: z.string().min(2),
   qualificationStatus: z.string().min(2),

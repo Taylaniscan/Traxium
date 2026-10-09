@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -114,6 +115,7 @@ export function ImportExportPanel({
 }: {
   readiness?: WorkspaceReadiness | null;
 }) {
+  const { formatTimestamp } = useRegionalDisplay();
   const [savingCardMessage, setSavingCardMessage] = useState<ImportMessage | null>(null);
   const [savingCardResult, setSavingCardResult] =
     useState<SavingCardImportResponse | null>(null);
@@ -276,7 +278,7 @@ export function ImportExportPanel({
               />
               <OperationsMetric
                 label="Reporting Freshness"
-                value={formatDateLabel(readiness?.activity.lastPortfolioUpdateAt ?? null, "No updates yet")}
+                value={readiness?.activity.lastPortfolioUpdateAt ? formatTimestamp(readiness.activity.lastPortfolioUpdateAt) : "No updates yet"}
                 detail="Most recent live portfolio update"
               />
               <OperationsMetric
@@ -324,7 +326,7 @@ export function ImportExportPanel({
             </div>
             <div className="space-y-2 rounded-2xl bg-[var(--muted)]/60 p-4 text-sm text-[var(--muted-foreground)]">
               <p>
-                Required fields: Title, Supplier, Material, Category, Plant, Business Unit, Buyer, Baseline Price, New Price, Annual Volume, Currency, Start Date, and End Date.
+                Required fields: Title, Supplier, Material, Category, Plant, Business Unit, Buyer, Baseline Price, New Price, Annual Volume, Currency, Start Date, and End Date. Include Volume Unit and the EUR-to-USD rate with its effective date for EUR cards. Older workbooks without Volume Unit retain the legacy “units” basis.
               </p>
               <p>
                 Buyer, supplier, material, category, plant, and business-unit names are matched inside this workspace or created safely when they do not exist.
@@ -335,9 +337,11 @@ export function ImportExportPanel({
               <p>
                 Imported cards start as Proposed so normal phase-change approvals remain intact. Classification columns are optional and use finance-safe defaults when omitted.
               </p>
+              <p>Use ISO YYYY-MM-DD text or Excel date cells. Text numbers must follow the selected decimal convention without grouping separators; spreadsheet numeric cells remain numeric.</p>
             </div>
             <form action={handleImport} className="space-y-4">
               <input type="file" name="file" accept=".xlsx" required />
+              <label className="block space-y-1 text-sm">Text-number decimal separator<select name="decimalSeparator" className="block rounded-md border bg-[var(--surface)] p-2"><option value="dot">Point (12.5)</option><option value="comma">Comma (12,5)</option></select></label>
               <Button type="submit">Import Workbook</Button>
             </form>
             <a href="/api/export" className={buttonVariants({ variant: "secondary" })}>
@@ -590,17 +594,6 @@ function OperationsMetric({
   );
 }
 
-function formatDateLabel(value: Date | null, fallback: string) {
-  if (!value) {
-    return fallback;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
 
 function getCoverageLimitValue(readiness?: WorkspaceReadiness | null) {
   if (!readiness) {

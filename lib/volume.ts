@@ -10,6 +10,8 @@ import {
   buildTenantScopeWhere,
 } from "@/lib/tenant-scope";
 import { toNumber } from "@/lib/utils/decimal";
+import { parseRegionalDecimal } from "@/lib/regional";
+import { unitConversionFactor, validateUnit } from "@/lib/units";
 import type {
   TenantContextSource,
   VolumeImportResult,
@@ -106,6 +108,8 @@ const scopedVolumeCardSelect = {
   materialId: true,
   supplierId: true,
   volumeUnit: true,
+  currency: true,
+  fxRate: true,
   baselinePrice: true,
   newPrice: true,
   referencePrice: true,
@@ -157,6 +161,9 @@ async function upsertForecastForCard(
 ) {
   const period = normalizePeriod(input.period);
   assertValidQuantity(input.forecastQty, "Forecast quantity");
+  const unit = validateUnit(input.unit);
+  if (!unit.valid) throw new Error(unit.error);
+  if (unitConversionFactor(unit.code, card.volumeUnit) !== 1) throw new Error(`Forecast unit ${input.unit} must match the card price and volume unit ${card.volumeUnit}. Convert the quantity explicitly before saving.`);
 
   return prisma.materialConsumptionForecast.upsert({
     where: {
@@ -169,7 +176,7 @@ async function upsertForecastForCard(
     update: {
       supplierId: card.supplierId ?? null,
       forecastQty: input.forecastQty,
-      unit: input.unit,
+      unit: card.volumeUnit,
       source: input.source ?? ForecastSource.MANUAL_ENTRY,
       notes: normalizeNullableText(input.notes),
       createdById: input.createdById,
@@ -180,7 +187,7 @@ async function upsertForecastForCard(
       supplierId: card.supplierId ?? null,
       period,
       forecastQty: input.forecastQty,
-      unit: input.unit,
+      unit: card.volumeUnit,
       source: input.source ?? ForecastSource.MANUAL_ENTRY,
       notes: normalizeNullableText(input.notes),
       createdById: input.createdById,
@@ -194,6 +201,9 @@ async function upsertActualForCard(
 ) {
   const period = normalizePeriod(input.period);
   assertValidQuantity(input.actualQty, "Actual quantity");
+  const unit = validateUnit(input.unit);
+  if (!unit.valid) throw new Error(unit.error);
+  if (unitConversionFactor(unit.code, card.volumeUnit) !== 1) throw new Error(`Actual unit ${input.unit} must match the card price and volume unit ${card.volumeUnit}. Convert the quantity explicitly before saving.`);
 
   if (period.getTime() >= getCurrentMonthStartUtc().getTime()) {
     throw new Error("Actuals can only be entered for past months.");
@@ -210,7 +220,7 @@ async function upsertActualForCard(
     update: {
       supplierId: card.supplierId ?? null,
       actualQty: input.actualQty,
-      unit: input.unit,
+      unit: card.volumeUnit,
       source: input.source ?? ForecastSource.MANUAL_ENTRY,
       invoiceRef: normalizeNullableText(input.invoiceRef),
       confirmedById: input.confirmedById,
@@ -221,7 +231,7 @@ async function upsertActualForCard(
       supplierId: card.supplierId ?? null,
       period,
       actualQty: input.actualQty,
-      unit: input.unit,
+      unit: card.volumeUnit,
       source: input.source ?? ForecastSource.MANUAL_ENTRY,
       invoiceRef: normalizeNullableText(input.invoiceRef),
       confirmedById: input.confirmedById,
@@ -315,13 +325,20 @@ export async function getPortfolioVolumeTimelines(
     },
   });
 
-  return cards.map((card) =>
-    buildVolumeTimelineResult(
+  return cards.map((card) => {
+    const result = buildVolumeTimelineResult(
       card,
       forecasts.filter((row) => row.savingCardId === card.id),
       actuals.filter((row) => row.savingCardId === card.id)
-    )
-  );
+    );
+    const rate = card.currency === "USD" ? 1 : toNumber(card.fxRate);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error(`Card ${card.id} needs a positive saved EUR-to-USD rate before its volume savings can be added to the portfolio.`);
+    return {
+      ...result,
+      timeline: result.timeline.map((row) => ({ ...row, forecastSaving: row.forecastSaving * rate, actualSaving: row.actualSaving * rate, varianceSaving: row.varianceSaving * rate })),
+      summary: { ...result.summary, ytdForecastSaving: result.summary.ytdForecastSaving * rate, ytdActualSaving: result.summary.ytdActualSaving * rate, ytdVarianceSaving: result.summary.ytdVarianceSaving * rate },
+    };
+  });
 }
 
 function buildVolumeTimelineResult(
@@ -519,7 +536,8 @@ export async function importFromCsv(
   savingCardId: string,
   csvContent: string,
   userId: string,
-  context: TenantContextSource
+  context: TenantContextSource,
+  options: { decimalSeparator?: "dot" | "comma"; delimiter?: "," | ";" | "\t" } = {}
 ): Promise<VolumeImportResult> {
   const card = await getScopedVolumeCard(savingCardId, context);
 
@@ -536,7 +554,7 @@ export async function importFromCsv(
     };
   }
 
-  const delimiter = detectDelimiter(lines[0]);
+  const delimiter = options.delimiter ?? detectDelimiter(lines[0]);
   const headers = parseCsvLine(lines[0], delimiter);
   const headerMap = resolveCsvHeaderMap(headers);
   const result: VolumeImportResult = {
@@ -569,10 +587,10 @@ export async function importFromCsv(
       const period = parseFlexiblePeriod(periodValue);
       const unit = unitValue.trim() || card.volumeUnit || "units";
       const parsedForecastQty = forecastValue.trim()
-        ? parseQuantity(forecastValue, "forecast quantity")
+        ? parseQuantity(forecastValue, "forecast quantity", options.decimalSeparator ?? "dot")
         : null;
       const parsedActualQty = actualValue.trim()
-        ? parseQuantity(actualValue, "actual quantity")
+        ? parseQuantity(actualValue, "actual quantity", options.decimalSeparator ?? "dot")
         : null;
       const normalizedPeriod = normalizePeriod(period);
 
@@ -728,9 +746,8 @@ function parseCsvLine(line: string, delimiter: string) {
   return values;
 }
 
-function parseQuantity(value: string, label: string) {
-  const normalized = value.replace(/\s/g, "").replace(",", ".");
-  const parsed = Number(normalized);
+function parseQuantity(value: string, label: string, convention: "dot" | "comma") {
+  const parsed = parseRegionalDecimal(value, convention);
   assertValidQuantity(parsed, label);
 
   return parsed;

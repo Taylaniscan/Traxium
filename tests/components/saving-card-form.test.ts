@@ -348,6 +348,6 @@ describe("saving card form", () => {
     expect(markup).toContain(
       "(Reference price - New price) × Annual volume"
     );
-    expect(markup).toContain("Calculated Savings: $100");
+    expect(markup).toContain("Calculated Savings: USD 100");
   });
 });

@@ -63,6 +63,8 @@ describe("tenant isolation queries", () => {
         materialId: true,
         supplierId: true,
         volumeUnit: true,
+        currency: true,
+        fxRate: true,
         baselinePrice: true,
         newPrice: true,
         referencePrice: true,
@@ -86,6 +88,8 @@ describe("tenant isolation queries", () => {
       supplierId: "supplier-2",
       baselinePrice: 6,
       newPrice: 5,
+      currency: "EUR",
+      fxRate: 1.2,
     });
     const period = DEFAULT_TENANT_PERIOD;
 
@@ -128,7 +132,7 @@ describe("tenant isolation queries", () => {
       isConfirmed: true,
     });
     expect(timelines[1].timeline[0]).toMatchObject({
-      forecastSaving: 80,
+      forecastSaving: 96,
       actualSaving: 0,
       isConfirmed: false,
     });

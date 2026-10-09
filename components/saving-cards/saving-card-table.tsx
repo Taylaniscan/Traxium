@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/numberFormatter";
 import { toNumber } from "@/lib/utils/decimal";
 import { getEvidenceStatus } from "@/lib/evidence";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 export function SavingCardTable({
   cards,
@@ -36,6 +37,7 @@ export function SavingCardTable({
     active: boolean;
   }>;
 }) {
+  const { formatDateOnly, formatUsd, reportingCurrency } = useRegionalDisplay();
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
 
@@ -214,7 +216,7 @@ export function SavingCardTable({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile label="Visible Savings" value={formatCurrency(Math.round(totalSavings), "USD")} />
+        <SummaryTile label={`Visible Savings (${reportingCurrency})`} value={formatUsd(Math.round(totalSavings))} />
         <SummaryTile label="Finance Locked Cards" value={String(lockedCount)} />
         <SummaryTile label="Implemented or Captured" value={String(capturedCount)} />
       </div>
@@ -291,7 +293,7 @@ export function SavingCardTable({
                   </p>
                   <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
                     {savingTypeLabels[card.savingType]} · {savingsImpactTypeLabels[card.impactType]} ·{" "}
-                    {formatDate(card.impactStartDate)} to {formatDate(card.impactEndDate)}
+                    {formatDateOnly(card.impactStartDate)} to {formatDateOnly(card.impactEndDate)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge tone={getEvidenceTone(card.phase, card.evidence.length)}>
@@ -309,10 +311,10 @@ export function SavingCardTable({
                 <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-numeric text-base font-semibold">
-                      {formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")}
+                      {formatUsd(Math.round(toNumber(card.calculatedSavingsUSD)))}
                     </p>
                     <p className="text-[12px] text-[var(--muted-foreground)]">
-                      USD reporting basis
+                      {reportingCurrency} reporting basis
                     </p>
                   </div>
                   <PhaseBadge phase={card.phase}>{phaseLabels[card.phase]}</PhaseBadge>
@@ -500,10 +502,6 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
       </CardContent>
     </Card>
   );
-}
-
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(date));
 }
 
 function buildPortfolioNextActions(readiness: WorkspaceReadiness | null | undefined, cardCount: number) {

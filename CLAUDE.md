@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What Traxium is
 
-Traxium is finance-trusted procurement savings governance for 50–500 employee US manufacturing SMEs. It replaces spreadsheet-based savings tracking with auditable saving cards, an approval workflow, evidence handling, and portfolio reporting. It is a multi-tenant B2B SaaS (Next.js App Router + Prisma/PostgreSQL via Supabase + Stripe billing), currently hardening from internal MVP toward production.
+Traxium is finance-trusted procurement savings governance for small and midsize manufacturing businesses. It replaces spreadsheet-based savings tracking with auditable saving cards, an approval workflow, evidence handling, and portfolio reporting. It is a multi-tenant B2B SaaS (Next.js App Router + Prisma/PostgreSQL via Supabase + Stripe billing), currently hardening from internal MVP toward production. Current card currencies are EUR and USD, with USD as the canonical reporting currency; country-specific tax, accounting, legal, and localization requirements are not yet represented as product capabilities.
 
 ## Commands
 

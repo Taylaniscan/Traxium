@@ -58,7 +58,8 @@ import type {
   WorkspaceReadiness,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
+import { formatNumber } from "@/lib/utils/numberFormatter";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 // Shared Recharts styling: soft gridlines, token axis text, white-card tooltip.
 const CHART_GRID_STROKE = "var(--chart-grid)";
@@ -212,14 +213,14 @@ function calculateMagnitudeShare(value: number, basis: number) {
   return (Math.abs(value) / normalizedBasis) * 100;
 }
 
-function formatSignedCurrency(value: number) {
+function formatSignedCurrency(value: number, formatUsd: (value: number) => string) {
   if (value === 0) {
-    return formatCurrency(0, "USD");
+    return formatUsd(0);
   }
 
   return value > 0
-    ? `+${formatCurrency(value, "USD")}`
-    : `-${formatCurrency(Math.abs(value), "USD")}`;
+    ? `+${formatUsd(value)}`
+    : `-${formatUsd(Math.abs(value))}`;
 }
 
 function formatDayDistance(days: number) {
@@ -420,7 +421,8 @@ function getPhaseSavings(
 }
 
 function buildDashboardExceptions(
-  cards: DashboardData["cards"]
+  cards: DashboardData["cards"],
+  formatUsd: (value: number) => string
 ): DashboardExceptionItem[] {
   const todayTimestamp = startOfTodayTimestamp();
 
@@ -507,7 +509,7 @@ function buildDashboardExceptions(
           tone,
           title: normalizeDashboardLabel(card.title, "Untitled saving card"),
           detail,
-          value: formatCurrency(value, "USD"),
+          value: formatUsd(value),
           meta,
           phase: card.phase,
           phaseLabel,
@@ -543,6 +545,7 @@ function deriveDashboardExecutiveMetrics(input: {
   cards: DashboardData["cards"];
   metrics: DashboardMetrics;
   annualTarget: number;
+  formatUsd: (value: number) => string;
 }): DashboardExecutiveMetrics {
   const identifiedValue = getPhaseSavings(input.metrics, "IDEA");
   const validatedValue = getPhaseSavings(input.metrics, "VALIDATED");
@@ -574,7 +577,7 @@ function deriveDashboardExecutiveMetrics(input: {
   const forecastDelta =
     (input.metrics.monthlyTrend.at(-1)?.forecast ?? 0) -
     (input.metrics.monthlyTrend.at(-2)?.forecast ?? 0);
-  const exceptions = buildDashboardExceptions(input.cards);
+  const exceptions = buildDashboardExceptions(input.cards, input.formatUsd);
 
   return {
     identifiedValue,
@@ -612,6 +615,7 @@ export function DashboardClient({
   };
   loadState?: DashboardClientLoadState;
 }) {
+  const { formatUsd, reportingCurrency } = useRegionalDisplay();
   const dataError = loadState?.dataError?.trim() || null;
   const readinessError = loadState?.readinessError?.trim() || null;
   const metrics = deriveDashboardMetrics(data.cards, {
@@ -626,14 +630,12 @@ export function DashboardClient({
     cards: data.cards,
     metrics,
     annualTarget,
+    formatUsd,
   });
   const capturedActuals = data.capturedActuals;
   const capturedActualizedNote =
     capturedActuals && capturedActuals.cardsWithActuals > 0
-      ? ` Actual to date: ${formatCurrency(
-          Math.round(capturedActuals.actualizedUSD),
-          "USD"
-        )} across ${capturedActuals.cardsWithActuals} captured card${
+      ? ` Actual to date: ${formatUsd(Math.round(capturedActuals.actualizedUSD))} across ${capturedActuals.cardsWithActuals} captured card${
           capturedActuals.cardsWithActuals === 1 ? "" : "s"
         } with confirmed actuals.`
       : "";
@@ -752,6 +754,7 @@ export function DashboardClient({
 
   return (
     <div className="space-y-8">
+      <p className="text-xs text-[var(--muted-foreground)]">Portfolio values in {reportingCurrency}. Card currencies and approved FX snapshots remain unchanged.</p>
       {readinessError ? (
         <InlineNotice
           title="Workspace setup status is temporarily unavailable"
@@ -778,7 +781,7 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Identified Value"
-            value={formatCurrency(executiveMetrics.identifiedValue, "USD")}
+            value={formatUsd(executiveMetrics.identifiedValue)}
             description="Opportunities still proposed and not yet finance validated for execution."
             tone="info"
             icon={<Lightbulb />}
@@ -796,7 +799,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Finance Validated Value"
-            value={formatCurrency(executiveMetrics.validatedValue, "USD")}
+            value={formatUsd(executiveMetrics.validatedValue)}
             description="Business cases reviewed for finance trust and positioned for delivery."
             tone="warning"
             icon={<BadgeCheck />}
@@ -815,7 +818,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Implemented Value"
-            value={formatCurrency(executiveMetrics.realisedValue, "USD")}
+            value={formatUsd(executiveMetrics.realisedValue)}
             description="Savings currently implemented and expected to convert into captured value."
             tone="implemented"
             icon={<Wrench />}
@@ -834,7 +837,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Captured Value"
-            value={formatCurrency(executiveMetrics.achievedValue, "USD")}
+            value={formatUsd(executiveMetrics.achievedValue)}
             description={`Estimated savings impact confirmed and no longer dependent on future conversion.${capturedActualizedNote}`}
             tone="success"
             icon={<Trophy />}
@@ -851,7 +854,7 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2">
           <KpiCard
             label="In-Year Value"
-            value={formatCurrency(Math.round(metrics.inYearValue), "USD")}
+            value={formatUsd(Math.round(metrics.inYearValue))}
             description="Prorated savings landing inside the current workspace fiscal year, based on each card's impact window."
             tone="neutral"
             size="hero"
@@ -859,7 +862,7 @@ export function DashboardClient({
           />
           <KpiCard
             label="Annualized Run-Rate"
-            value={formatCurrency(Math.round(metrics.annualizedRunRate), "USD")}
+            value={formatUsd(Math.round(metrics.annualizedRunRate))}
             description="Full-year steady-state value of active savings once impact is fully ramped."
             tone="neutral"
             size="hero"
@@ -870,18 +873,15 @@ export function DashboardClient({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard
             label={executiveMetrics.gapLabel}
-            value={formatCurrency(executiveMetrics.gapValue, "USD")}
-            description={`${executiveMetrics.benchmarkLabel} benchmark: ${formatCurrency(
-              executiveMetrics.benchmarkValue,
-              "USD"
-            )}.`}
+            value={formatUsd(executiveMetrics.gapValue)}
+            description={`${executiveMetrics.benchmarkLabel} benchmark: ${formatUsd(executiveMetrics.benchmarkValue)}.`}
             tone="warning"
             size="secondary"
             icon={<Target />}
             delta={
               <MetricDelta
                 label={executiveMetrics.varianceLabel}
-                value={formatSignedCurrency(executiveMetrics.varianceValue)}
+                value={formatSignedCurrency(executiveMetrics.varianceValue, formatUsd)}
                 tone={
                   executiveMetrics.varianceValue >= 0
                     ? "positive"
@@ -946,10 +946,7 @@ export function DashboardClient({
                   <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
                     {recentAchievements[0].title} reached Captured in the last
                     24 hours for {recentAchievements[0].buyer.name} at{" "}
-                    {formatCurrency(
-                      recentAchievements[0].calculatedSavingsUSD,
-                      "USD"
-                    )}
+                    {formatUsd(recentAchievements[0].calculatedSavingsUSD)}
                     .
                     {recentAchievements.length > 1
                       ? ` ${recentAchievements.length - 1} more initiative${recentAchievements.length - 1 === 1 ? "" : "s"} also moved into Captured.`
@@ -959,7 +956,7 @@ export function DashboardClient({
               </div>
               <MetricDelta
                 label="vs prior forecast bucket"
-                value={formatSignedCurrency(executiveMetrics.forecastDelta)}
+                value={formatSignedCurrency(executiveMetrics.forecastDelta, formatUsd)}
                 tone={
                   executiveMetrics.forecastDelta > 0
                     ? "positive"
@@ -1105,6 +1102,7 @@ function TargetProgressCard({
   forecastValue: number;
   forecastDelta: number;
 }) {
+  const { formatUsd } = useRegionalDisplay();
   const scaleValue = Math.max(
     Math.abs(benchmarkValue),
     Math.abs(realisedValue),
@@ -1129,29 +1127,29 @@ function TargetProgressCard({
         <div className="grid gap-3 md:grid-cols-2">
           <ValueSnapshot
             label={benchmarkLabel}
-            value={formatCurrency(benchmarkValue, "USD")}
+            value={formatUsd(benchmarkValue)}
           />
           <ValueSnapshot
             label={gapLabel}
-            value={formatCurrency(gapValue, "USD")}
+            value={formatUsd(gapValue)}
           />
         </div>
 
         <ProgressRow
           label="Implemented"
-          value={formatCurrency(realisedValue, "USD")}
+          value={formatUsd(realisedValue)}
           width={realisedWidth}
           toneClassName="bg-[var(--warning)]"
         />
         <ProgressRow
           label="Captured"
-          value={formatCurrency(achievedValue, "USD")}
+          value={formatUsd(achievedValue)}
           width={achievedWidth}
           toneClassName="bg-[var(--success)]"
         />
         <ProgressRow
           label="Forecast"
-          value={formatCurrency(forecastValue, "USD")}
+          value={formatUsd(forecastValue)}
           width={forecastWidth}
           toneClassName="bg-[var(--info-forecast)]"
         />
@@ -1159,12 +1157,12 @@ function TargetProgressCard({
         <div className="flex flex-wrap gap-2">
           <MetricDelta
             label={gapLabel}
-            value={formatCurrency(gapValue, "USD")}
+            value={formatUsd(gapValue)}
             tone={gapValue > 0 ? "caution" : "positive"}
           />
           <MetricDelta
             label="vs prior forecast bucket"
-            value={formatSignedCurrency(forecastDelta)}
+            value={formatSignedCurrency(forecastDelta, formatUsd)}
             tone={
               forecastDelta > 0
                 ? "positive"
@@ -1269,6 +1267,7 @@ function ChartStateMessage({ message }: { message: string }) {
 }
 
 function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer
@@ -1292,12 +1291,12 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={CHART_AXIS_TICK}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <Tooltip
             contentStyle={CHART_TOOLTIP_STYLE}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               "Savings",
             ]}
           />
@@ -1320,6 +1319,7 @@ function PhaseBarChart({ data }: { data: DashboardChartDatum[] }) {
 }
 
 function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer
@@ -1342,7 +1342,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={CHART_AXIS_TICK}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <YAxis
             type="category"
@@ -1355,7 +1355,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
           <Tooltip
             contentStyle={CHART_TOOLTIP_STYLE}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               "Savings",
             ]}
           />
@@ -1367,6 +1367,7 @@ function CategoryBarChart({ data }: { data: DashboardChartDatum[] }) {
 }
 
 function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full min-h-0 min-w-0">
       <ResponsiveContainer
@@ -1390,12 +1391,12 @@ function ForecastAreaChart({ data }: { data: DashboardForecastDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={CHART_AXIS_TICK}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <Tooltip
             contentStyle={CHART_TOOLTIP_STYLE}
             formatter={(value, name) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />

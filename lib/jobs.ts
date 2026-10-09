@@ -44,6 +44,7 @@ export const jobTypes = {
   OBSERVABILITY_MESSAGE: "observability.message",
   OBSERVABILITY_EXCEPTION: "observability.exception",
   MONTHLY_CLOSE_REMINDER: "monthly_close.reminder",
+  PILOT_LEAD_NOTIFICATION: "pilot_lead.notification",
 } as const;
 
 export type JobPayload = Record<string, unknown>;

@@ -19,7 +19,8 @@ describe("PilotLead schema", () => {
     expect(schema).toContain("enum PilotLeadStatus");
     expect(schema).toContain("model PilotLead");
     expect(schema).toContain("status            PilotLeadStatus @default(NEW)");
-    expect(schema).toContain('country           String          @default("United States")');
+    expect(schema).toContain("country           String");
+    expect(schema).not.toContain('country           String          @default("United States")');
     expect(schema).toContain("ipHash            String?");
     expect(schema).toContain("userAgentHash     String?");
     expect(schema).toContain("@@index([dedupeKey, createdAt])");

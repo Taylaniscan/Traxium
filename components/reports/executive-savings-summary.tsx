@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,7 +19,7 @@ import {
   savingsImpactRecurrenceLabels,
   savingsImpactTypeLabels,
 } from "@/lib/constants";
-import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
+import { formatPlainNumber } from "@/lib/utils/numberFormatter";
 import type { ReactNode } from "react";
 import { isFinanceEvidenceReviewPhase } from "@/lib/evidence";
 
@@ -41,6 +44,7 @@ export function ExecutiveSavingsSummary({
   dashboardData,
   loadState,
 }: ExecutiveSavingsSummaryProps) {
+  const { formatUsd, formatTimestamp } = useRegionalDisplay();
   const commandCenterError = loadState?.commandCenterError?.trim() || null;
   const dashboardError = loadState?.dashboardError?.trim() || null;
   const pendingApprovalQueue = commandCenterData.pendingApprovalQueue ?? [];
@@ -223,7 +227,7 @@ export function ExecutiveSavingsSummary({
               </Badge>
               {annualTarget > 0 ? (
                 <Badge tone="teal">
-                  Annual target {formatCurrency(annualTarget, "USD")}
+                  Annual target {formatUsd(annualTarget)}
                 </Badge>
               ) : null}
             </div>
@@ -233,35 +237,35 @@ export function ExecutiveSavingsSummary({
           <div className="grid gap-4 lg:grid-cols-4">
             <ExecutiveMetric
               label="Pipeline Savings"
-              value={formatCurrency(pipelineSavings, "USD")}
+              value={formatUsd(pipelineSavings)}
               detail={`${formatPlainNumber(portfolioScope)} initiatives currently in scope`}
             />
             <ExecutiveMetric
               label="Implemented Savings"
-              value={formatCurrency(realisedSavings, "USD")}
+              value={formatUsd(realisedSavings)}
               detail={`${formatPercent(deliveryCoverage)} of pipeline has moved into implemented or captured delivery`}
             />
             <ExecutiveMetric
               label="Captured Savings"
-              value={formatCurrency(achievedSavings, "USD")}
+              value={formatUsd(achievedSavings)}
               detail={`${formatPercent(achievedCoverage)} of pipeline is fully locked in`}
             />
             <ExecutiveMetric
               label="Forecast"
-              value={formatCurrency(forecastSavings, "USD")}
-              detail={`${formatSignedCurrency(forecastDelta)} versus ${forecastComparisonLabel}`}
+              value={formatUsd(forecastSavings)}
+              detail={`${formatSignedCurrency(forecastDelta, formatUsd)} versus ${forecastComparisonLabel}`}
             />
           </div>
 
           <div className="grid gap-4 border-t border-[var(--border)] pt-5 lg:grid-cols-2">
             <ExecutiveMetric
               label="Current Fiscal Year Value"
-              value={formatCurrency(inYearValue, "USD")}
+              value={formatUsd(inYearValue)}
               detail="Prorated savings landing inside the current fiscal year across live initiatives."
             />
             <ExecutiveMetric
               label="Annualized Run-Rate"
-              value={formatCurrency(annualizedRunRate, "USD")}
+              value={formatUsd(annualizedRunRate)}
               detail="Full-year steady-state value once active savings are fully ramped."
             />
           </div>
@@ -296,7 +300,7 @@ export function ExecutiveSavingsSummary({
             />
             <SignalMetric
               label="Current Outlook"
-              value={formatSignedCurrency(forecastDelta)}
+              value={formatSignedCurrency(forecastDelta, formatUsd)}
               detail={
                 annualTarget > 0
                   ? "Forecast compared with the current annual target"
@@ -358,7 +362,7 @@ export function ExecutiveSavingsSummary({
                 <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-[var(--muted-foreground)]">{row.label}</span>
                   <span className="font-semibold text-[var(--foreground)]">
-                    {formatCurrency(row.savings, "USD")}
+                    {formatUsd(row.savings)}
                   </span>
                 </div>
               )) : (
@@ -380,7 +384,7 @@ export function ExecutiveSavingsSummary({
           </CardHeader>
           <CardContent className="space-y-3">
             <OutlookLine>
-              {formatCurrency(pipelineSavings, "USD")} sits in the active
+              {formatUsd(pipelineSavings)} sits in the active
               savings pipeline across {formatPlainNumber(portfolioScope)} live
               initiatives.
             </OutlookLine>
@@ -395,14 +399,14 @@ export function ExecutiveSavingsSummary({
             </OutlookLine>
             {annualTarget > 0 ? (
               <OutlookLine>
-                Forecast is {formatSignedCurrency(forecastSavings - annualTarget)}{" "}
+                Forecast is {formatSignedCurrency(forecastSavings - annualTarget, formatUsd)}{" "}
                 against the current annual target of{" "}
-                {formatCurrency(annualTarget, "USD")}.
+                {formatUsd(annualTarget)}.
               </OutlookLine>
             ) : (
               <OutlookLine>
-                Forecast stands at {formatCurrency(forecastSavings, "USD")} and
-                is {formatSignedCurrency(forecastSavings - achievedSavings)}{" "}
+                Forecast stands at {formatUsd(forecastSavings)} and
+                is {formatSignedCurrency(forecastSavings - achievedSavings, formatUsd)}{" "}
                 against captured value.
               </OutlookLine>
             )}
@@ -450,7 +454,7 @@ export function ExecutiveSavingsSummary({
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]">
                     <span>{decision.approverRole}</span>
-                    <span>{formatDateLabel(decision.createdAt)}</span>
+                    <span>{formatTimestamp(decision.createdAt)}</span>
                   </div>
                   {decision.comment ? (
                     <p className="mt-2 text-sm text-[var(--muted-foreground)]">
@@ -597,26 +601,12 @@ function formatPercent(value: number) {
   return `${Math.round(value)}%`;
 }
 
-function formatSignedCurrency(value: number) {
+function formatSignedCurrency(value: number, formatUsd: (value: number) => string) {
   if (!Number.isFinite(value) || value === 0) {
-    return formatCurrency(0, "USD");
+    return formatUsd(0);
   }
 
   return value > 0
-    ? `+${formatCurrency(value, "USD")}`
-    : `-${formatCurrency(Math.abs(value), "USD")}`;
-}
-
-function formatDateLabel(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Date unavailable";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+    ? `+${formatUsd(value)}`
+    : `-${formatUsd(Math.abs(value))}`;
 }

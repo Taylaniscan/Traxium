@@ -278,6 +278,7 @@ describe("export route", () => {
     expect(buildControllerWorkbookModelMock).toHaveBeenCalledWith({
       cards: [{ id: "card-1" }],
       generatedAt: expect.any(Date),
+      reportingBasis: { currency: "USD", eurToUsd: 1, effectiveDate: null },
       workspaceReadiness: {
         workspace: {
           name: "Atlas Procurement",

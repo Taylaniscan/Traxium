@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
+import { normalizeLocale } from "@/lib/regional";
 
 import {
   createAuthGuardErrorResponse,
@@ -32,7 +33,11 @@ const organizationSettingsSchema = z.object({
     .max(12, "Fiscal year start month must be between 1 and 12.")
     .optional(),
   defaultCurrency: z.enum(["USD", "EUR"]).optional(),
+  reportingCurrency: z.enum(["USD", "EUR"]).optional(),
   multiCurrencyEnabled: z.boolean().optional(),
+  locale: z.string().refine((value) => Boolean(normalizeLocale(value)), "Choose a valid number and date locale.").optional(),
+  timeZone: z.string().min(1).max(64).optional(),
+  measurementSystem: z.enum(["metric", "us_customary"]).optional(),
 });
 
 function jsonError(error: string, status: number) {
@@ -199,7 +204,11 @@ export async function PATCH(request: Request) {
       description: payload.description ?? null,
       fiscalYearStartMonth: payload.fiscalYearStartMonth ?? null,
       defaultCurrency: payload.defaultCurrency ?? null,
+      reportingCurrency: payload.reportingCurrency ?? null,
       multiCurrencyEnabled: payload.multiCurrencyEnabled ?? null,
+      locale: payload.locale ?? null,
+      timeZone: payload.timeZone ?? null,
+      measurementSystem: payload.measurementSystem ?? null,
     });
 
     trackServerEvent({

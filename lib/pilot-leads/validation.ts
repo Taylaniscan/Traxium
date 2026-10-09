@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { countryCodes } from "@/lib/countries";
 
 export const pilotLeadSuccessMessage =
-  "Thanks - we received your request. Traxium is currently offered through guided paid pilots for qualified manufacturing teams. We'll review your request and follow up if there is a strong fit.";
+  "Thanks - we received your request. Traxium currently offers guided paid pilots for SME procurement and finance teams. We'll review your request and follow up if there is a strong fit.";
 
 export const pilotCompanySizeOptions = [
   { value: "1-49", label: "1-49 employees" },
@@ -20,6 +21,7 @@ export const pilotIndustryOptions = [
   { value: "metal_fabrication", label: "Metal fabrication" },
   { value: "food_beverage", label: "Food and beverage manufacturing" },
   { value: "other_industrial", label: "Other industrial business" },
+  { value: "other", label: "Other SME" },
 ] as const;
 
 export const pilotTrackingOptions = [
@@ -94,6 +96,8 @@ export const pilotLeadSubmissionSchema = z
       .trim()
       .min(2, "Enter your company name.")
       .max(160, "Company name must be 160 characters or fewer."),
+    country: z.string().trim().length(2, "Select a country.")
+      .refine((value) => countryCodes.has(value), "Select a valid country."),
     jobTitle: optionalText(
       120,
       "Job title must be 120 characters or fewer."

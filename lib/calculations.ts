@@ -68,8 +68,8 @@ export function calculateSavings({
 
   const localSavings = unitSaving * volume;
 
-  // USD is the canonical reporting currency. A USD card reports its local value
-  // directly; any other currency converts through its rate to USD.
+  // USD is the persisted audit basis. The workspace reporting currency is
+  // selected separately, so card values must enter this basis exactly once.
   return {
     localSavings,
     savingsUSD: currency === "USD" ? localSavings : localSavings * fx

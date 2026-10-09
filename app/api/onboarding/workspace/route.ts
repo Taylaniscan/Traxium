@@ -11,6 +11,7 @@ import {
   trackServerEvent,
 } from "@/lib/observability";
 import { WorkspaceOnboardingError } from "@/lib/organizations";
+import { normalizeLocale, normalizeTimeZone } from "@/lib/regional";
 
 const workspaceOnboardingSchema = z.object({
   name: z
@@ -28,6 +29,9 @@ const workspaceOnboardingSchema = z.object({
     .max(240, "Workspace description must be 240 characters or fewer.")
     .nullable()
     .optional(),
+  locale: z.string().refine((value) => Boolean(normalizeLocale(value)), "Choose a valid number and date locale.").default("en-US"),
+  timeZone: z.string().refine((value) => Boolean(normalizeTimeZone(value)), "Choose a valid IANA time zone.").default("UTC"),
+  measurementSystem: z.enum(["metric", "us_customary"]).default("metric"),
 });
 
 function jsonError(error: string, status: number, code?: string) {
@@ -78,7 +82,8 @@ export async function POST(request: Request) {
     const payload = workspaceOnboardingSchema.parse(body.data);
     const result = await createInitialWorkspaceOnboarding(
       payload.name,
-      payload.description ?? null
+      payload.description ?? null,
+      { locale: payload.locale, timeZone: payload.timeZone, measurementSystem: payload.measurementSystem }
     );
 
     trackServerEvent({

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Import and export let a US manufacturing SME move from an Excel procurement savings tracker into Traxium and produce a controller-review workbook for finance review.
+Import and export let an SME move from an Excel procurement savings tracker into Traxium and produce a controller-review workbook for finance review.
 
 The first-pilot promise is controlled migration and review, not ERP synchronization, accounting posting, or a custom data warehouse.
 
@@ -30,7 +30,7 @@ Saving-card import must:
 - Commit all saving-card rows in one database transaction so a persistence failure also rolls back the entire import.
 - Resolve or safely create buyer, supplier, material, category, plant, and business-unit names inside the active workspace.
 - Reject cross-tenant relation identifiers and never link to another workspace.
-- Reject invalid dates, numbers, currencies, classifications, and phase labels.
+- Reject invalid or ambiguous dates, numbers, currencies, units, classifications, and phase labels. Saving-card import uses an explicit decimal separator choice; grouped numeric text is rejected.
 - Detect duplicate saving-card titles inside the workbook.
 - Keep the canonical workflow intact. Operational imports create cards in `Proposed`; later phases require the normal phase-change approval workflow.
 - Audit successful and failed saving-card import outcomes without recording workbook contents or secrets.
@@ -98,7 +98,7 @@ The saving-card register includes:
 - Volume Unit
 - Currency
 - Calculated Savings (Local)
-- Savings EUR / reporting currency
+- Savings (Reporting), with the reporting currency and effective EUR-to-USD basis in the summary
 - Savings USD
 - Current Fiscal Year Value (USD)
 - Impact-Start Fiscal Year Value (Local)

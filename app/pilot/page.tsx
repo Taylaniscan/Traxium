@@ -2,17 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PilotLeadForm } from "@/components/pilot/pilot-lead-form";
+import { countryOptions } from "@/lib/countries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Request a Guided Paid Pilot | Traxium",
   description:
-    "Request a guided Traxium paid pilot for finance-trusted procurement savings governance at a US manufacturing or industrial SME.",
+    "Request a guided Traxium paid pilot for finance-trusted procurement savings tracking for SMEs worldwide.",
 };
 
 const buyerFit = [
-  "US manufacturing and industrial SMEs",
-  "Approximately 50-500 employees",
+  "Small procurement and finance teams, including manufacturing and industrial SMEs",
+  "Approximately 50–500 employees is a common pilot fit, not an eligibility rule",
   "Procurement savings tracked in Excel, email, PowerPoint, or manual reports",
   "Finance needs stronger confidence in savings assumptions, evidence, and status",
 ];
@@ -68,7 +69,7 @@ export default function PilotPage() {
                 Request a guided Traxium paid pilot
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-[var(--muted-foreground)]">
-                Traxium helps US manufacturing procurement and finance teams
+                Traxium helps SME procurement and finance teams
                 replace Excel-based savings trackers with evidence-backed saving
                 cards, approvals, finance validation, and controller-ready
                 reporting.
@@ -128,7 +129,7 @@ export default function PilotPage() {
             </Card>
           </div>
 
-          <PilotLeadForm />
+          <PilotLeadForm countries={countryOptions()} />
         </div>
       </section>
 

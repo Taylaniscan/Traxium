@@ -111,6 +111,7 @@ export async function storePilotLead(
       fullName: payload.fullName,
       workEmail: payload.workEmail,
       companyName,
+      country: payload.country,
       jobTitle: normalizeOptionalText(payload.jobTitle),
       companySize: payload.companySize ?? null,
       industry: payload.industry ?? null,

@@ -16,6 +16,7 @@ import {
 } from "@/lib/observability";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { supportedLocales } from "@/lib/regional";
 
 const FISCAL_YEAR_MONTHS = [
   { value: 1, label: "January" },
@@ -55,6 +56,10 @@ export function WorkspaceSettingsForm({
   const [multiCurrencyEnabled, setMultiCurrencyEnabled] = useState(
     organization.multiCurrencyEnabled
   );
+  const [reportingCurrency, setReportingCurrency] = useState(organization.reportingCurrency);
+  const [locale, setLocale] = useState(organization.locale);
+  const [timeZone, setTimeZone] = useState(organization.timeZone);
+  const [measurementSystem, setMeasurementSystem] = useState(organization.measurementSystem);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -66,6 +71,10 @@ export function WorkspaceSettingsForm({
     setFiscalYearStartMonth(organization.fiscalYearStartMonth);
     setDefaultCurrency(organization.defaultCurrency);
     setMultiCurrencyEnabled(organization.multiCurrencyEnabled);
+    setReportingCurrency(organization.reportingCurrency);
+    setLocale(organization.locale);
+    setTimeZone(organization.timeZone);
+    setMeasurementSystem(organization.measurementSystem);
     inFlightRef.current = false;
   }, [
     organization.description,
@@ -73,6 +82,10 @@ export function WorkspaceSettingsForm({
     organization.fiscalYearStartMonth,
     organization.defaultCurrency,
     organization.multiCurrencyEnabled,
+    organization.reportingCurrency,
+    organization.locale,
+    organization.timeZone,
+    organization.measurementSystem,
   ]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -98,6 +111,10 @@ export function WorkspaceSettingsForm({
           fiscalYearStartMonth,
           defaultCurrency,
           multiCurrencyEnabled,
+          reportingCurrency,
+          locale,
+          timeZone,
+          measurementSystem,
         }),
       });
 
@@ -132,6 +149,10 @@ export function WorkspaceSettingsForm({
         setFiscalYearStartMonth(payload.organization.fiscalYearStartMonth);
         setDefaultCurrency(payload.organization.defaultCurrency);
         setMultiCurrencyEnabled(payload.organization.multiCurrencyEnabled);
+        setReportingCurrency(payload.organization.reportingCurrency);
+        setLocale(payload.organization.locale);
+        setTimeZone(payload.organization.timeZone);
+        setMeasurementSystem(payload.organization.measurementSystem);
       }
       inFlightRef.current = false;
       setLoading(false);
@@ -231,8 +252,16 @@ export function WorkspaceSettingsForm({
                 <option value="EUR">EUR (€)</option>
               </Select>
               <p className="text-xs text-[var(--muted-foreground)]">
-                New saving cards use this currency. USD is the canonical reporting currency.
+                New saving cards use this currency. Currency is independent of location, display format, and units.
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reporting-currency">Reporting currency</Label>
+              <Select id="reporting-currency" value={reportingCurrency} onChange={(event) => setReportingCurrency(event.target.value as typeof reportingCurrency)}>
+                <option value="USD">USD</option><option value="EUR">EUR</option>
+              </Select>
+              <p className="text-xs text-[var(--muted-foreground)]">Changing this display basis does not alter card currencies, finance approvals, or historical FX records. A valid EUR-to-USD rate is needed for EUR reporting.</p>
             </div>
 
             <div className="space-y-2">
@@ -248,13 +277,20 @@ export function WorkspaceSettingsForm({
                     Enable multi-currency
                   </span>
                   <span className="block text-xs text-[var(--muted-foreground)]">
-                    When off, the workspace is USD-only: saving cards never show a currency
+                    When off, saving cards use the workspace default currency: they never show a currency
                     or FX rate field. Turn this on only if buyers transact in more than one
                     currency.
                   </span>
                 </span>
               </label>
             </div>
+
+            <fieldset className="space-y-4 rounded-lg border p-4">
+              <legend className="px-1 text-sm font-semibold">Regional preferences</legend>
+              <div className="space-y-2"><Label htmlFor="workspace-locale">Number and date display locale</Label><Input id="workspace-locale" list="workspace-locales" value={locale} onChange={(event) => setLocale(event.target.value)} placeholder="en-US" /><datalist id="workspace-locales">{supportedLocales.map((item) => <option key={item} value={item} />)}</datalist><p className="text-xs text-[var(--muted-foreground)]">Use a locale code such as en-US, de-DE, or ja-JP. The interface stays in English.</p></div>
+              <div className="space-y-2"><Label htmlFor="workspace-time-zone">Time zone (IANA)</Label><Input id="workspace-time-zone" value={timeZone} onChange={(event) => setTimeZone(event.target.value)} placeholder="Europe/Amsterdam" /><p className="text-xs text-[var(--muted-foreground)]">Used to display event timestamps. Impact dates stay on their stored calendar date.</p></div>
+              <div className="space-y-2"><Label htmlFor="measurement-system">Suggested units</Label><Select id="measurement-system" value={measurementSystem} onChange={(event) => setMeasurementSystem(event.target.value)}><option value="metric">Metric</option><option value="us_customary">US customary</option></Select><p className="text-xs text-[var(--muted-foreground)]">Suggestions only. Stored card quantities and units do not change.</p></div>
+            </fieldset>
 
             {notice ? (
               <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">

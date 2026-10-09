@@ -11,6 +11,7 @@ import { renderControllerWorkbookXlsx } from "@/lib/export/controller-workbook-x
 import { prisma } from "@/lib/prisma";
 import { buildTenantOwnedRelationWhere } from "@/lib/tenant-scope";
 import { toNumber } from "@/lib/utils/decimal";
+import { resolveReportingBasis } from "@/lib/reporting-currency";
 import {
   createRateLimitErrorResponse,
   enforceRateLimit,
@@ -88,11 +89,13 @@ export async function GET(request: Request) {
     }
 
     const generatedAt = new Date();
+    const reportingBasis = await resolveReportingBasis(prisma, workspaceReadiness.workspace.reportingCurrency ?? "USD", generatedAt);
     const model = buildControllerWorkbookModel({
       cards,
       generatedAt,
       workspaceReadiness,
       actuals,
+      reportingBasis,
     });
     const buffer = renderControllerWorkbookXlsx({
       model,

@@ -429,6 +429,7 @@ describe("billing access state", () => {
     ]);
 
     const result = await getOrganizationSubscriptionState(TEST_ORGANIZATION_ID, {
+      envSource: createConfiguredBillingEnv(),
       prismaClient: {
         organization: {
           findUnique,

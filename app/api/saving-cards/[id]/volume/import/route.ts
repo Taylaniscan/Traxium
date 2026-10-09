@@ -50,6 +50,9 @@ export async function POST(
     }
 
     const file = formData.get("file");
+    const decimalSeparator = formData.get("decimalSeparator") === "comma" ? "comma" : "dot";
+    const separatorInput = formData.get("separator");
+    const separator = separatorInput === "comma" ? "," : separatorInput === "semicolon" ? ";" : separatorInput === "tab" ? "\t" : undefined;
 
     if (!(file instanceof File)) {
       return jsonError("A CSV or Excel file is required.", 422);
@@ -91,7 +94,8 @@ export async function POST(
       card.id,
       csvContent,
       user.id,
-      user.organizationId
+      user.organizationId,
+      { decimalSeparator, delimiter: separator }
     );
     return Response.json(result);
   } catch (error) {

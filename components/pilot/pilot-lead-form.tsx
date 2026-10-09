@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import type { CountryOption } from "@/lib/countries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +42,7 @@ function SelectPlaceholder() {
   return <option value="">Select one</option>;
 }
 
-export function PilotLeadForm() {
+export function PilotLeadForm({ countries }: { countries: CountryOption[] }) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +59,7 @@ export function PilotLeadForm() {
       fullName: String(formData.get("fullName") ?? ""),
       workEmail: String(formData.get("workEmail") ?? ""),
       companyName: String(formData.get("companyName") ?? ""),
+      country: String(formData.get("country") ?? ""),
       jobTitle: String(formData.get("jobTitle") ?? ""),
       companySize: String(formData.get("companySize") ?? ""),
       industry: String(formData.get("industry") ?? ""),
@@ -173,6 +175,15 @@ export function PilotLeadForm() {
               tabIndex={-1}
               autoComplete="off"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="country">Country *</Label>
+            <Select id="country" name="country" required aria-invalid={Boolean(fieldErrors.country)} defaultValue="">
+              <SelectPlaceholder />
+              {countries.map(({ code, name }) => <option key={code} value={code}>{name}</option>)}
+            </Select>
+            <FieldError errors={fieldErrors} field="country" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

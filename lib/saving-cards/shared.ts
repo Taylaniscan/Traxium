@@ -3,6 +3,7 @@ import { calculateSavings, calculatePeriodizedSavings } from "@/lib/calculations
 import { buildTenantOwnedRelationWhere, buildTenantScopeWhere } from "@/lib/tenant-scope";
 import { toNumber } from "@/lib/utils/decimal";
 import { savingCardSchema } from "@/lib/validation";
+import { validateUnit } from "@/lib/units";
 
 export const savingCardDetailInclude = {
   supplier: true,
@@ -108,6 +109,8 @@ export function buildSavingCardPayload(
   options?: { fiscalYearStartMonth?: number }
 ) {
   const parsed = savingCardSchema.parse(input);
+  const unit = validateUnit(parsed.volumeUnit);
+  if (!unit.valid) throw new Error(unit.error);
   const referencePrice = parsed.referencePrice ?? null;
   const totals = calculateSavings({
     baselinePrice: parsed.baselinePrice,
@@ -136,6 +139,7 @@ export function buildSavingCardPayload(
 
   return {
     ...parsed,
+    volumeUnit: unit.code,
     referencePrice,
     calculatedSavings: totals.localSavings,
     calculatedSavingsUSD: totals.savingsUSD,
@@ -155,11 +159,15 @@ export async function getLatestFxRate(
   if (currency === Currency.USD) return 1;
 
   const rate = await tx.fxRate.findFirst({
-    where: { currency },
+    where: { currency, validFrom: { lte: new Date() } },
     orderBy: { validFrom: "desc" },
   });
 
-  return toNumber(rate?.rateToUSD ?? 1);
+  const value = rate ? toNumber(rate.rateToUSD) : NaN;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`A positive EUR-to-USD FX rate with an effective date is required before this transaction can be saved.`);
+  }
+  return value;
 }
 
 export async function resolveOrCreateSupplier(

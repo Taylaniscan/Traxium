@@ -15,8 +15,9 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
+import { formatRegionalMonth } from "@/lib/regional";
 import type { SavingCardPortfolio, VolumeTimelineResult } from "@/lib/types";
-import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 type AggregatedRow = {
   period: string;
@@ -34,6 +35,7 @@ export function VolumeSCurve({
   cards: SavingCardPortfolio[];
   nowIso: string;
 }) {
+  const { formatUsd, locale } = useRegionalDisplay();
   const [rows, setRows] = useState<AggregatedRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function VolumeSCurve({
         for (const timeline of successful) {
           for (const row of timeline.timeline) {
             const current = monthlyMap.get(row.periodKey) ?? {
-              period: row.period,
+              period: formatRegionalMonth(`${row.periodKey}-01T00:00:00Z`, locale),
               periodKey: row.periodKey,
               forecastSaving: 0,
               actualSaving: 0,
@@ -143,15 +145,11 @@ export function VolumeSCurve({
     return () => {
       canceled = true;
     };
-  }, [cards]);
+  }, [cards, locale]);
 
   const todayPeriodLabel = useMemo(() => {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    }).format(new Date(nowIso));
-  }, [nowIso]);
+    return formatRegionalMonth(nowIso, locale);
+  }, [nowIso, locale]);
 
   if (loading) {
     return (
@@ -214,7 +212,7 @@ export function VolumeSCurve({
                 contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
                 formatter={(value, name) => [
                   typeof value === "number" && Number.isFinite(value)
-                    ? formatCurrency(Math.round(value), "USD")
+                    ? formatUsd(Math.round(value))
                     : "No confirmed actual",
                   name === "forecastSaving" ? "Forecast" : "Actual",
                 ]}
@@ -263,7 +261,7 @@ export function VolumeSCurve({
                 contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
                 formatter={(value, name) => [
                   typeof value === "number" && Number.isFinite(value)
-                    ? formatCurrency(Math.round(value), "USD")
+                    ? formatUsd(Math.round(value))
                     : "No confirmed actual",
                   name === "cumulativeForecast" ? "Cumulative Forecast" : "Cumulative Actual",
                 ]}

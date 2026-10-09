@@ -24,6 +24,7 @@ import { NotificationBell, type ShellNotification } from "@/components/layout/no
 import { Button } from "@/components/ui/button";
 import { APP_NAME, roleLabels } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { RegionalProvider, type RegionalDisplay } from "@/components/layout/regional-context";
 
 const ACTION_CENTER_HREF = "/command-center";
 
@@ -51,6 +52,7 @@ type AppShellClientProps = {
   unreadNotificationCount: number;
   pendingActionsCount: number;
   children: React.ReactNode;
+  regional?: RegionalDisplay;
 };
 
 export function AppShellClient({
@@ -60,6 +62,7 @@ export function AppShellClient({
   unreadNotificationCount,
   pendingActionsCount: _pendingActionsCount,
   children,
+  regional,
 }: AppShellClientProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -166,6 +169,7 @@ export function AppShellClient({
   const pendingApprovalBadge = visiblePendingApprovalCount > 9 ? "9+" : null;
 
   return (
+    <RegionalProvider value={regional ?? { locale: "en-US", timeZone: "UTC", reportingCurrency: "USD", eurToUsd: 1, fxEffectiveDate: null, measurementSystem: "metric" }}>
     <div className="min-h-screen bg-[var(--background)] lg:flex">
       <aside
         className={cn(
@@ -306,8 +310,12 @@ export function AppShellClient({
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 p-6 lg:p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-6 lg:p-8">
+        {regional?.reportingCurrency === "EUR" && !regional.eurToUsd ? <p role="alert" className="mb-4 rounded-lg border border-amber-400 p-3 text-sm">EUR reporting is unavailable because no positive EUR-to-USD rate is effective yet. Ask an admin to configure the rate before relying on EUR totals.</p> : null}
+        {children}
+      </main>
     </div>
+    </RegionalProvider>
   );
 }
 

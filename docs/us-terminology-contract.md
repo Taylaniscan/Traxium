@@ -1,8 +1,8 @@
-# US Terminology Contract
+# Global English Terminology Contract
 
 ## Purpose
 
-Traxium uses US-native, SME-friendly buyer-facing language while preserving internal workflow compatibility. Product UI, reports, exports, demos, and public buyer docs should feel clear to US manufacturing procurement and finance teams without changing database enum values, API contracts, workflow order, or historical data.
+Traxium uses clear English for SME procurement and finance teams worldwide while preserving internal workflow compatibility. Product UI, reports, exports, demos, and public buyer docs must use the same labels without changing database enum values, API contracts, workflow order, or historical data. English display language is independent of workspace locale, time zone, currency, and measurement preference.
 
 ## Customer-Facing Phase Labels
 
@@ -14,7 +14,7 @@ Traxium uses US-native, SME-friendly buyer-facing language while preserving inte
 | `ACHIEVED` | Captured |
 | `CANCELLED` | Canceled |
 
-Option B is the final buyer-facing label set because it is clearer for US manufacturing finance/procurement buyers than closer technical labels such as Idea, Validated, Realized, and Achieved.
+These are the buyer-facing labels. The internal enum values remain unchanged.
 
 ## Customer-Facing Role Labels
 

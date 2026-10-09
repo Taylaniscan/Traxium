@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The public lead-capture flow allows qualified US manufacturing and industrial SME buyers to request a guided Traxium paid pilot.
+The public lead-capture flow allows SME procurement and finance teams worldwide, including manufacturing and industrial buyers, to request a guided Traxium paid pilot. Country is explicitly selected and stored as an ISO 3166-1 alpha-2 code; historical leads retain their existing values.
 
 Traxium is founder-led and sales-led at this stage. Submitting the form requests a fit review and follow-up; it does not create an account, create a workspace, start a trial, or activate billing.
 
@@ -17,7 +17,7 @@ The conversion path was incomplete:
 - There was no public pilot-request page or lead-capture API.
 - No lead record was stored.
 - No public-form validation, honeypot, duplicate handling, or rate limit existed.
-- The current job/email infrastructure is designed for authentication emails, not sales notifications.
+- The job/email infrastructure at the time was designed for authentication emails, not sales notifications (see Notification Decision).
 - The copy described a guided pilot but did not give an unauthenticated qualified buyer a real way to request one.
 
 Gap 9 adds a narrow B2B paid-pilot funnel without creating self-serve provisioning, a generic CRM, or a public product-data route.
@@ -38,7 +38,7 @@ The form is intended for:
 The request should help determine whether the company:
 
 - Operates in manufacturing or industrial distribution.
-- Has approximately 50-500 employees.
+- Often has approximately 50–500 employees as a commercial fit guideline, without an access restriction or universal SME definition.
 - Tracks procurement savings today.
 - Uses Excel, email, PowerPoint, or another manual tracker.
 - Has finance-review, evidence, approval, ownership, or savings-reporting pain.
@@ -109,11 +109,15 @@ Public pilot leads are platform-level sales records, not customer-workspace reco
 
 ## Notification Decision
 
-Lead notification is not implemented in Gap 9.
+New leads trigger an internal sales notification email. Invitations remain manual: the notification never creates an account, workspace, or invite, and the requester receives no automated email.
 
-The existing job/email infrastructure is limited to Supabase authentication invitation and password-recovery delivery. Lead storage must succeed independently of a future sales-notification provider. Until a dedicated internal notification destination and handler are configured, founders or operators review `PilotLead` records through approved database operations.
+- When `POST /api/pilot-leads` stores a **new** lead, it enqueues a `pilot_lead.notification` job (`lib/pilot-leads/notification.ts`). Recent duplicates and honeypot submissions enqueue nothing.
+- The job payload carries only the lead id; the handler re-reads the `PilotLead` row so contact details are not stored in the job table. The job's idempotency key is the lead id, and the Resend request uses an idempotency key derived from it, so a lead is notified at most once.
+- The job worker (`npm run jobs:worker` or the `/api/jobs/run` cron) sends the email through the Resend HTTP API to `PILOT_LEAD_NOTIFICATION_EMAIL` (comma-separated), from `PILOT_LEAD_NOTIFICATION_FROM`, with `reply_to` set to the lead's work email.
+- If `RESEND_API_KEY` or `PILOT_LEAD_NOTIFICATION_EMAIL` is not set, the job completes with a `jobs.pilot_lead.notification.skipped` warning and no email is sent. Provider errors fail the job so it is retried.
+- Lead storage must succeed independently of notification: if enqueueing fails, the API still returns success and records `pilot_lead.notification_enqueue_failed`.
 
-This limitation must be documented and must not cause the public form to imply that an email notification was sent.
+The public form must not imply that the requester will receive an email confirmation.
 
 ## Success Message
 

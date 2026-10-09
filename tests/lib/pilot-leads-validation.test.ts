@@ -10,6 +10,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
     fullName: "Jordan Reyes",
     workEmail: "JORDAN.REYES@EXAMPLE.COM",
     companyName: "Acme Components",
+    country: "DE",
     jobTitle: "Procurement Director",
     companySize: "100-249",
     industry: "manufacturing",
@@ -29,6 +30,7 @@ describe("pilot lead validation", () => {
 
     expect(result.workEmail).toBe("jordan.reyes@example.com");
     expect(result.companySize).toBe("100-249");
+    expect(result.country).toBe("DE");
     expect(result.hasSavingsTracker).toBe(true);
     expect(pilotLeadSuccessMessage).toContain("guided paid pilots");
   });
@@ -38,6 +40,7 @@ describe("pilot lead validation", () => {
       fullName: "",
       workEmail: "",
       companyName: "",
+      country: "",
       hasSavingsTracker: false,
       websiteUrl: "",
     });
@@ -47,6 +50,7 @@ describe("pilot lead validation", () => {
       fullName: expect.any(Array),
       workEmail: expect.any(Array),
       companyName: expect.any(Array),
+      country: expect.any(Array),
     });
   });
 

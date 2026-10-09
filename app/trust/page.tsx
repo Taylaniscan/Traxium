@@ -99,8 +99,8 @@ export default function TrustPage() {
           </h1>
           <p className="mt-5 max-w-3xl text-lg leading-8 text-[var(--muted-foreground)]">
             How Traxium protects workspace data, evidence files, billing flows,
-            and export boundaries during paid pilots for US manufacturing and
-            industrial SMEs.
+            and export boundaries during paid pilots for SME teams, including
+            manufacturing and industrial businesses.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link

@@ -85,13 +85,17 @@ function applyColumnFormats(
     "Reference Price",
     "Calculated Savings (Local)",
     "Savings USD",
+    "Savings (Reporting)",
     "Current Fiscal Year Value (USD)",
     "Impact-Start Fiscal Year Value (Local)",
     "Annualized Run-Rate (Local)",
     "Annualized Run-Rate (USD)",
   ]);
-  const numberHeaders = new Set(["Annual Volume", "Evidence Count"]);
+  const numberHeaders = new Set(["Annual Volume", "Evidence Count", "FX Rate (EUR to USD)"]);
   const dateHeaders = new Set([
+    "Start Date",
+    "End Date",
+    "FX Rate Effective Date",
     "Impact Start Date",
     "Impact End Date",
     "Last Evidence Upload Date",
@@ -106,11 +110,10 @@ function applyColumnFormats(
       ];
 
       if (!cell) continue;
-      // US currency: dollar sign, thousands separators, no cents.
-      if (currencyHeaders.has(header)) cell.z = "\"$\"#,##0";
-      if (numberHeaders.has(header)) cell.z = "#,##0";
-      // US date format MM/DD/YYYY.
-      if (dateHeaders.has(header) && cell.t === "d") cell.z = "mm/dd/yyyy";
+      // Numeric amounts retain their currency in the adjacent Currency column.
+      if (currencyHeaders.has(header)) cell.z = "#,##0.0000";
+      if (numberHeaders.has(header)) cell.z = "#,##0.######";
+      if (dateHeaders.has(header) && cell.t === "d") cell.z = "yyyy-mm-dd";
     }
   });
 }
@@ -162,7 +165,7 @@ function setSummarySheetLayout(worksheet: XLSX.WorkSheet) {
       (label.includes("Update") || label.includes("Generated At")) &&
       valueCell?.t === "d"
     ) {
-      valueCell.z = "mm/dd/yyyy hh:mm";
+      valueCell.z = "yyyy-mm-dd hh:mm";
     }
   }
 }
@@ -186,6 +189,7 @@ export function createControllerWorkbook(input: {
     model.importTemplateRows,
     {
       header: [...importTemplateColumns],
+      cellDates: true,
     }
   );
   const evidenceSummarySheet = XLSX.utils.json_to_sheet(
@@ -248,6 +252,7 @@ export function createControllerWorkbook(input: {
     Title: 34,
     "Business Case / Notes": 44,
   });
+  applyColumnFormats(importTemplateSheet, importTemplateColumns, model.importTemplateRows.length);
   setTableSheetLayout(evidenceSummarySheet, evidenceSummaryColumns, {
     "Saving Card Title": 34,
     "Evidence Types": 42,

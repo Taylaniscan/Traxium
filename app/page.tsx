@@ -101,7 +101,7 @@ function ProductMockup() {
                 </p>
               </div>
               <p className="text-numeric mt-2 text-2xl font-semibold sm:text-3xl">
-                $2.4M
+                USD 2.4M
               </p>
             </div>
             <div className="rounded-xl border bg-surface p-4">
@@ -114,7 +114,7 @@ function ProductMockup() {
                 </p>
               </div>
               <p className="text-numeric mt-2 text-2xl font-semibold sm:text-3xl">
-                $3.1M
+                USD 3.1M
               </p>
             </div>
           </div>
@@ -386,7 +386,7 @@ export default async function HomePage() {
           <div className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.92fr)] lg:items-center lg:py-24">
             <div className="space-y-6">
               <p className="inline-flex items-center gap-2 rounded-full bg-[var(--primary-soft)] px-3 py-1 text-sm font-semibold text-[var(--primary-action)]">
-                Finance-trusted savings governance for US manufacturing SMEs
+                Finance-trusted procurement savings tracking for SMEs worldwide
               </p>
               <h1
                 id="hero-heading"
@@ -541,17 +541,19 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* 5. BUILT FOR MANUFACTURING */}
+        {/* 5. BUILT FOR SME TEAMS */}
         <section aria-labelledby="icp-heading" className="border-b bg-surface">
           <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 lg:grid-cols-[0.85fr_1fr] lg:items-center">
             <div className="space-y-3">
               <h2 id="icp-heading" className="text-3xl font-semibold tracking-[-0.02em]">
-                Made for US manufacturing
+                Made for small procurement and finance teams
               </h2>
               <p className="text-muted-foreground">
-                Traxium is built for 50–500 employee US manufacturers where
-                procurement and finance both need to trust the same savings
-                register — direct and indirect, hard savings and cost avoidance.
+                Traxium helps SMEs, including manufacturing and industrial teams,
+                keep one trusted savings register across procurement and finance.
+                Around 50–500 employees is a common commercial fit, not a legal SME
+                definition or an access limit. It is designed for focused teams,
+                not large enterprises with complex global procurement requirements.
               </p>
             </div>
             <ul className="grid gap-3 sm:grid-cols-3">

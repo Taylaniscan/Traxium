@@ -45,7 +45,7 @@ describe("home page", () => {
       "Track procurement savings with finance approval, evidence, and an audit trail"
     );
     expect(markup).toContain(
-      "Finance-trusted savings governance for US manufacturing SMEs"
+      "Finance-trusted procurement savings tracking for SMEs worldwide"
     );
     expect(markup).toContain("In-Year Value");
     expect(markup).toContain("Annualized Run-Rate");
@@ -59,8 +59,8 @@ describe("home page", () => {
     expect(markup).toContain("Controller-ready XLSX export");
     expect(markup).toContain("actuals reconciliation");
 
-    // Manufacturing ICP (matches the documented 50-500 figure)
-    expect(markup).toContain("50–500 employee US manufacturers");
+    // Commercial fit is a guideline, while the workflow serves SMEs worldwide.
+    expect(markup).toContain("Around 50–500 employees");
     expect(markup).toContain("Cost avoidance");
 
     // Honest trust section — non-claims must survive verbatim in spirit
@@ -114,10 +114,10 @@ describe("home page", () => {
     expect(redirectMock).toHaveBeenCalledWith("/onboarding");
   });
 
-  it("keeps public metadata aligned with the US manufacturing pilot story", () => {
-    expect(metadata.title).toBe("Traxium | Finance-Trusted Savings Governance");
-    expect(metadata.description).toContain("US manufacturing SMEs");
-    expect(metadata.description).toContain("paid-pilot workspace");
+  it("keeps public metadata aligned with the global SME pilot story", () => {
+    expect(metadata.title).toBe("Traxium | Finance-Trusted Procurement Savings for SMEs");
+    expect(metadata.description).toContain("SMEs worldwide");
+    expect(metadata.description).toContain("Small procurement and finance teams");
   });
 
   it("keeps the root route available for the public buyer page", () => {

@@ -22,6 +22,7 @@ import { getEvidenceStatus, isFinanceEvidenceReviewPhase } from "@/lib/evidence"
 import { evidenceTypeLabels } from "@/lib/evidence-config";
 import { monthKey } from "@/lib/monthly-close";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
+import { usdToReporting, type ReportingBasis } from "@/lib/reporting-currency";
 
 export type ControllerWorkbookCell = string | number | Date;
 export type ControllerWorkbookRow = Record<string, ControllerWorkbookCell>;
@@ -47,14 +48,20 @@ export const controllerSavingCardColumns = [
   "Annual Volume",
   "Volume Unit",
   "Currency",
+  "FX Rate (EUR to USD)",
+  "FX Rate Effective Date",
   "Calculated Savings (Local)",
   "Savings USD",
+  "Reporting Currency",
+  "Savings (Reporting)",
   "Current Fiscal Year Value (USD)",
   "Impact-Start Fiscal Year Value (Local)",
   "Annualized Run-Rate (Local)",
   "Annualized Run-Rate (USD)",
   "Impact Start Date",
   "Impact End Date",
+  "Start Date",
+  "End Date",
   "Finance Lock Status",
   "Evidence Count",
   "Evidence Status",
@@ -108,7 +115,10 @@ export const importTemplateColumns = [
   "New Price",
   "Reference Price",
   "Annual Volume",
+  "Volume Unit",
   "Currency",
+  "FX Rate (EUR to USD)",
+  "FX Rate Effective Date",
   "Start Date",
   "End Date",
   "Impact Start Date",
@@ -127,7 +137,7 @@ export type ControllerActualsByCard = Map<
 
 export type ControllerWorkbookModel = {
   generatedAt: Date;
-  reportingCurrency: "USD";
+  reportingCurrency: "USD" | "EUR";
   portfolioSummaryRows: ControllerWorkbookCell[][];
   savingCardRows: ControllerWorkbookRow[];
   dataDictionaryRows: ControllerWorkbookCell[][];
@@ -173,8 +183,14 @@ const columnDefinitions: Record<
   "Annual Volume": "Annualized quantity used in the savings calculation.",
   "Volume Unit": "Unit of measure for annual volume.",
   Currency: "Commercial assumption currency.",
+  "FX Rate (EUR to USD)": "USD received for one EUR; USD cards use 1. This is the saved card rate.",
+  "FX Rate Effective Date": "Calendar date of the saved EUR-to-USD rate; blank on historical records without a recorded date.",
+  "Start Date": "Saving initiative start date (calendar date).",
+  "End Date": "Saving initiative end date (calendar date).",
   "Calculated Savings (Local)": "Calculated savings in the card currency.",
-  "Savings USD": "Calculated savings in USD, the Traxium reporting currency.",
+  "Savings USD": "Calculated savings in the stored USD audit basis.",
+  "Reporting Currency": "Workspace reporting currency selected at export time.",
+  "Savings (Reporting)": "USD audit value translated once at the displayed effective EUR-to-USD rate when reporting in EUR.",
   "Current Fiscal Year Value (USD)":
     "Prorated USD savings landing inside the workspace fiscal year containing the export timestamp.",
   "Impact-Start Fiscal Year Value (Local)":
@@ -267,10 +283,12 @@ export function mapSavingCardsForControllerExport(
   reporting: {
     reportingDate?: Date;
     fiscalYearStartMonth?: number;
+    basis?: ReportingBasis;
   } = {}
 ): ControllerWorkbookRow[] {
   const reportingDate = reporting.reportingDate ?? new Date();
   const fiscalYearStartMonth = reporting.fiscalYearStartMonth ?? 1;
+  const basis = reporting.basis ?? { currency: "USD", eurToUsd: 1, effectiveDate: null };
 
   return cards.map((card) => ({
     "Saving Card Title": card.title,
@@ -300,8 +318,12 @@ export function mapSavingCardsForControllerExport(
     "Annual Volume": normalizeNumber(card.annualVolume),
     "Volume Unit": card.volumeUnit || "units",
     Currency: card.currency,
+    "FX Rate (EUR to USD)": normalizeNumber(card.fxRate),
+    "FX Rate Effective Date": card.fxRateEffectiveDate ?? "",
     "Calculated Savings (Local)": getLocalSavings(card),
     "Savings USD": normalizeNumber(card.calculatedSavingsUSD),
+    "Reporting Currency": basis.currency,
+    "Savings (Reporting)": usdToReporting(normalizeNumber(card.calculatedSavingsUSD), basis),
     "Current Fiscal Year Value (USD)": calculateFiscalYearValue({
       annualizedValue: normalizeNumber(card.annualizedRunRateUSD),
       impactStartDate: card.impactStartDate,
@@ -314,6 +336,8 @@ export function mapSavingCardsForControllerExport(
     "Annualized Run-Rate (USD)": normalizeNumber(card.annualizedRunRateUSD),
     "Impact Start Date": card.impactStartDate,
     "Impact End Date": card.impactEndDate,
+    "Start Date": card.startDate,
+    "End Date": card.endDate,
     "Finance Lock Status": card.financeLocked ? "Locked" : "Not Locked",
     "Evidence Count": card.evidence.length,
     "Evidence Status": getEvidenceStatus(card.phase, card.evidence.length),
@@ -331,6 +355,7 @@ function buildPortfolioSummaryRows(input: {
   cards: SavingCardPortfolio[];
   generatedAt: Date;
   workspaceReadiness: WorkspaceReadiness;
+  reportingBasis?: ReportingBasis;
 }) {
   const { cards, generatedAt, workspaceReadiness } = input;
   const activeCards = cards.filter((card) => card.phase !== "CANCELLED");
@@ -345,6 +370,7 @@ function buildPortfolioSummaryRows(input: {
     ? Math.round((cardsWithEvidence.length / activeCards.length) * 100)
     : 0;
   const activeSavings = sumSavings(activeCards);
+  const basis = input.reportingBasis ?? { currency: "USD", eurToUsd: 1, effectiveDate: null };
   const fiscalYearStartMonth =
     workspaceReadiness.workspace.fiscalYearStartMonth ?? 1;
   const savingCardRows = mapSavingCardsForControllerExport(cards, {
@@ -367,7 +393,9 @@ function buildPortfolioSummaryRows(input: {
     ["Metric", "Value", "Review Note"],
     ["Workspace", workspaceReadiness.workspace.name, "Active organization only"],
     ["Generated At (UTC)", generatedAt, "Point-in-time export"],
-    ["Reporting Currency", "USD", "Savings USD is the controller reporting basis"],
+    ["Reporting Currency", basis.currency, "The USD audit values remain visible in this workbook"],
+    ["EUR-to-USD rate", basis.eurToUsd, basis.effectiveDate ? `Effective ${basis.effectiveDate}` : "USD reporting; no conversion"],
+    [`Active Forecast / Pipeline Value (${basis.currency})`, usdToReporting(activeSavings, basis), "Selected reporting currency; USD audit row below"],
     [
       "Reporting Basis",
       "Approved saving-card assumptions",
@@ -580,13 +608,70 @@ function buildImportTemplateRows(): ControllerWorkbookRow[] {
       "New Price": 1.31,
       "Reference Price": "",
       "Annual Volume": 850000,
+      "Volume Unit": "kg",
       Currency: "USD",
-      "Start Date": "2026-01-01",
-      "End Date": "2026-12-31",
-      "Impact Start Date": "2026-01-01",
-      "Impact End Date": "2026-12-31",
+      "FX Rate (EUR to USD)": 1,
+      "FX Rate Effective Date": "",
+      "Start Date": new Date("2026-01-01T00:00:00Z"),
+      "End Date": new Date("2026-12-31T00:00:00Z"),
+      "Impact Start Date": new Date("2026-01-01T00:00:00Z"),
+      "Impact End Date": new Date("2026-12-31T00:00:00Z"),
       "Business Case / Notes":
         "Annual supplier negotiation using approved baseline and forecast volume.",
+    },
+    {
+      Title: "Industrial fittings contract renewal",
+      "Savings Type": "Price Reduction",
+      "Impact Type": "Hard Savings",
+      "Impact Recurrence": "Recurring",
+      "Budget Impact": "Budget Impact",
+      Phase: "Proposed",
+      Buyer: "Procurement Lead",
+      Supplier: "Regional Components Supplier",
+      Material: "Steel fittings",
+      Category: "Industrial Components",
+      Plant: "Rotterdam Workshop",
+      "Business Unit": "Maintenance",
+      "Baseline Price": 8.125,
+      "New Price": 7.875,
+      "Reference Price": "",
+      "Annual Volume": 12000,
+      "Volume Unit": "kg",
+      Currency: "EUR",
+      "FX Rate (EUR to USD)": 1.08,
+      "FX Rate Effective Date": new Date("2026-01-01T00:00:00Z"),
+      "Start Date": new Date("2026-01-01T00:00:00Z"),
+      "End Date": new Date("2026-12-31T00:00:00Z"),
+      "Impact Start Date": new Date("2026-02-01T00:00:00Z"),
+      "Impact End Date": new Date("2026-12-31T00:00:00Z"),
+      "Business Case / Notes": "Illustrative EUR rate and metric unit; replace with approved commercial and FX inputs.",
+    },
+    {
+      Title: "Packaging material unit-price review",
+      "Savings Type": "Price Reduction",
+      "Impact Type": "Hard Savings",
+      "Impact Recurrence": "Recurring",
+      "Budget Impact": "Budget Impact",
+      Phase: "Proposed",
+      Buyer: "Buyer",
+      Supplier: "Packaging Partner",
+      Material: "Packaging film",
+      Category: "Packaging",
+      Plant: "Ohio Compounding Site",
+      "Business Unit": "Operations",
+      "Baseline Price": 1.275,
+      "New Price": 1.225,
+      "Reference Price": "",
+      "Annual Volume": 50000,
+      "Volume Unit": "lb",
+      Currency: "USD",
+      "FX Rate (EUR to USD)": 1,
+      "FX Rate Effective Date": "",
+      "Start Date": new Date("2026-01-01T00:00:00Z"),
+      "End Date": new Date("2026-12-31T00:00:00Z"),
+      "Impact Start Date": new Date("2026-01-01T00:00:00Z"),
+      "Impact End Date": new Date("2026-12-31T00:00:00Z"),
+      "Business Case / Notes": "Illustrative USD case using pounds. Prices and annual volume share the same unit.",
     },
   ];
 }
@@ -734,6 +819,7 @@ export function buildControllerWorkbookModel(input: {
   generatedAt: Date;
   workspaceReadiness: WorkspaceReadiness;
   actuals?: ControllerActualsByCard;
+  reportingBasis?: ReportingBasis;
 }): ControllerWorkbookModel {
   const summary = buildPortfolioSummaryRows(input);
   const actualsReconciliationRows = input.actuals
@@ -745,12 +831,13 @@ export function buildControllerWorkbookModel(input: {
 
   return {
     generatedAt: input.generatedAt,
-    reportingCurrency: "USD",
+    reportingCurrency: input.reportingBasis?.currency ?? "USD",
     portfolioSummaryRows: summary.rows,
     savingCardRows: mapSavingCardsForControllerExport(input.cards, {
       reportingDate: input.generatedAt,
       fiscalYearStartMonth:
         input.workspaceReadiness.workspace.fiscalYearStartMonth ?? 1,
+      basis: input.reportingBasis,
     }),
     dataDictionaryRows: buildDataDictionaryRows(),
     importTemplateRows: buildImportTemplateRows(),

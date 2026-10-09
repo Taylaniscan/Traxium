@@ -17,7 +17,7 @@ The routes most likely to show demo-damaging empty content are `/open-actions` f
 
 ## A. Purpose
 
-UtopiaTrax is the official paid-pilot demo workspace for US manufacturing SMEs. It must show finance-trusted procurement savings governance with realistic data and no empty demo-critical surfaces.
+UtopiaTrax is an existing US manufacturing example workspace for SME paid-pilot demos. Its historical sample records remain intact; the product also serves SMEs in other countries. It must show finance-trusted procurement savings governance with realistic data and no empty demo-critical surfaces.
 
 The workspace is synthetic. It must never contain real customer data or depend on production records.
 

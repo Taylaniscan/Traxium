@@ -17,6 +17,7 @@ const createAuthGuardErrorResponseMock = vi.hoisted(() => vi.fn());
 const customersCreateMock = vi.hoisted(() => vi.fn());
 const checkoutSessionsCreateMock = vi.hoisted(() => vi.fn());
 const billingPortalSessionsCreateMock = vi.hoisted(() => vi.fn());
+const pricesRetrieveMock = vi.hoisted(() => vi.fn());
 
 const prismaState = vi.hoisted(() => ({
   billingCustomers: [] as Array<Record<string, unknown>>,
@@ -142,6 +143,7 @@ vi.mock("@/lib/billing/stripe", () => ({
     customers: {
       create: customersCreateMock,
     },
+    prices: { retrieve: pricesRetrieveMock },
     checkout: {
       sessions: {
         create: checkoutSessionsCreateMock,
@@ -198,6 +200,7 @@ function createStripeMissingCustomerError() {
 describe("billing checkout routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pricesRetrieveMock.mockResolvedValue({ currency: "usd" });
 
     prismaState.billingCustomers.length = 0;
 

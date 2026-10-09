@@ -11,7 +11,7 @@ describe("public paid-pilot page", () => {
     const markup = renderToStaticMarkup(React.createElement(PilotPage));
 
     expect(markup).toContain("Request a guided Traxium paid pilot");
-    expect(markup).toContain("US manufacturing procurement and finance teams");
+    expect(markup).toContain("Small procurement and finance teams");
     expect(markup).toContain("Excel-based savings trackers");
     expect(markup).toContain("What happens in a pilot");
     expect(markup).toContain("Review your current savings tracker");
@@ -23,6 +23,7 @@ describe("public paid-pilot page", () => {
     expect(markup).toContain("Work email");
     expect(markup).toContain("Company name");
     expect(markup).toContain("Company size");
+    expect(markup).toContain("Country");
     expect(markup).toContain("Existing savings tracker?");
     expect(markup).toContain("Request paid pilot");
     expect(markup).toContain("Trust &amp; security");
@@ -32,6 +33,6 @@ describe("public paid-pilot page", () => {
 
   it("keeps metadata aligned with a guided sales-led pilot", () => {
     expect(metadata.title).toBe("Request a Guided Paid Pilot | Traxium");
-    expect(metadata.description).toContain("US manufacturing");
+    expect(metadata.description).toContain("SMEs worldwide");
   });
 });

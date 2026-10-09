@@ -1,12 +1,12 @@
 # Paid Pilot Buyer Package
 
-This package defines the first buyer experience for Traxium as of the commercial-readiness workstream. It is intentionally narrow: help a 50-500 employee US manufacturing SME prove finance-trusted procurement savings governance with the product that exists today.
+This package defines the first buyer experience for Traxium as of the commercial-readiness workstream. It is intentionally narrow: help a small or midsize manufacturing business prove finance-trusted procurement savings governance with the product that exists today. The current product supports EUR and USD card currencies and lets each workspace choose USD or EUR reporting from a dated EUR-to-USD rate. Validate local commercial, accounting, privacy, and regulatory requirements with each prospective buyer; the product does not currently claim country-specific compliance or localization.
 
 ## Landing Page Promise
 
 Primary promise:
 
-> Finance-trusted savings governance for US manufacturing SMEs.
+> Finance-trusted savings governance for manufacturing businesses.
 
 Supporting story:
 
@@ -153,7 +153,7 @@ Export includes:
 - `Portfolio Summary` with reporting basis, active cards, reconciled savings totals, implemented/captured value, finance locks, evidence coverage, phase counts, category totals, buyer totals, last update, and a zero-difference check against exported rows.
 - `Saving Cards` with controller-friendly headers, commercial assumptions, phases, ownership, plant/business-unit/category/supplier/material context, finance-lock status, workflow status, last update, cancellation reason, and fallback relation names.
 - `Data Dictionary` with field definitions, phase definitions, evidence/finance-lock meaning, exclusions, and the formula `(Effective Baseline - New Price) × Annual Volume`; Cost Avoidance uses Reference Price as the effective baseline.
-- `Import Template` with required columns, accepted finance-classification values, and one manufacturing example row.
+- `Import Template` with required columns, accepted finance-classification values, and three SME example rows covering USD, EUR, metric, and US customary units.
 - `Evidence Summary` with card-level coverage metadata only.
 - Customer-facing Savings Type, Impact Type, Impact Recurrence, and Budget Impact columns, plus classification totals in the summary sheet.
 - Evidence Count, Evidence Status, Evidence Types, and Last Evidence Upload Date, plus portfolio evidence coverage and finance-stage gaps in the summary sheet.

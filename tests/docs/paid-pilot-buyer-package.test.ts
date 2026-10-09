@@ -23,7 +23,7 @@ describe("paid pilot buyer package", () => {
       expect(packageDoc).toContain(heading);
     }
 
-    expect(packageDoc).toContain("50-500 employee US manufacturing SME");
+    expect(packageDoc).toContain("small or midsize manufacturing business");
     expect(packageDoc).toContain("one manufacturing workspace");
     expect(packageDoc).toContain("XLSX export");
     expect(packageDoc).toContain("private evidence storage");

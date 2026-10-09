@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { phaseLabels, phases } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 type OpenAction = {
   id: string;
@@ -44,6 +45,7 @@ export function OpenActionsList({
     active: boolean;
   }>;
 }) {
+  const { formatTimestamp } = useRegionalDisplay();
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -532,7 +534,7 @@ export function OpenActionsList({
               </div>
               <div className="text-right text-sm text-[var(--muted-foreground)]">
                 <p>Requested by {action.requestedBy}</p>
-                <p>{formatDate(action.requestedAt)}</p>
+                <p>{formatTimestamp(action.requestedAt)}</p>
               </div>
             </div>
 
@@ -644,10 +646,6 @@ function OpenActionsPromise({
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
     </div>
   );
-}
-
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(date));
 }
 
 function buildOpenActionsNextActions(

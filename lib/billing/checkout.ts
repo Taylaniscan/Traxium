@@ -15,7 +15,7 @@ import { billingCustomerSelect, type BillingCustomerRecord } from "@/lib/types";
 
 type BillingCustomerClient = Pick<typeof prisma, "billingCustomer">;
 
-type StripeBillingClient = Pick<Stripe, "billingPortal" | "checkout" | "customers">;
+type StripeBillingClient = Pick<Stripe, "billingPortal" | "checkout" | "customers" | "prices">;
 
 const MAX_STRIPE_CHECKOUT_TRIAL_DAYS = 14;
 
@@ -398,6 +398,17 @@ export async function createCheckoutSessionForOrganization(
   const stripeClient = dependencies.stripeClient ?? getStripeClient();
   const prismaClient = dependencies.prismaClient ?? prisma;
   const selection = resolveCheckoutPlanSelection(input, config);
+  const basePrice = await stripeClient.prices.retrieve(selection.priceId);
+  const baseCurrency = basePrice.currency?.toUpperCase();
+  if (baseCurrency !== "USD" && baseCurrency !== "EUR") {
+    throw new BillingCheckoutError("Configured Stripe price must use USD or EUR.", 422);
+  }
+  if (selection.meteredPriceId) {
+    const meteredPrice = await stripeClient.prices.retrieve(selection.meteredPriceId);
+    if (meteredPrice.currency?.toUpperCase() !== baseCurrency) {
+      throw new BillingCheckoutError("Configured Stripe base and metered prices must use the same currency.", 422);
+    }
+  }
   let billingCustomer = await getOrCreateOrganizationBillingCustomer(
     {
       organizationId,

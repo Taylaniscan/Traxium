@@ -31,8 +31,10 @@ import {
 } from "@/lib/evidence-config";
 import { getEvidenceStatus } from "@/lib/evidence";
 import { getAllowedPhaseTransitions } from "@/lib/workflow";
-import { formatCurrency, formatPlainNumber } from "@/lib/utils/numberFormatter";
+import { formatPlainNumber } from "@/lib/utils/numberFormatter";
 import { toNumber } from "@/lib/utils/decimal";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
+import { unitConversionFactor, units, unitsForPreference } from "@/lib/units";
 import type { SavingCardWithRelations } from "@/lib/types";
 
 type ReferenceData = Awaited<
@@ -43,6 +45,7 @@ type SupplierForm = {
   supplier: CreatableValue;
   country: string;
   quotedPrice: string;
+  quotedUnit: string;
   currency: "EUR" | "USD";
   leadTimeDays: string;
   moq: string;
@@ -58,6 +61,7 @@ type MaterialForm = {
   supplier: CreatableValue;
   specification: string;
   quotedPrice: string;
+  quotedUnit: string;
   currency: "EUR" | "USD";
   performanceImpact: string;
   qualificationStatus: string;
@@ -92,10 +96,11 @@ export function SavingCardDetailWorkspace({
   currentUserId: string;
   canRequestPhaseChange: boolean;
 }) {
+  const { formatDateOnly, formatTimestamp, formatUsd, formatMoney, reportingCurrency, measurementSystem } = useRegionalDisplay();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("overview");
-  const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm());
-  const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm());
+  const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm(card.volumeUnit, card.currency));
+  const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm(card.volumeUnit, card.currency));
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -103,11 +108,11 @@ export function SavingCardDetailWorkspace({
   const [phaseRequestLoading, setPhaseRequestLoading] = useState(false);
 
   const baselineEntries = [
-    { label: "Baseline Supplier", value: `${card.supplier.name} · ${formatCurrency(card.baselinePrice, card.currency)}` },
+    { label: "Baseline Supplier", value: `${card.supplier.name} · ${formatMoney(card.baselinePrice, card.currency)}` },
     { label: "Baseline Material", value: card.material.name },
     { label: "Alternative Supplier", value: card.alternativeSupplier?.name ?? card.alternativeSupplierManualName ?? "Not specified" },
     { label: "Alternative Material", value: card.alternativeMaterial?.name ?? card.alternativeMaterialManualName ?? "Not specified" },
-    { label: "Current Saving Card New Price", value: formatCurrency(card.newPrice, card.currency) }
+    { label: "Current Saving Card New Price", value: formatMoney(card.newPrice, card.currency) }
   ];
 
   const comparisonOptions = [
@@ -116,6 +121,8 @@ export function SavingCardDetailWorkspace({
       type: "Supplier",
       price: toNumber(item.quotedPrice),
       currency: item.currency,
+      quotedUnit: item.quotedUnit,
+      comparablePrice: item.currency === card.currency && item.quotedUnit && unitConversionFactor(item.quotedUnit, card.volumeUnit) ? toNumber(item.quotedPrice) / unitConversionFactor(item.quotedUnit, card.volumeUnit)! : null,
       selected: item.isSelected
     })),
     ...card.alternativeMaterials.map((item) => ({
@@ -123,10 +130,12 @@ export function SavingCardDetailWorkspace({
       type: "Material",
       price: toNumber(item.quotedPrice),
       currency: item.currency,
+      quotedUnit: item.quotedUnit,
+      comparablePrice: item.currency === card.currency && item.quotedUnit && unitConversionFactor(item.quotedUnit, card.volumeUnit) ? toNumber(item.quotedPrice) / unitConversionFactor(item.quotedUnit, card.volumeUnit)! : null,
       selected: item.isSelected
     }))
   ];
-  const bestOption = [...comparisonOptions].sort((a, b) => a.price - b.price)[0];
+  const bestOption = comparisonOptions.filter((option) => option.comparablePrice !== null).sort((a, b) => a.comparablePrice! - b.comparablePrice!)[0];
   const pendingPhaseRequest =
     card.phaseChangeRequests.find((request) => request.approvalStatus === "PENDING") ?? null;
   const nextPhase = getPrimaryNextPhase(card.phase);
@@ -153,6 +162,7 @@ export function SavingCardDetailWorkspace({
       supplier: { id: supplierForm.supplier.mode === "existing" ? supplierForm.supplier.id : undefined, name: supplierForm.supplier.name },
       country: supplierForm.country,
       quotedPrice: supplierForm.quotedPrice,
+      quotedUnit: supplierForm.quotedUnit,
       currency: supplierForm.currency,
       leadTimeDays: supplierForm.leadTimeDays,
       moq: supplierForm.moq,
@@ -176,7 +186,7 @@ export function SavingCardDetailWorkspace({
       setError(result?.error ?? "Unable to save alternative supplier.");
       return;
     }
-    setSupplierForm(emptySupplierForm());
+    setSupplierForm(emptySupplierForm(card.volumeUnit, card.currency));
     setEditingSupplierId(null);
     router.refresh();
   }
@@ -188,6 +198,7 @@ export function SavingCardDetailWorkspace({
       supplier: { id: materialForm.supplier.mode === "existing" ? materialForm.supplier.id : undefined, name: materialForm.supplier.name },
       specification: materialForm.specification,
       quotedPrice: materialForm.quotedPrice,
+      quotedUnit: materialForm.quotedUnit,
       currency: materialForm.currency,
       performanceImpact: materialForm.performanceImpact,
       qualificationStatus: materialForm.qualificationStatus,
@@ -209,7 +220,7 @@ export function SavingCardDetailWorkspace({
       setError(result?.error ?? "Unable to save alternative material.");
       return;
     }
-    setMaterialForm(emptyMaterialForm());
+    setMaterialForm(emptyMaterialForm(card.volumeUnit, card.currency));
     setEditingMaterialId(null);
     router.refresh();
   }
@@ -413,7 +424,7 @@ export function SavingCardDetailWorkspace({
               <Metric label="Budget Impact" value={savingsBudgetImpactLabels[card.budgetImpact]} />
               <Metric label="Buyer" value={card.buyer.name} />
               <Metric label="Category" value={card.category.name} />
-              <Metric label="Impact Window" value={`${formatDate(card.impactStartDate)} - ${formatDate(card.impactEndDate)}`} />
+              <Metric label="Impact Window" value={`${formatDateOnly(card.impactStartDate)} - ${formatDateOnly(card.impactEndDate)}`} />
             </CardContent>
           </Card>
         </div>
@@ -433,13 +444,13 @@ export function SavingCardDetailWorkspace({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Metric label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
-              <Metric label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
+              <Metric label="Baseline Price" value={formatMoney(card.baselinePrice, card.currency)} />
+              <Metric label="New Price" value={formatMoney(card.newPrice, card.currency)} />
               <Metric label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-              <Metric label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
-              <Metric label="Calculated Savings (USD)" value={formatCurrency(Math.round(toNumber(card.calculatedSavingsUSD)), "USD")} />
-              <Metric label="Impact-Start Fiscal Year Value" value={formatCurrency(Math.round(toNumber(card.inYearValue)), card.currency)} />
-              <Metric label="Annualized Run-Rate" value={formatCurrency(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
+              <Metric label="Calculated Savings" value={formatMoney(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
+              <Metric label={`Calculated Savings (${reportingCurrency})`} value={formatUsd(Math.round(toNumber(card.calculatedSavingsUSD)))} />
+              <Metric label="Impact-Start Fiscal Year Value" value={formatMoney(Math.round(toNumber(card.inYearValue)), card.currency)} />
+              <Metric label="Annualized Run-Rate" value={formatMoney(Math.round(toNumber(card.annualizedRunRate)), card.currency)} />
               <Metric label="Savings Type" value={savingTypeLabels[card.savingType]} />
               <Metric label="Impact Type" value={savingsImpactTypeLabels[card.impactType]} />
               <Metric label="Impact Recurrence" value={savingsImpactRecurrenceLabels[card.impactRecurrence]} />
@@ -457,7 +468,7 @@ export function SavingCardDetailWorkspace({
               />
               <Metric
                 label="Scenario Comparison"
-                value={`Baseline ${formatCurrency(card.baselinePrice, card.currency)} vs New ${formatCurrency(card.newPrice, card.currency)}`}
+                value={`Baseline ${formatMoney(card.baselinePrice, card.currency)} vs New ${formatMoney(card.newPrice, card.currency)}`}
               />
             </div>
 
@@ -482,7 +493,7 @@ export function SavingCardDetailWorkspace({
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                     <p className="text-xs text-emerald-700">Best Price Option</p>
                     <p className="mt-1 text-sm font-semibold text-emerald-900">
-                      {bestOption ? `${bestOption.type}: ${bestOption.label} · ${formatCurrency(bestOption.price, bestOption.currency)}` : "No alternatives yet"}
+                      {bestOption ? `${bestOption.type}: ${bestOption.label} · ${formatMoney(bestOption.comparablePrice, card.currency)} per ${card.volumeUnit}` : "No comparable alternatives yet"}
                     </p>
                   </div>
                 </div>
@@ -496,8 +507,9 @@ export function SavingCardDetailWorkspace({
                           {option.selected ? <Badge tone="emerald">Selected</Badge> : <Badge tone="slate">{option.type}</Badge>}
                         </div>
                         <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-                          {formatCurrency(option.price, option.currency)}
+                          {formatMoney(option.price, option.currency)} per {option.quotedUnit ?? "unrecorded unit"}
                         </p>
+                        {option.comparablePrice === null ? <p className="mt-1 text-xs text-[var(--warning)]">Not comparable to this card until currency and unit basis are resolved.</p> : null}
                       </div>
                     ))
                   ) : (
@@ -603,7 +615,7 @@ export function SavingCardDetailWorkspace({
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
                 <span>{item.fileType}</span>
                 <span>{formatEvidenceFileSize(item.fileSize)}</span>
-                <span>Uploaded {formatDate(item.uploadedAt)}</span>
+                <span>Uploaded {formatTimestamp(item.uploadedAt)}</span>
                 <span>
                   By {item.uploadedBy?.name ?? "Workspace user"}
                 </span>
@@ -674,8 +686,9 @@ export function SavingCardDetailWorkspace({
                 <Input value={supplierForm.country} onChange={(event) => setSupplierForm({ ...supplierForm, country: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
+                <Input value={supplierForm.quotedPrice} onChange={(event) => setSupplierForm({ ...supplierForm, quotedPrice: event.target.value })} type="number" min="0" step="0.00000001" />
               </Field>
+              <Field label="Quoted price per unit"><Select value={supplierForm.quotedUnit} onChange={(event) => setSupplierForm({ ...supplierForm, quotedUnit: event.target.value })}><option value="">Select unit for historical quote</option>{supplierForm.quotedUnit && !units.some((unit) => unit.code === supplierForm.quotedUnit) ? <option value={supplierForm.quotedUnit}>{supplierForm.quotedUnit} (custom)</option> : null}{unitsForPreference(measurementSystem).map((unit) => <option key={unit.code} value={unit.code}>{unit.label}</option>)}</Select></Field>
               <Field label="Currency">
                 <Select value={supplierForm.currency} onChange={(event) => setSupplierForm({ ...supplierForm, currency: event.target.value as "EUR" | "USD" })}>
                   {currencies.map((currency) => (
@@ -728,7 +741,7 @@ export function SavingCardDetailWorkspace({
                     variant="ghost"
                     onClick={() => {
                       setEditingSupplierId(null);
-                      setSupplierForm(emptySupplierForm());
+                      setSupplierForm(emptySupplierForm(card.volumeUnit, card.currency));
                     }}
                   >
                     Cancel
@@ -743,7 +756,7 @@ export function SavingCardDetailWorkspace({
               <table className="min-w-full text-sm">
                 <thead className="border-b bg-[var(--surface)]/70">
                   <tr>
-                    {["Supplier Name", "Country", "Quoted Price", "Currency", "Lead Time", "MOQ", "Payment Terms", "Quality Rating", "Risk Level", "Notes", "Selected Supplier", "Actions"].map((heading) => (
+                    {["Supplier Name", "Country", "Quoted Price", "Quote Unit", "Currency", "Lead Time", "MOQ", "Payment Terms", "Quality Rating", "Risk Level", "Notes", "Selected Supplier", "Actions"].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left font-semibold text-[var(--muted-foreground)]">
                         {heading}
                       </th>
@@ -755,7 +768,8 @@ export function SavingCardDetailWorkspace({
                     <tr key={item.id} className="border-b">
                       <td className="px-4 py-3">{item.supplier?.name ?? item.supplierNameManual}</td>
                       <td className="px-4 py-3">{item.country}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(item.quotedPrice, item.currency)}</td>
+                      <td className="px-4 py-3 text-right">{formatMoney(item.quotedPrice, item.currency)}</td>
+                      <td className="px-4 py-3">{item.quotedUnit ?? "Unresolved historical unit"}</td>
                       <td className="px-4 py-3">{item.currency}</td>
                       <td className="px-4 py-3">{item.leadTimeDays}</td>
                       <td className="px-4 py-3">{item.moq}</td>
@@ -776,6 +790,7 @@ export function SavingCardDetailWorkspace({
                               },
                               country: item.country,
                               quotedPrice: String(item.quotedPrice),
+                              quotedUnit: item.quotedUnit ?? "",
                               currency: item.currency,
                               leadTimeDays: String(item.leadTimeDays),
                               moq: String(item.moq),
@@ -826,8 +841,9 @@ export function SavingCardDetailWorkspace({
                 <Input value={materialForm.specification} onChange={(event) => setMaterialForm({ ...materialForm, specification: event.target.value })} />
               </Field>
               <Field label="Quoted Price">
-                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" min="0" step="0.01" />
+                <Input value={materialForm.quotedPrice} onChange={(event) => setMaterialForm({ ...materialForm, quotedPrice: event.target.value })} type="number" min="0" step="0.00000001" />
               </Field>
+              <Field label="Quoted price per unit"><Select value={materialForm.quotedUnit} onChange={(event) => setMaterialForm({ ...materialForm, quotedUnit: event.target.value })}><option value="">Select unit for historical quote</option>{materialForm.quotedUnit && !units.some((unit) => unit.code === materialForm.quotedUnit) ? <option value={materialForm.quotedUnit}>{materialForm.quotedUnit} (custom)</option> : null}{unitsForPreference(measurementSystem).map((unit) => <option key={unit.code} value={unit.code}>{unit.label}</option>)}</Select></Field>
               <Field label="Currency">
                 <Select value={materialForm.currency} onChange={(event) => setMaterialForm({ ...materialForm, currency: event.target.value as "EUR" | "USD" })}>
                   {currencies.map((currency) => (
@@ -874,7 +890,7 @@ export function SavingCardDetailWorkspace({
                     variant="ghost"
                     onClick={() => {
                       setEditingMaterialId(null);
-                      setMaterialForm(emptyMaterialForm());
+                      setMaterialForm(emptyMaterialForm(card.volumeUnit, card.currency));
                     }}
                   >
                     Cancel
@@ -889,7 +905,7 @@ export function SavingCardDetailWorkspace({
               <table className="min-w-full text-sm">
                 <thead className="border-b bg-[var(--surface)]/70">
                   <tr>
-                    {["Material Name", "Supplier", "Specification", "Quoted Price", "Currency", "Performance Impact", "Qualification Status", "Risk Level", "Notes", "Selected Material", "Actions"].map((heading) => (
+                    {["Material Name", "Supplier", "Specification", "Quoted Price", "Quote Unit", "Currency", "Performance Impact", "Qualification Status", "Risk Level", "Notes", "Selected Material", "Actions"].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left font-semibold text-[var(--muted-foreground)]">
                         {heading}
                       </th>
@@ -902,7 +918,8 @@ export function SavingCardDetailWorkspace({
                       <td className="px-4 py-3">{item.material?.name ?? item.materialNameManual}</td>
                       <td className="px-4 py-3">{item.supplier?.name ?? item.supplierNameManual ?? "-"}</td>
                       <td className="px-4 py-3">{item.specification}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(item.quotedPrice, item.currency)}</td>
+                      <td className="px-4 py-3 text-right">{formatMoney(item.quotedPrice, item.currency)}</td>
+                      <td className="px-4 py-3">{item.quotedUnit ?? "Unresolved historical unit"}</td>
                       <td className="px-4 py-3">{item.currency}</td>
                       <td className="px-4 py-3">{item.performanceImpact}</td>
                       <td className="px-4 py-3">{item.qualificationStatus}</td>
@@ -926,6 +943,7 @@ export function SavingCardDetailWorkspace({
                               },
                               specification: item.specification,
                               quotedPrice: String(item.quotedPrice),
+                              quotedUnit: item.quotedUnit ?? "",
                               currency: item.currency,
                               performanceImpact: item.performanceImpact,
                               qualificationStatus: item.qualificationStatus,
@@ -1033,6 +1051,7 @@ function RecordSummaryRail({
   latestEvidenceUpload: Date | null;
   selectedAlternativeCount: number;
 }) {
+  const { formatTimestamp, formatMoney } = useRegionalDisplay();
   const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
     request.approvals
       .filter((approval) => approval.status !== "PENDING")
@@ -1074,10 +1093,10 @@ function RecordSummaryRail({
         </div>
 
         <RailSection title="Financial Summary">
-          <RailRow label="Baseline Price" value={formatCurrency(card.baselinePrice, card.currency)} />
-          <RailRow label="New Price" value={formatCurrency(card.newPrice, card.currency)} />
+          <RailRow label="Baseline Price" value={formatMoney(card.baselinePrice, card.currency)} />
+          <RailRow label="New Price" value={formatMoney(card.newPrice, card.currency)} />
           <RailRow label="Annual Volume" value={formatPlainNumber(card.annualVolume)} />
-          <RailRow label="Calculated Savings" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
+          <RailRow label="Calculated Savings" value={formatMoney(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
         </RailSection>
 
         <RailSection title="Savings Classification">
@@ -1097,7 +1116,7 @@ function RecordSummaryRail({
         <RailSection title="Evidence & Scenario">
           <RailRow label="Evidence Files" value={String(card.evidence.length)} />
           <RailRow label="Evidence Size" value={card.evidence.length ? formatEvidenceFileSize(totalEvidenceSize) : "No files"} />
-          <RailRow label="Latest Upload" value={latestEvidenceUpload ? formatDate(latestEvidenceUpload) : "No uploads"} />
+          <RailRow label="Latest Upload" value={latestEvidenceUpload ? formatTimestamp(latestEvidenceUpload) : "No uploads"} />
           <RailRow
             label="Selected Alternative"
             value={selectedAlternativeCount ? `${selectedAlternativeCount} marked as selected` : "No alternative selected"}
@@ -1137,6 +1156,7 @@ function getPrimaryNextPhase(currentPhase: SavingCardWithRelations["phase"]) {
 }
 
 function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
+  const { formatTimestamp } = useRegionalDisplay();
   const decidedApprovals = card.phaseChangeRequests.flatMap((request) =>
     request.approvals
       .filter((approval) => approval.status !== "PENDING")
@@ -1162,7 +1182,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
               <WorkflowEventCard
                 key={request.id}
                 title={`${phaseLabels[request.currentPhase]} to ${phaseLabels[request.requestedPhase]}`}
-                subtitle={`Requested by ${request.requestedBy.name} on ${formatDate(request.createdAt)}`}
+                subtitle={`Requested by ${request.requestedBy.name} on ${formatTimestamp(request.createdAt)}`}
                 detail={formatPhaseReferencesForDisplay(
                   request.comment ?? "No request comment provided."
                 )}
@@ -1202,7 +1222,7 @@ function WorkflowActivityPanel({ card }: { card: SavingCardWithRelations }) {
               <WorkflowEventCard
                 key={item.id}
                 title={`${item.fromPhase ? phaseLabels[item.fromPhase] : "Created"} to ${phaseLabels[item.toPhase]}`}
-                subtitle={formatDate(item.createdAt)}
+                subtitle={formatTimestamp(item.createdAt)}
                 detail={item.changedById ? "Recorded by an assigned workflow participant" : "Recorded by system workflow"}
               />
             ))
@@ -1255,12 +1275,13 @@ function EmptyWorkflowState({ message }: { message: string }) {
   );
 }
 
-function emptySupplierForm(): SupplierForm {
+function emptySupplierForm(unit = "each", currency: "EUR" | "USD" = "USD"): SupplierForm {
   return {
     supplier: { mode: "existing", id: undefined, name: "" },
     country: "",
     quotedPrice: "",
-    currency: "USD",
+    quotedUnit: unit,
+    currency,
     leadTimeDays: "",
     moq: "",
     paymentTerms: "",
@@ -1271,23 +1292,20 @@ function emptySupplierForm(): SupplierForm {
   };
 }
 
-function emptyMaterialForm(): MaterialForm {
+function emptyMaterialForm(unit = "each", currency: "EUR" | "USD" = "USD"): MaterialForm {
   return {
     material: { mode: "existing", id: undefined, name: "" },
     supplier: { mode: "existing", id: undefined, name: "" },
     specification: "",
     quotedPrice: "",
-    currency: "USD",
+    quotedUnit: unit,
+    currency,
     performanceImpact: "",
     qualificationStatus: "",
     riskLevel: "",
     notes: "",
     isSelected: false
   };
-}
-
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(date));
 }
 
 function getApprovalTone(status: string): "amber" | "emerald" | "error" {

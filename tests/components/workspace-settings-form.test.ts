@@ -117,7 +117,11 @@ const organization = {
   slug: "atlas-procurement",
   fiscalYearStartMonth: 1,
   defaultCurrency: "USD" as const,
+  reportingCurrency: "USD" as const,
   multiCurrencyEnabled: false,
+  locale: "en-US",
+  timeZone: "UTC",
+  measurementSystem: "metric",
   createdAt: new Date("2026-03-20T09:00:00.000Z"),
   updatedAt: new Date("2026-03-26T12:00:00.000Z"),
 };
@@ -160,6 +164,10 @@ function mockFormState(input: {
     .mockReturnValueOnce([organization.fiscalYearStartMonth, vi.fn()])
     .mockReturnValueOnce([organization.defaultCurrency, vi.fn()])
     .mockReturnValueOnce([organization.multiCurrencyEnabled, vi.fn()])
+    .mockReturnValueOnce([organization.reportingCurrency, vi.fn()])
+    .mockReturnValueOnce([organization.locale, vi.fn()])
+    .mockReturnValueOnce([organization.timeZone, vi.fn()])
+    .mockReturnValueOnce([organization.measurementSystem, vi.fn()])
     .mockReturnValueOnce([input.loading ?? false, vi.fn()])
     .mockReturnValueOnce([input.error ?? null, vi.fn()])
     .mockReturnValueOnce([input.notice ?? null, vi.fn()]);
@@ -243,6 +251,10 @@ describe("workspace settings form", () => {
         fiscalYearStartMonth: 1,
         defaultCurrency: "USD",
         multiCurrencyEnabled: false,
+        reportingCurrency: "USD",
+        locale: "en-US",
+        timeZone: "UTC",
+        measurementSystem: "metric",
       }),
     });
     expect(refreshMock).toHaveBeenCalled();

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,7 +16,6 @@ import type {
   MonthlyCloseStatus,
   MonthlyCloseSummary,
 } from "@/lib/monthly-close";
-import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
 
 type MonthOption = {
   key: string;
@@ -63,6 +65,7 @@ function StatusBadge({ status }: { status: MonthlyCloseStatus }) {
 }
 
 function CardRow({ row }: { row: MonthlyCloseCardRow }) {
+  const { formatUsd, formatNumber } = useRegionalDisplay();
   const variance = row.varianceQty;
   return (
     <Link
@@ -99,7 +102,7 @@ function CardRow({ row }: { row: MonthlyCloseCardRow }) {
       </div>
       <div className="font-medium text-[var(--foreground)]">
         <span className="md:hidden">Month value: </span>
-        {formatCurrency(Math.round(row.proratedMonthValueUSD), "USD")}
+        {formatUsd(Math.round(row.proratedMonthValueUSD))}
       </div>
     </Link>
   );
@@ -114,6 +117,7 @@ export function MonthlyCloseView({
   monthOptions: MonthOption[];
   loadError?: string | null;
 }) {
+  const { formatUsd, reportingCurrency } = useRegionalDisplay();
   const closedPercent =
     summary.totalCards > 0
       ? Math.round((summary.closedCount / summary.totalCards) * 100)
@@ -166,15 +170,15 @@ export function MonthlyCloseView({
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs text-[var(--muted-foreground)]">Forecast savings (USD)</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Forecast savings ({reportingCurrency})</p>
             <p className="mt-1 text-2xl font-semibold">
-              {formatCurrency(Math.round(summary.totalForecastSavingsUSD), "USD")}
+              {formatUsd(Math.round(summary.totalForecastSavingsUSD))}
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs text-[var(--muted-foreground)]">Actual savings (USD)</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Actual savings ({reportingCurrency})</p>
             <p className="mt-1 text-2xl font-semibold">
-              {formatCurrency(Math.round(summary.totalActualSavingsUSD), "USD")}
+              {formatUsd(Math.round(summary.totalActualSavingsUSD))}
             </p>
           </div>
         </CardContent>

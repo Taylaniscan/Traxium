@@ -19,6 +19,7 @@ import {
   UsageQuotaExceededError,
 } from "@/lib/usage";
 import { savingCardSchema } from "@/lib/validation";
+import { parseRegionalDecimal } from "@/lib/regional";
 import {
   MASTER_DATA_IMPORT_ENTITY_KEYS,
   type MasterDataImportEntityKey,
@@ -138,7 +139,8 @@ phaseImportAliases.set("cancelled", "CANCELLED");
 
 function normalizeRow(
   row: Record<string, unknown>,
-  referenceData: Awaited<ReturnType<typeof getReferenceData>>
+  referenceData: Awaited<ReturnType<typeof getReferenceData>>,
+  decimalSeparator: "dot" | "comma" = "dot"
 ) {
   const getCell = (...columnNames: string[]) => {
     for (const columnName of columnNames) {
@@ -169,6 +171,23 @@ function normalizeRow(
       (item) => normalizeImportKey(item.name) === normalizeImportKey(normalizedValue)
     );
     return match?.id ?? "";
+  };
+  const numeric = (...names: string[]) => {
+    const value = getCell(...names);
+    if (typeof value !== "string") return value;
+    if (!value.trim()) return undefined;
+    try { return parseRegionalDecimal(value, decimalSeparator); } catch { return value; }
+  };
+  const date = (...names: string[]) => {
+    const value = getCell(...names);
+    if (value instanceof Date) return value;
+    if (typeof value === "number") {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      return parsed ? new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d)) : `Invalid Excel date: ${value}`;
+    }
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return value;
+    const parsed = new Date(`${value.trim()}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value.trim() ? parsed : `Invalid ISO date: ${value}`;
   };
   const rawPhase = normalizeImportCell(getCell("Phase"));
   const normalizedPhase =
@@ -235,21 +254,21 @@ function normalizeRow(
       id: resolveId(referenceData.buyers, "Buyer"),
       name: normalizeImportCell(getCell("Buyer")),
     },
-    baselinePrice: getCell("BaselinePrice", "Baseline Price"),
-    newPrice: getCell("NewPrice", "New Price"),
-    referencePrice: getCell("ReferencePrice", "Reference Price") || null,
-    annualVolume: getCell("AnnualVolume", "Annual Volume"),
+    baselinePrice: numeric("BaselinePrice", "Baseline Price"),
+    newPrice: numeric("NewPrice", "New Price"),
+    referencePrice: numeric("ReferencePrice", "Reference Price") || null,
+    annualVolume: numeric("AnnualVolume", "Annual Volume"),
+    volumeUnit: getCell("VolumeUnit", "Volume Unit") ?? "units",
     currency: getCell("Currency") ?? "USD",
-    fxRate: getCell("FxRate", "FX Rate") ?? 1,
+    fxRate: numeric("FxRate", "FX Rate", "FX Rate (EUR to USD)") ?? (getCell("Currency") === "EUR" ? "" : 1),
+    fxRateEffectiveDate: getCell("FX Rate Effective Date") ? date("FX Rate Effective Date") : null,
     frequency: getCell("Frequency") ?? "RECURRING",
-    startDate: getCell("StartDate", "Start Date"),
-    endDate: getCell("EndDate", "End Date"),
+    startDate: date("StartDate", "Start Date"),
+    endDate: date("EndDate", "End Date"),
     impactStartDate:
-      getCell("ImpactStartDate", "Impact Start Date") ??
-      getCell("StartDate", "Start Date"),
+      getCell("ImpactStartDate", "Impact Start Date") != null ? date("ImpactStartDate", "Impact Start Date") : date("StartDate", "Start Date"),
     impactEndDate:
-      getCell("ImpactEndDate", "Impact End Date") ??
-      getCell("EndDate", "End Date"),
+      getCell("ImpactEndDate", "Impact End Date") != null ? date("ImpactEndDate", "Impact End Date") : date("EndDate", "End Date"),
     cancellationReason: getCell("CancellationReason", "Cancellation Reason") ?? "",
     stakeholderIds: [],
     evidence: [],
@@ -355,8 +374,10 @@ function getSavingCardImportFieldLabel(path: PropertyKey[]) {
     newPrice: "New Price",
     referencePrice: "Reference Price",
     annualVolume: "Annual Volume",
+    volumeUnit: "Volume Unit",
     currency: "Currency",
     fxRate: "FX Rate",
+    fxRateEffectiveDate: "FX Rate Effective Date",
     frequency: "Frequency",
     savingDriver: "Saving Driver",
     implementationComplexity: "Implementation Complexity",
@@ -411,8 +432,9 @@ function getSavingCardImportSuggestedFix(
     return "Enter zero or a positive number that does not exceed Baseline Price.";
   }
   if (field === "Annual Volume") {
-    return "Enter a number greater than zero.";
+    return "Enter a positive number using the selected decimal separator without grouping marks.";
   }
+  if (field === "Volume Unit") return "Use an explicit unit such as kg, lb, L, gal_us, each, or an existing custom unit. Avoid ambiguous ton and gallon.";
   if (field.includes("Date")) {
     return "Use an Excel date or ISO date such as 2026-01-31 and keep end dates after start dates.";
   }
@@ -645,7 +667,7 @@ async function readWorkbookFromUpload(file: File, importType: ImportType) {
       return XLSX.read(await file.text(), { type: "string" });
     }
 
-    return XLSX.read(await file.arrayBuffer(), { type: "array" });
+    return XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   } catch {
     throw new ImportFileError(
       importType === "saving_cards"
@@ -1084,7 +1106,8 @@ export async function POST(request: Request) {
     }
 
     const referenceData = await getReferenceData(user.organizationId);
-    const normalized = rows.map((row) => normalizeRow(row, referenceData));
+    const decimalSeparator = formData.get("decimalSeparator") === "comma" ? "comma" : "dot";
+    const normalized = rows.map((row) => normalizeRow(row, referenceData, decimalSeparator));
 
     const validationErrorResponse = validateSavingCardImportRows(normalized);
 

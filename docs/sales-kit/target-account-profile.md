@@ -4,9 +4,9 @@ Who the Traxium guided paid pilot is for. Use this to qualify accounts before ou
 
 ## Firmographics
 
-- **Size:** 100–500 employees (sales sweet spot within the documented 50–500 best-fit band).
-- **Geography:** United States.
-- **Sector:** manufacturing / industrial SME.
+- **Size:** Around 50–500 employees is a commercial best-fit guideline, not a legal SME definition or an access limit.
+- **Geography:** Worldwide, subject to fit review and any commercial or provider constraints identified for the buyer.
+- **Sector:** SMEs with recurring procurement savings work; manufacturing and industrial businesses are strong use cases.
 - **Best-fit verticals:**
   - Plastics & chemicals (compounders, masterbatch, resins, coatings, additives).
   - Metal fabrication (sheet metal, machining, weldments, components).
@@ -27,7 +27,8 @@ Who the Traxium guided paid pilot is for. Use this to qualify accounts before ou
 - **Requires ERP/MRP integration before the pilot** — there is no ERP/MRP connector or accounting posting; we do not match ERP actuals.
 - **Requires SSO/SAML (or SCIM) before the pilot** — not included in the pilot.
 - **Requires SOC 2 / ISO 27001 / public compliance certification before any pilot** — not held or claimed.
-- **Under 100 employees** (and especially very small shops where one person already trusts the savings).
+- No recurring savings work or no need for shared procurement and finance review.
+- Large enterprises that require complex global procurement hierarchies or suite capabilities as a pilot prerequisite.
 - **No finance involvement** — if no finance reviewer will be named or join, the pilot fails its core success criteria. Disqualify.
 - Needs custom approval-builder logic, contract lifecycle management, vendor risk scoring, broad spend analytics, a custom BI/data-warehouse feed, or 24/7 support as a precondition.
 - Wants self-serve public pricing/seat management before talking to the team.
@@ -43,20 +44,20 @@ If an otherwise strong account fails only on SSO or ERP-integration *timing* (wa
 
 ## Example LinkedIn Sales Navigator searches
 
-These are starting points; tune the geography and headcount filters in the Sales Navigator UI (Company headcount 51–200 and 201–500; Geography United States; Industry the relevant manufacturing categories).
+These are starting points; choose the buyer's geography deliberately and treat headcount filters as outreach prioritization rather than product eligibility.
 
 1. **Procurement champion at plastics/chemicals manufacturers**
-   `(title: "Director of Procurement" OR "Procurement Manager" OR "VP Procurement" OR "Strategic Sourcing") AND (industry: "Plastics" OR "Chemicals") AND geography: "United States" AND company headcount: 51-500`
+   `(title: "Director of Procurement" OR "Procurement Manager" OR "Strategic Sourcing") AND (industry: "Plastics" OR "Chemicals") AND company headcount: 51-500`
 
 2. **New finance leaders at metal fabrication / industrial manufacturers**
-   `(title: "CFO" OR "Controller" OR "VP Finance") AND (industry: "Mechanical or Industrial Engineering" OR "Machinery" OR "Metal Fabrication") AND geography: "United States" AND company headcount: 51-500 AND changed jobs in past 90 days`
+   `(title: "CFO" OR "Controller" OR "Finance Lead") AND (industry: "Mechanical or Industrial Engineering" OR "Machinery" OR "Metal Fabrication") AND company headcount: 51-500 AND changed jobs in past 90 days`
 
 3. **Procurement/finance at PE-backed components & assemblies manufacturers**
-   `(title: "Procurement" OR "Sourcing" OR "Finance" OR "Controller") AND (industry: "Electrical & Electronic Manufacturing" OR "Industrial Automation" OR "Automotive") AND geography: "United States" AND company headcount: 51-500 AND keywords: "cost savings" OR "savings tracking"`
+   `(title: "Procurement" OR "Sourcing" OR "Finance" OR "Controller") AND (industry: "Electrical & Electronic Manufacturing" OR "Industrial Automation" OR "Automotive") AND company headcount: 51-500 AND keywords: "cost savings" OR "savings tracking"`
 
 ## Qualifying line for the first touch
 
 If you can answer "yes" to all three, the account is in profile:
-1. US manufacturer, ~100–500 employees, in a covered vertical?
+1. SME with recurring procurement savings work and a manageable pilot team?
 2. Recurring savings work tracked in spreadsheets today?
 3. Procurement *and* finance both care, and a finance reviewer can be named?

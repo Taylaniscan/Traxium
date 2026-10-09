@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
+import { formatRegionalMonth, formatRegionalNumber } from "@/lib/regional";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -28,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type {
   SavingType,
   SavingsBudgetImpact,
@@ -46,7 +49,6 @@ import {
   savingsImpactTypeLabels,
 } from "@/lib/constants";
 import { resolveUnitSaving } from "@/lib/calculations";
-import { formatCurrency } from "@/lib/utils/numberFormatter";
 
 type EditableField = "forecast" | "actual";
 
@@ -101,6 +103,11 @@ export function ResultsTab({
   impactRecurrence: SavingsImpactRecurrence;
   budgetImpact: SavingsBudgetImpact;
 }) {
+  const { locale, formatMoney } = useRegionalDisplay();
+  const formatCurrency = (value: number, code: "EUR" | "USD") => formatMoney(value, code);
+  const formatVolume = (value: number) => formatRegionalNumber(value, locale, { maximumFractionDigits: 2 });
+  const formatSignedCurrency = (value: number, code: "EUR" | "USD") => value === 0 ? formatCurrency(0, code) : `${value > 0 ? "+" : "-"}${formatCurrency(Math.abs(value), code)}`;
+  const formatSignedVolume = (value: number) => value === 0 ? formatVolume(0) : `${value > 0 ? "+" : "-"}${formatVolume(Math.abs(value))}`;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<SerialVolumeResponse>(EMPTY_TIMELINE);
   const [loading, setLoading] = useState(true);
@@ -113,6 +120,8 @@ export function ResultsTab({
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<VolumeImportResult | null>(null);
+  const [decimalSeparator, setDecimalSeparator] = useState<"dot" | "comma">("dot");
+  const [csvSeparator, setCsvSeparator] = useState<"comma" | "semicolon" | "tab">("comma");
 
   const loadTimeline = useCallback(async () => {
     setLoading(true);
@@ -152,7 +161,7 @@ export function ResultsTab({
       impactType,
       referencePrice,
     }) * annualVolume;
-  const todayPeriodLabel = getCurrentPeriodLabel();
+  const todayPeriodLabel = formatRegionalMonth(new Date(), locale);
   const chartRows = useMemo(() => {
     let cumulativeForecast = 0;
     let cumulativeActual = 0;
@@ -163,11 +172,12 @@ export function ResultsTab({
 
       return {
         ...row,
+        period: formatRegionalMonth(`${row.periodKey}-01T00:00:00Z`, locale),
         cumulativeForecast,
         cumulativeActual,
       };
     });
-  }, [data.timeline]);
+  }, [data.timeline, locale]);
 
   async function saveCell(cell: EditingCell) {
     const trimmed = cell.value.trim();
@@ -286,6 +296,8 @@ export function ResultsTab({
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("decimalSeparator", decimalSeparator);
+      formData.append("separator", csvSeparator);
 
       const response = await fetch(`/api/saving-cards/${savingCardId}/volume/import`, {
         method: "POST",
@@ -666,6 +678,8 @@ export function ResultsTab({
 
         {importOpen ? (
           <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2"><label className="space-y-1 text-sm">Decimal separator<Select value={decimalSeparator} onChange={(event) => setDecimalSeparator(event.target.value as "dot" | "comma")}><option value="dot">Point (12.5)</option><option value="comma">Comma (12,5)</option></Select></label><label className="space-y-1 text-sm">CSV column separator<Select value={csvSeparator} onChange={(event) => setCsvSeparator(event.target.value as "comma" | "semicolon" | "tab")}><option value="comma">Comma</option><option value="semicolon">Semicolon</option><option value="tab">Tab</option></Select></label></div>
+            <p className="text-xs text-[var(--muted-foreground)]">Use YYYY-MM periods and the card unit ({volumeUnit}). Grouping separators are rejected. Excel numeric cells use their stored value.</p>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" onClick={downloadTemplate}>
                 <Download className="mr-2 h-4 w-4" />
@@ -771,6 +785,7 @@ function EditableVolumeCell({
   defaultUnit: string;
 }) {
   const isActualField = field === "actual";
+  const { locale } = useRegionalDisplay();
   const hasValue = isActualField ? Boolean(row.actualSource) : Boolean(row.forecastSource);
   const value = isActualField ? row.actualQty : row.forecastQty;
   const isEditing = editing?.periodKey === row.periodKey && editing?.field === field;
@@ -823,7 +838,7 @@ function EditableVolumeCell({
         })
       }
     >
-      {hasValue ? formatVolume(value) : <span className="text-[var(--muted-foreground)]">Click to add</span>}
+      {hasValue ? formatRegionalNumber(value, locale, { maximumFractionDigits: 2 }) : <span className="text-[var(--muted-foreground)]">Click to add</span>}
     </button>
   );
 }
@@ -868,6 +883,7 @@ function VarianceChip({
   row: VolumeTimelineRow;
   currency: "EUR" | "USD";
 }) {
+  const { formatMoney } = useRegionalDisplay();
   const positive = row.varianceSaving >= 0;
   const Icon = positive ? ArrowUpRight : ArrowDownRight;
   const toneClass = positive ? "text-[var(--success)]" : "text-[var(--risk)]";
@@ -876,7 +892,7 @@ function VarianceChip({
     <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${positive ? "bg-[var(--success-surface)]" : "bg-[var(--risk-surface)]"} ${toneClass}`}>
       <Icon className="h-3.5 w-3.5" />
       <span>
-        {formatSignedCurrency(row.varianceSaving, currency)}
+        {row.varianceSaving === 0 ? formatMoney(0, currency) : `${row.varianceSaving > 0 ? "+" : "-"}${formatMoney(Math.abs(row.varianceSaving), currency)}`}
         {row.variancePercent !== null ? ` (${formatSignedPercent(row.variancePercent)})` : ""}
       </span>
     </div>
@@ -908,21 +924,6 @@ function ResultsLoadingSkeleton() {
   );
 }
 
-function formatVolume(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatSignedCurrency(value: number, currency: "EUR" | "USD") {
-  const absolute = formatCurrency(Math.round(Math.abs(value)), currency);
-  if (value === 0) {
-    return absolute;
-  }
-
-  return `${value > 0 ? "+" : "-"}${absolute}`;
-}
-
 function formatSignedPercent(value: number) {
   const absolute = Math.abs(value).toFixed(1);
   if (value === 0) {
@@ -930,21 +931,4 @@ function formatSignedPercent(value: number) {
   }
 
   return `${value > 0 ? "+" : "-"}${absolute}%`;
-}
-
-function formatSignedVolume(value: number) {
-  const absolute = formatVolume(Math.abs(value));
-  if (value === 0) {
-    return absolute;
-  }
-
-  return `${value > 0 ? "+" : "-"}${absolute}`;
-}
-
-function getCurrentPeriodLabel() {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date());
 }

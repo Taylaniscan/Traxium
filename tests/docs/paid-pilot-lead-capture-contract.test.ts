@@ -21,6 +21,8 @@ describe("paid-pilot lead-capture contract", () => {
     expect(contract).toContain("Accounting posting");
     expect(contract).toContain("SOC 2 certification");
     expect(contract).toContain("24/7 support");
-    expect(contract).toContain("Lead notification is not implemented");
+    expect(contract).toContain("New leads trigger an internal sales notification email");
+    expect(contract).toContain("Invitations remain manual");
+    expect(contract).toContain("Lead storage must succeed independently of notification");
   });
 });

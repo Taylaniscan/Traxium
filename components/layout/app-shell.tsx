@@ -3,6 +3,9 @@ import { getPendingApprovals, getWorkspaceReadiness } from "@/lib/data";
 import { getNotificationFeedForUser } from "@/lib/notifications";
 import { captureException } from "@/lib/observability";
 import { AppShellClient } from "@/components/layout/app-shell-client";
+import { prisma } from "@/lib/prisma";
+import { resolveReportingBasis } from "@/lib/reporting-currency";
+import { normalizeLocale } from "@/lib/regional";
 
 type WorkspaceReadiness = Awaited<ReturnType<typeof getWorkspaceReadiness>>;
 
@@ -37,6 +40,9 @@ export async function AppShell({
   const pendingApprovals =
     pendingApprovalsResult.status === "fulfilled" ? pendingApprovalsResult.value : [];
   const readiness = readinessResult.status === "fulfilled" ? readinessResult.value : null;
+  const workspace = readiness?.workspace;
+  const reportingCurrency = workspace?.reportingCurrency ?? "USD";
+  const basis = await resolveReportingBasis(prisma, reportingCurrency, new Date()).catch(() => null);
 
   if (notificationFeedResult.status === "rejected") {
     captureException(notificationFeedResult.reason, {
@@ -82,6 +88,14 @@ export async function AppShell({
         role: user.role
       }}
       workspace={buildWorkspaceSummary(readiness)}
+      regional={{
+        locale: normalizeLocale(workspace?.locale) ?? "en-US",
+        timeZone: workspace?.timeZone ?? "UTC",
+        reportingCurrency,
+        eurToUsd: basis?.eurToUsd ?? (reportingCurrency === "USD" ? 1 : null),
+        fxEffectiveDate: basis?.effectiveDate ?? null,
+        measurementSystem: workspace?.measurementSystem === "us_customary" ? "us_customary" : "metric",
+      }}
       notifications={shellNotifications}
       unreadNotificationCount={notificationFeed.unreadCount}
       pendingActionsCount={pendingApprovals.length}

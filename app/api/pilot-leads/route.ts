@@ -7,6 +7,7 @@ import {
   pilotLeadSubmissionSchema,
   pilotLeadSuccessMessage,
 } from "@/lib/pilot-leads/validation";
+import { enqueuePilotLeadNotification } from "@/lib/pilot-leads/notification";
 import { storePilotLead } from "@/lib/pilot-leads/service";
 import {
   createRateLimitErrorResponse,
@@ -95,6 +96,21 @@ export async function POST(request: Request) {
 
     const payload = pilotLeadSubmissionSchema.parse(body.data);
     const result = await storePilotLead(payload, request);
+
+    if (result.created) {
+      // Lead storage must succeed independently of the sales notification.
+      try {
+        await enqueuePilotLeadNotification(result.lead.id);
+      } catch (error) {
+        captureException(error, {
+          event: "pilot_lead.notification_enqueue_failed",
+          route: "/api/pilot-leads",
+          method: "POST",
+          status: 201,
+          payload: { leadId: result.lead.id },
+        });
+      }
+    }
 
     trackServerEvent({
       event: result.created

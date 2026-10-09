@@ -170,7 +170,7 @@ describe("executive savings summary", () => {
     expect(markup).toContain("Recent Wins &amp; Decisions");
     expect(markup).toContain("Freight lane consolidation");
     expect(markup).toContain("Approved");
-    expect(markup).toContain("$420k");
+    expect(markup).toContain("USD 420,000");
     expect(markup).toContain("Savings by Savings Type");
     expect(markup).toContain("Savings by Impact Type");
     expect(markup).toContain("Recurring vs One-Time");
@@ -268,7 +268,7 @@ describe("executive savings summary", () => {
     );
 
     expect(markup).toContain("Current Fiscal Year Value");
-    expect(markup).toContain("$220");
+    expect(markup).toContain("USD 220");
     expect(markup).not.toContain("$200");
   });
 });

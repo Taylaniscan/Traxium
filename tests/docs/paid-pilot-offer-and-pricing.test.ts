@@ -27,7 +27,7 @@ describe("paid pilot offer and pricing", () => {
       expect(offer).toContain(heading);
     }
 
-    expect(offer).toContain("50-500 employee US manufacturing SME");
+    expect(offer).toContain("Small or midsize manufacturing business");
     expect(offer).toContain("30-45 days");
     expect(offer).toContain("One manufacturing workspace");
     expect(offer).toContain("one procurement owner, one finance reviewer, and one admin or security contact");

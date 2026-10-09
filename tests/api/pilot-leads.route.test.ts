@@ -14,6 +14,7 @@ const createRateLimitErrorResponseMock = vi.hoisted(() =>
 );
 const trackServerEventMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
+const enqueuePilotLeadNotificationMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   pilotLead: {
     findFirst: vi.fn(),
@@ -51,6 +52,10 @@ vi.mock("@/lib/observability", () => ({
   captureException: captureExceptionMock,
 }));
 
+vi.mock("@/lib/pilot-leads/notification", () => ({
+  enqueuePilotLeadNotification: enqueuePilotLeadNotificationMock,
+}));
+
 import { POST } from "@/app/api/pilot-leads/route";
 
 function validPayload(overrides: Record<string, unknown> = {}) {
@@ -58,6 +63,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
     fullName: "Jordan Reyes",
     workEmail: "Jordan.Reyes@Example.com",
     companyName: "  Acme   Components  ",
+    country: "NL",
     jobTitle: "Procurement Director",
     companySize: "100-249",
     industry: "manufacturing",
@@ -97,6 +103,7 @@ describe("POST /api/pilot-leads", () => {
       id: "lead-1",
       createdAt: new Date("2026-06-05T12:00:00.000Z"),
     });
+    enqueuePilotLeadNotificationMock.mockResolvedValue({ id: "job-1" });
   });
 
   it("stores a validated, normalized lead without creating an account or workspace", async () => {
@@ -125,6 +132,7 @@ describe("POST /api/pilot-leads", () => {
         fullName: "Jordan Reyes",
         workEmail: "jordan.reyes@example.com",
         companyName: "Acme Components",
+        country: "NL",
         hasSavingsTracker: true,
         source: "public_pilot_form",
         dedupeKey: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -143,12 +151,32 @@ describe("POST /api/pilot-leads", () => {
     expect(prismaMock.organization.create).not.toHaveBeenCalled();
   });
 
+  it("queues an internal sales notification for a new lead", async () => {
+    const response = await POST(createRequest(validPayload()));
+
+    expect(response.status).toBe(201);
+    expect(enqueuePilotLeadNotificationMock).toHaveBeenCalledWith("lead-1");
+  });
+
+  it("still accepts the lead when the notification cannot be queued", async () => {
+    enqueuePilotLeadNotificationMock.mockRejectedValueOnce(new Error("queue down"));
+
+    const response = await POST(createRequest(validPayload()));
+
+    expect(response.status).toBe(201);
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ event: "pilot_lead.notification_enqueue_failed" })
+    );
+  });
+
   it("returns field-level errors for missing required fields", async () => {
     const response = await POST(
       createRequest({
         fullName: "",
         workEmail: "",
         companyName: "",
+        country: "",
         hasSavingsTracker: false,
         websiteUrl: "",
       })
@@ -161,6 +189,7 @@ describe("POST /api/pilot-leads", () => {
         fullName: expect.any(String),
         workEmail: expect.any(String),
         companyName: expect.any(String),
+        country: expect.any(String),
       },
     });
     expect(prismaMock.pilotLead.create).not.toHaveBeenCalled();
@@ -206,6 +235,7 @@ describe("POST /api/pilot-leads", () => {
       success: true,
     });
     expect(prismaMock.pilotLead.create).not.toHaveBeenCalled();
+    expect(enqueuePilotLeadNotificationMock).not.toHaveBeenCalled();
   });
 
   it("returns a controlled rate-limit response", async () => {

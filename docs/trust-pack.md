@@ -4,7 +4,7 @@
 
 Traxium's trust package summarizes how workspace data, saving cards, evidence files, billing, user access, import, and export are handled during a guided paid pilot.
 
-It is written for US manufacturing and industrial SME buyers, including CFOs, Controllers, Procurement Leads, Finance Reviewers, and IT/security reviewers. It is a product and technical boundary document, not a certification report, legal opinion, data processing agreement, or guarantee.
+It is written for manufacturing and industrial SME buyers, including finance, procurement, and IT/security reviewers. Traxium currently supports EUR and USD card currencies and reports portfolio values in USD. Country-specific privacy, residency, accounting, tax, and regulatory requirements must be assessed for each deployment; this document is a product and technical boundary, not a certification report, legal opinion, data processing agreement, or guarantee.
 
 ## Root-Cause Note
 
@@ -218,4 +218,3 @@ Before starting a pilot, the buyer and Traxium should:
 - [ ] Review the current provider-proof record and any preview blockers.
 - [ ] Confirm no ERP integration, accounting posting, SSO/SCIM, or custom approval builder is expected during the pilot.
 - [ ] Agree the offboarding and deletion-request process before the pilot ends.
-

@@ -6,7 +6,7 @@ This document defines Traxium's current commercial next step after a buyer demo.
 
 Best-fit first pilot:
 
-- 50-500 employee US manufacturing SME.
+- Small or midsize manufacturing business. Pilot pricing below is stated in USD as an initial commercial hypothesis; confirm the contracting currency and applicable local requirements with each buyer.
 - Procurement and finance both care about a trusted savings register.
 - The team has recurring direct or indirect savings work, but current tracking lives in spreadsheets, email, or slide decks.
 - The buyer can name one procurement owner, one finance reviewer, and one admin or security contact.

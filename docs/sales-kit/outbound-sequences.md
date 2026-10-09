@@ -1,10 +1,10 @@
 # Outbound Sequences
 
-Founder-led cold outreach for the Traxium guided paid pilot. Audience: 100–500 employee US manufacturing SMEs (plastics/chemicals, metal fabrication, components) where procurement tracks savings in spreadsheets and finance does not fully trust the numbers.
+Founder-led cold outreach for the Traxium guided paid pilot. Audience: SMEs worldwide where procurement tracks savings in spreadsheets and finance does not fully trust the numbers. Manufacturing and industrial businesses remain strong examples.
 
 Rules for every message:
 - Under 120 words.
-- US manufacturing vocabulary (spend, categories, suppliers, baseline price, annual volume, P&L, month-end, cost avoidance, hard savings).
+- Clear procurement and finance vocabulary (spend, categories, suppliers, baseline price, annual volume, financial impact, month-end, cost avoidance, hard savings).
 - One clear call to action.
 - No buzzwords ("synergy," "revolutionize," "leverage," "game-changer," "best-in-class").
 - No invented customers, metrics, or testimonials.
@@ -58,7 +58,7 @@ Reply "send details" and I'll share the pilot scope and a demo workspace to look
 — {{SenderName}}
 
 **LinkedIn connection note (Procurement Lead)**
-> {{FirstName}}, I work with US manufacturing procurement teams who track savings in Excel and dread the "did this hit the P&L?" question at month-end. Building a savings register with evidence and finance sign-off — would value connecting.
+> {{FirstName}}, I work with small procurement teams who track savings in Excel and dread the "what was actually captured?" question at month-end. Building a savings register with evidence and finance sign-off — would value connecting.
 
 ---
 

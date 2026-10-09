@@ -1,24 +1,14 @@
 import { formatCurrency, formatDecimalNumber, formatNumber, formatPlainNumber } from "@/lib/utils/numberFormatter";
+import { formatRegionalDateOnly, type SupportedLocale } from "@/lib/regional";
 
-const usDateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-/** Render a date in US MM/DD/YYYY format. Returns "—" for missing/invalid input. */
-export function formatDate(value: unknown) {
+/** Render date-only values without shifting their calendar day. */
+export function formatDate(value: unknown, locale: SupportedLocale = "en-US") {
   if (value === null || value === undefined || value === "") {
     return "—";
   }
 
   const date = value instanceof Date ? value : new Date(value as string | number);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return usDateFormatter.format(date);
+  return Number.isNaN(date.getTime()) ? "—" : formatRegionalDateOnly(date, locale);
 }
 
 export function formatInteger(value: unknown) {

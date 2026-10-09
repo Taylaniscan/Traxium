@@ -307,6 +307,9 @@ describe("workspace onboarding route", () => {
         description: "US manufacturing savings pilot for direct materials.",
         slug: "atlas-procurement",
         workspaceTrialEndsAt: expect.any(Date),
+        locale: "en-US",
+        timeZone: "UTC",
+        measurementSystem: "metric",
       },
       select: {
         id: true,
@@ -773,6 +776,9 @@ describe("workspace onboarding route", () => {
         data: {
           name: "Atlas Procurement",
           slug: "atlas-procurement",
+          locale: "en-US",
+          timeZone: "UTC",
+          measurementSystem: "metric",
         },
         select: {
           id: true,

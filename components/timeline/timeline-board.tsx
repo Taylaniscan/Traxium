@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { VolumeSCurve } from "@/components/timeline/volume-scurve";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -10,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { phases, phaseLabels } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/utils/numberFormatter";
 import { toNumber } from "@/lib/utils/decimal";
 
 const ROW_HEIGHT = 84;
@@ -107,6 +107,8 @@ export function TimelineBoard({
   };
   readiness?: WorkspaceReadiness | null;
 }) {
+  const { formatMoney, formatDateOnly, locale } = useRegionalDisplay();
+  const formatShortDate = (date: Date | string) => formatDateOnly(date);
   const [state, setState] = useState<FilterState>({
     categoryId: "",
     buyerId: "",
@@ -159,7 +161,7 @@ export function TimelineBoard({
   const showRampUpState =
     cards.length > 0 && (cards.length < 3 || (readiness ? !readiness.isWorkspaceReady : false));
 
-  const segments = useMemo(() => buildTimelineSegments(visibleCards, scale), [visibleCards, scale]);
+  const segments = useMemo(() => buildTimelineSegments(visibleCards, scale, locale), [visibleCards, scale, locale]);
   const segmentWidth = SEGMENT_WIDTH[scale];
   const timelineStart = segments[0]?.start.getTime() ?? referenceNow.getTime();
   const timelineEnd = segments.at(-1)?.end.getTime() ?? timelineStart + DAY_MS;
@@ -562,7 +564,7 @@ export function TimelineBoard({
                               <div className="relative flex h-full items-center justify-between gap-3 px-3">
                                 {barPixelWidth >= 92 ? (
                                   <p className="text-numeric truncate text-[11px] font-semibold">
-                                    {formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)}
+                                    {formatMoney(Math.round(toNumber(card.calculatedSavings)), card.currency)}
                                   </p>
                                 ) : (
                                   <span className={`h-2.5 w-2.5 rounded-full ${phaseStyle.dot}`} aria-hidden="true" />
@@ -591,7 +593,7 @@ export function TimelineBoard({
                                 <p>{card.supplier.name} · {card.material.name}</p>
                               </div>
                               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                                <TooltipRow label="Saving" value={formatCurrency(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
+                                <TooltipRow label="Saving" value={formatMoney(Math.round(toNumber(card.calculatedSavings)), card.currency)} />
                                 <TooltipRow label="Phase" value={phaseLabels[card.phase]} />
                                 <TooltipRow label="Owner" value={card.buyer.name} />
                                 <TooltipRow
@@ -686,22 +688,10 @@ function TooltipRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatDateLabel(value: Date | null, fallback: string) {
-  if (!value) {
-    return fallback;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-function buildTimelineSegments(cards: SavingCardPortfolio[], scale: ZoomLevel) {
+function buildTimelineSegments(cards: SavingCardPortfolio[], scale: ZoomLevel, locale: string) {
   if (cards.length === 0) {
     const now = new Date();
-    return [buildSegmentForDate(now, scale)];
+    return [buildSegmentForDate(now, scale, locale)];
   }
 
   const minTime = Math.min(...cards.map((card) => new Date(card.startDate).getTime()));
@@ -711,14 +701,14 @@ function buildTimelineSegments(cards: SavingCardPortfolio[], scale: ZoomLevel) {
   const endBoundary = getSegmentEnd(new Date(maxTime), scale);
 
   while (cursor <= endBoundary) {
-    segments.push(buildSegmentForDate(cursor, scale));
+    segments.push(buildSegmentForDate(cursor, scale, locale));
     cursor = getNextSegmentStart(cursor, scale);
   }
 
   return segments;
 }
 
-function buildSegmentForDate(date: Date, scale: ZoomLevel): TimelineSegment {
+function buildSegmentForDate(date: Date, scale: ZoomLevel, locale: string): TimelineSegment {
   const start = getSegmentStart(date, scale);
   const end = getSegmentEnd(date, scale);
 
@@ -745,7 +735,7 @@ function buildSegmentForDate(date: Date, scale: ZoomLevel): TimelineSegment {
     return {
       start,
       end,
-      primaryLabel: new Intl.DateTimeFormat("en-US", { month: "short" }).format(start),
+      primaryLabel: new Intl.DateTimeFormat(locale, { month: "short" }).format(start),
       secondaryLabel: `${start.getFullYear()}`
     };
   }
@@ -754,7 +744,7 @@ function buildSegmentForDate(date: Date, scale: ZoomLevel): TimelineSegment {
     start,
     end,
     primaryLabel: `W${getWeekNumber(start)}`,
-    secondaryLabel: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(start)
+    secondaryLabel: new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(start)
   };
 }
 
@@ -842,10 +832,6 @@ function getWeekNumber(date: Date) {
   target.setUTCDate(target.getUTCDate() + 4 - dayNumber);
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
   return Math.ceil(((target.getTime() - yearStart.getTime()) / DAY_MS + 1) / 7);
-}
-
-function formatShortDate(date: Date | string) {
-  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
 }
 
 function toPercentStyle(value: number) {

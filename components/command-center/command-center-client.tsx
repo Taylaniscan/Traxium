@@ -58,7 +58,8 @@ import {
   emptyCommandCenterFilters,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatNumber } from "@/lib/utils/numberFormatter";
+import { formatNumber } from "@/lib/utils/numberFormatter";
+import { useRegionalDisplay } from "@/components/layout/regional-context";
 
 export type CommandCenterClientLoadState = {
   dataError?: string | null;
@@ -279,6 +280,7 @@ export function CommandCenterClient({
   readiness?: WorkspaceReadiness | null;
   loadState?: CommandCenterClientLoadState;
 }) {
+  const { formatUsd } = useRegionalDisplay();
   const [data, setData] = useState(() => normalizeCommandCenterData(initialData));
   const [filters, setFilters] = useState<CommandCenterResolvedFilters>(() => ({
     ...emptyCommandCenterFilters,
@@ -688,25 +690,25 @@ export function CommandCenterClient({
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <MetricCard
                       label="Pipeline Savings"
-                      value={formatCurrency(safeData.kpis.totalPipelineSavings, "USD")}
+                      value={formatUsd(safeData.kpis.totalPipelineSavings)}
                       icon={CircleDollarSign}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Implemented Savings"
-                      value={formatCurrency(safeData.kpis.realisedSavings, "USD")}
+                      value={formatUsd(safeData.kpis.realisedSavings)}
                       icon={TrendingUp}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Savings Forecast"
-                      value={formatCurrency(safeData.kpis.savingsForecast, "USD")}
+                      value={formatUsd(safeData.kpis.savingsForecast)}
                       icon={ClipboardList}
                       status={isLoading ? "Updating" : "Live"}
                     />
                     <MetricCard
                       label="Captured Savings"
-                      value={formatCurrency(safeData.kpis.achievedSavings, "USD")}
+                      value={formatUsd(safeData.kpis.achievedSavings)}
                       icon={CheckCircle2}
                       status={isLoading ? "Updating" : "Live"}
                     />
@@ -956,6 +958,7 @@ function ActionQueueCard({
   items: CommandCenterPendingApprovalItem[];
   totalCount: number;
 }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
@@ -1001,7 +1004,7 @@ function ActionQueueCard({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {formatCurrency(item.savings, "USD")}
+                    {formatUsd(item.savings)}
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
                     {formatCommandCenterRelativeDays(item.ageDays)}
@@ -1052,6 +1055,7 @@ function AttentionListCard({
   actionHref: string;
   actionLabel: string;
 }) {
+  const { formatUsd, formatTimestamp } = useRegionalDisplay();
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
@@ -1081,12 +1085,12 @@ function AttentionListCard({
                   </p>
                 </div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {formatCurrency(item.savings, "USD")}
+                  {formatUsd(item.savings)}
                 </p>
               </div>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--muted-foreground)]">
                 <span>
-                  {item.dateLabel}: {formatCommandCenterDate(item.dateValue)}
+                  {item.dateLabel}: {formatTimestamp(item.dateValue)}
                 </span>
                 <span>
                   {tone === "error"
@@ -1142,6 +1146,7 @@ function DecisionFeedCard({
 }: {
   items: CommandCenterDecisionItem[];
 }) {
+  const { formatTimestamp } = useRegionalDisplay();
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
@@ -1173,7 +1178,7 @@ function DecisionFeedCard({
                   </p>
                 </div>
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  {formatCommandCenterDate(item.createdAt)}
+                  {formatTimestamp(item.createdAt)}
                 </p>
               </div>
               <p className="mt-2 text-sm text-[var(--muted-foreground)]">
@@ -1194,6 +1199,7 @@ function RecentActivityCard({
 }: {
   items: CommandCenterActivityItem[];
 }) {
+  const { formatUsd, formatTimestamp } = useRegionalDisplay();
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-[var(--border)] bg-[var(--surface-elevated)]/65">
@@ -1225,10 +1231,10 @@ function RecentActivityCard({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {formatCurrency(item.savings, "USD")}
+                    {formatUsd(item.savings)}
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    Updated {formatCommandCenterDate(item.updatedAt)}
+                    Updated {formatTimestamp(item.updatedAt)}
                   </p>
                 </div>
               </div>
@@ -1288,6 +1294,7 @@ function DistributionList({
   items: Array<{ label: string; value: number }>;
   emptyMessage: string;
 }) {
+  const { formatUsd } = useRegionalDisplay();
   const total = items.reduce((sum, item) => sum + item.value, 0);
 
   return (
@@ -1306,7 +1313,7 @@ function DistributionList({
                   {item.label}
                 </span>
                 <span className="text-sm font-semibold text-[var(--foreground)]">
-                  {formatCurrency(item.value, "USD")}
+                  {formatUsd(item.value)}
                 </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
@@ -1417,6 +1424,7 @@ function PipelineBarChart({
 }: {
   data: CommandCenterData["pipelineByPhase"];
 }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full">
       <ResponsiveContainer
@@ -1436,12 +1444,12 @@ function PipelineBarChart({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "var(--chart-axis)", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               "Savings",
             ]}
           />
@@ -1467,6 +1475,7 @@ function ForecastAreaPanel({
 }: {
   data: CommandCenterData["forecastCurve"];
 }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full">
       <ResponsiveContainer
@@ -1486,12 +1495,12 @@ function ForecastAreaPanel({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "var(--chart-axis)", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
             formatter={(value, name) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               String(name) === "forecast" ? "Forecast" : "Savings",
             ]}
           />
@@ -1522,6 +1531,7 @@ function SupplierBarChart({
 }: {
   data: CommandCenterData["topSuppliers"];
 }) {
+  const { formatUsd } = useRegionalDisplay();
   return (
     <div className="h-full w-full">
       <ResponsiveContainer
@@ -1540,7 +1550,7 @@ function SupplierBarChart({
             tickLine={false}
             axisLine={false}
             tick={{ fill: "var(--chart-axis)", fontSize: 12 }}
-            tickFormatter={(value) => formatCurrency(value, "USD")}
+            tickFormatter={(value) => formatUsd(value)}
           />
           <YAxis
             type="category"
@@ -1553,7 +1563,7 @@ function SupplierBarChart({
           <Tooltip
             contentStyle={{ borderRadius: 12, borderColor: "var(--chart-grid)", backgroundColor: "var(--surface)", boxShadow: "var(--shadow-pop)", fontSize: 12 }}
             formatter={(value) => [
-              formatCurrency(Number(value ?? 0), "USD"),
+              formatUsd(Number(value ?? 0)),
               "Savings",
             ]}
           />
@@ -1564,19 +1574,6 @@ function SupplierBarChart({
   );
 }
 
-function formatCommandCenterDate(value: string) {
-  if (!value) {
-    return "Unknown date";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(date);
-}
 
 function formatCommandCenterRelativeDays(days: number, prefix = false) {
   if (days <= 0) {

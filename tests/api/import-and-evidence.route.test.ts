@@ -840,6 +840,7 @@ describe("import and evidence API routes", () => {
         "New Price": 8,
         "Annual Volume": 100,
         Currency: "EUR",
+        "FX Rate (EUR to USD)": 1.08,
         "Start Date": "2025-01-01",
         "End Date": "2025-12-31",
       };
@@ -1050,6 +1051,7 @@ describe("import and evidence API routes", () => {
       });
       expect(xlsxReadMock).toHaveBeenCalledWith(expect.any(ArrayBuffer), {
         type: "array",
+        cellDates: true,
       });
       expect(sheetToJsonMock).toHaveBeenCalledWith(
         {},

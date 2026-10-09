@@ -1,4 +1,7 @@
 import { Currency, Prisma, Role } from "@prisma/client";
+import { normalizeLocale, normalizeMeasurementSystem, normalizeTimeZone, type SupportedLocale, type MeasurementSystem } from "@/lib/regional";
+
+export type InitialRegionalPreferences = { locale: SupportedLocale; timeZone: string; measurementSystem: MeasurementSystem };
 import type {
   InvitationStatus,
   MembershipStatus,
@@ -135,7 +138,11 @@ const organizationSettingsSelect = {
   slug: true,
   fiscalYearStartMonth: true,
   defaultCurrency: true,
+  reportingCurrency: true,
   multiCurrencyEnabled: true,
+  locale: true,
+  timeZone: true,
+  measurementSystem: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.OrganizationSelect;
@@ -279,7 +286,11 @@ export type OrganizationSettingsSummary = {
   slug: string;
   fiscalYearStartMonth: number;
   defaultCurrency: Currency;
+  reportingCurrency: Currency;
   multiCurrencyEnabled: boolean;
+  locale: string;
+  timeZone: string;
+  measurementSystem: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -400,7 +411,8 @@ async function createUniqueOrganizationSlug(
 async function createInitialOrganization(
   tx: OrganizationWriteClient,
   workspaceName: string,
-  workspaceDescription?: string | null
+  workspaceDescription?: string | null,
+  regional?: InitialRegionalPreferences
 ) {
   const slug = await createUniqueOrganizationSlug(tx, workspaceName);
   const shouldPersistWorkspaceTrialEnd = await canPersistWorkspaceTrialEnd(tx);
@@ -410,9 +422,13 @@ async function createInitialOrganization(
     slug: string;
     description?: string;
     workspaceTrialEndsAt?: Date;
+    locale?: string;
+    timeZone?: string;
+    measurementSystem?: string;
   } = {
     name: workspaceName,
     slug,
+    ...(regional ? { locale: regional.locale, timeZone: regional.timeZone, measurementSystem: regional.measurementSystem } : {}),
   };
 
   if (description) {
@@ -456,7 +472,7 @@ async function createInitialOrganization(
     data: {
       organizationId: organization.id,
       name: "Main Plant",
-      region: "US",
+      region: "Not specified",
     },
   });
 
@@ -467,6 +483,7 @@ async function canPersistWorkspaceTrialEnd(tx: OrganizationWriteClient) {
   if (!isDevelopmentEnvironment()) {
     return true;
   }
+  if (typeof tx.$queryRaw !== "function") return false;
 
   if (
     (await tx.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
@@ -595,7 +612,11 @@ function mapOrganizationSettings(
     slug: organization.slug,
     fiscalYearStartMonth: organization.fiscalYearStartMonth,
     defaultCurrency: organization.defaultCurrency,
+    reportingCurrency: organization.reportingCurrency,
     multiCurrencyEnabled: organization.multiCurrencyEnabled,
+    locale: organization.locale,
+    timeZone: organization.timeZone,
+    measurementSystem: organization.measurementSystem,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };
@@ -656,7 +677,8 @@ function captureWorkspaceOnboardingStepFailure(input: {
 export async function createInitialWorkspaceForUser(
   userId: string,
   workspaceName: string,
-  workspaceDescription?: string | null
+  workspaceDescription?: string | null,
+  regional?: InitialRegionalPreferences
 ): Promise<InitialWorkspaceResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(workspaceName);
 
@@ -701,7 +723,8 @@ export async function createInitialWorkspaceForUser(
       organization = await createInitialOrganization(
         tx,
         normalizedWorkspaceName,
-        workspaceDescription
+        workspaceDescription,
+        regional
       );
     } catch (error) {
       captureWorkspaceOnboardingStepFailure({
@@ -799,6 +822,7 @@ export async function createInitialWorkspaceForAuthenticatedUser(
     role?: Role;
     workspaceName: string;
     workspaceDescription?: string | null;
+    regional?: InitialRegionalPreferences;
   }
 ): Promise<InitialWorkspaceProvisioningResult> {
   const normalizedWorkspaceName = normalizeWorkspaceName(input.workspaceName);
@@ -824,7 +848,8 @@ export async function createInitialWorkspaceForAuthenticatedUser(
       organization = await createInitialOrganization(
         tx,
         normalizedWorkspaceName,
-        input.workspaceDescription
+        input.workspaceDescription,
+        input.regional
       );
     } catch (error) {
       captureWorkspaceOnboardingStepFailure({
@@ -973,18 +998,26 @@ export async function getOrganizationMembersDirectory(
 
 export async function getWorkspaceCurrencyMode(
   organizationId: string
-): Promise<{ defaultCurrency: Currency; multiCurrencyEnabled: boolean }> {
+): Promise<{ defaultCurrency: Currency; multiCurrencyEnabled: boolean; defaultFxRate: number | null; measurementSystem: string }> {
   const normalizedOrganizationId = normalizeOrganizationId(organizationId);
   const organization = normalizedOrganizationId
     ? await prisma.organization.findUnique({
         where: { id: normalizedOrganizationId },
-        select: { defaultCurrency: true, multiCurrencyEnabled: true },
+        select: { defaultCurrency: true, multiCurrencyEnabled: true, measurementSystem: true },
       })
     : null;
+  const latestRate = organization?.defaultCurrency === Currency.EUR
+    ? await prisma.fxRate.findFirst({ where: { currency: Currency.EUR, validFrom: { lte: new Date() } }, orderBy: { validFrom: "desc" } })
+    : null;
+  const defaultFxRate = organization?.defaultCurrency === Currency.EUR
+    ? latestRate && Number(latestRate.rateToUSD) > 0 ? Number(latestRate.rateToUSD) : null
+    : 1;
 
   return {
     defaultCurrency: organization?.defaultCurrency ?? Currency.USD,
     multiCurrencyEnabled: organization?.multiCurrencyEnabled ?? false,
+    defaultFxRate,
+    measurementSystem: organization?.measurementSystem ?? "metric",
   };
 }
 
@@ -1017,7 +1050,11 @@ export async function updateOrganizationSettings(input: {
   description?: string | null;
   fiscalYearStartMonth?: number | null;
   defaultCurrency?: Currency | null;
+  reportingCurrency?: Currency | null;
   multiCurrencyEnabled?: boolean | null;
+  locale?: string | null;
+  timeZone?: string | null;
+  measurementSystem?: string | null;
 }): Promise<OrganizationSettingsUpdateResult> {
   const organizationId = normalizeOrganizationId(
     input.actor.activeOrganization.organizationId
@@ -1029,6 +1066,10 @@ export async function updateOrganizationSettings(input: {
     input.fiscalYearStartMonth
   );
   const nextDefaultCurrency = normalizeDefaultCurrency(input.defaultCurrency);
+  const nextReportingCurrency = normalizeDefaultCurrency(input.reportingCurrency);
+  const nextLocale = input.locale == null ? null : normalizeLocale(input.locale);
+  const nextTimeZone = input.timeZone == null ? null : normalizeTimeZone(input.timeZone);
+  const nextMeasurementSystem = input.measurementSystem == null ? null : normalizeMeasurementSystem(input.measurementSystem);
 
   if (!organizationId) {
     throw new OrganizationSettingsError("Organization context is required.", 422);
@@ -1060,6 +1101,10 @@ export async function updateOrganizationSettings(input: {
   ) {
     throw new OrganizationSettingsError("Default currency is invalid.", 422);
   }
+  if (input.reportingCurrency != null && !nextReportingCurrency) throw new OrganizationSettingsError("Reporting currency must be USD or EUR.", 422);
+  if (input.locale != null && !nextLocale) throw new OrganizationSettingsError("Choose a supported locale.", 422);
+  if (input.timeZone != null && !nextTimeZone) throw new OrganizationSettingsError("Choose a valid IANA time zone.", 422);
+  if (input.measurementSystem != null && !nextMeasurementSystem) throw new OrganizationSettingsError("Choose metric or US customary units.", 422);
 
   return prisma.$transaction(async (tx) => {
     const organization = await tx.organization.findUnique({
@@ -1077,6 +1122,10 @@ export async function updateOrganizationSettings(input: {
       nextFiscalYearStartMonth ?? organization.fiscalYearStartMonth;
     const resolvedDefaultCurrency =
       nextDefaultCurrency ?? organization.defaultCurrency;
+    const resolvedReportingCurrency = nextReportingCurrency ?? organization.reportingCurrency;
+    const resolvedLocale = nextLocale ?? organization.locale;
+    const resolvedTimeZone = nextTimeZone ?? organization.timeZone;
+    const resolvedMeasurementSystem = nextMeasurementSystem ?? organization.measurementSystem;
     const resolvedMultiCurrencyEnabled =
       input.multiCurrencyEnabled === undefined ||
       input.multiCurrencyEnabled === null
@@ -1088,6 +1137,10 @@ export async function updateOrganizationSettings(input: {
       normalizeOrganizationDescription(organization.description) === nextDescription &&
       organization.fiscalYearStartMonth === resolvedFiscalYearStartMonth &&
       organization.defaultCurrency === resolvedDefaultCurrency &&
+      organization.reportingCurrency === resolvedReportingCurrency &&
+      organization.locale === resolvedLocale &&
+      organization.timeZone === resolvedTimeZone &&
+      organization.measurementSystem === resolvedMeasurementSystem &&
       organization.multiCurrencyEnabled === resolvedMultiCurrencyEnabled
     ) {
       return {
@@ -1105,7 +1158,11 @@ export async function updateOrganizationSettings(input: {
         description: nextDescription,
         fiscalYearStartMonth: resolvedFiscalYearStartMonth,
         defaultCurrency: resolvedDefaultCurrency,
+        reportingCurrency: resolvedReportingCurrency,
         multiCurrencyEnabled: resolvedMultiCurrencyEnabled,
+        locale: resolvedLocale,
+        timeZone: resolvedTimeZone,
+        measurementSystem: resolvedMeasurementSystem,
       },
       select: organizationSettingsSelect,
     });
@@ -1130,6 +1187,10 @@ export async function updateOrganizationSettings(input: {
           ...(organization.defaultCurrency !== resolvedDefaultCurrency
             ? ["defaultCurrency"]
             : []),
+          ...(organization.reportingCurrency !== resolvedReportingCurrency ? ["reportingCurrency"] : []),
+          ...(organization.locale !== resolvedLocale ? ["locale"] : []),
+          ...(organization.timeZone !== resolvedTimeZone ? ["timeZone"] : []),
+          ...(organization.measurementSystem !== resolvedMeasurementSystem ? ["measurementSystem"] : []),
           ...(organization.multiCurrencyEnabled !== resolvedMultiCurrencyEnabled
             ? ["multiCurrencyEnabled"]
             : []),

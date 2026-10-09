@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { normalizeLocale, supportedLocales } from "@/lib/regional";
 import {
   captureException,
   trackClientEvent,
@@ -26,6 +28,14 @@ export function WorkspaceOnboardingForm({
 }: WorkspaceOnboardingFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [locale, setLocale] = useState("en-US");
+  const [timeZone, setTimeZone] = useState("UTC");
+  const [measurementSystem, setMeasurementSystem] = useState<"metric" | "us_customary">("metric");
+  useEffect(() => {
+    const browserLocale = navigator.language;
+    setLocale(normalizeLocale(browserLocale) ?? "en-US");
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const submissionInFlightRef = useRef(false);
@@ -50,6 +60,9 @@ export function WorkspaceOnboardingForm({
         body: JSON.stringify({
           name,
           description: description.trim() || null,
+          locale,
+          timeZone,
+          measurementSystem,
         }),
       });
 
@@ -165,12 +178,18 @@ export function WorkspaceOnboardingForm({
                   onChange={(event) => setDescription(event.target.value)}
                   maxLength={240}
                   rows={4}
-                  placeholder="Example: US manufacturing savings pilot for direct materials."
+                  placeholder="Example: savings tracking for our procurement and finance team."
                 />
                 <p className="text-sm text-[var(--muted-foreground)]">
                   Keep this practical. A short purpose helps admins and new teammates understand the workspace later.
                 </p>
               </div>
+
+              <fieldset className="space-y-3 rounded-lg border p-4"><legend className="px-1 text-sm font-semibold">Regional preferences</legend>
+                <div className="space-y-2"><Label htmlFor="onboarding-locale">Number and date display locale</Label><Input id="onboarding-locale" list="onboarding-locales" value={locale} onChange={(event) => setLocale(event.target.value)} placeholder="en-US" /><datalist id="onboarding-locales">{supportedLocales.map((item) => <option key={item} value={item} />)}</datalist><p className="text-xs text-[var(--muted-foreground)]">Use a locale code such as en-US, de-DE, or ja-JP. The interface stays in English.</p></div>
+                <div className="space-y-2"><Label htmlFor="onboarding-time-zone">Time zone</Label><Input id="onboarding-time-zone" value={timeZone} onChange={(event) => setTimeZone(event.target.value)} /></div>
+                <div className="space-y-2"><Label htmlFor="onboarding-units">Suggested units</Label><Select id="onboarding-units" value={measurementSystem} onChange={(event) => setMeasurementSystem(event.target.value as "metric" | "us_customary")}><option value="metric">Metric</option><option value="us_customary">US customary</option></Select></div>
+              </fieldset>
 
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

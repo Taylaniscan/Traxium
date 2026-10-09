@@ -10,9 +10,9 @@ const figtree = Figtree({
 });
 
 export const metadata: Metadata = {
-  title: "Traxium | Finance-Trusted Savings Governance",
+  title: "Traxium | Finance-Trusted Procurement Savings for SMEs",
   description:
-    "Traxium helps 50-500 employee US manufacturing SMEs govern saving cards, evidence, approvals, and savings exports in one paid-pilot workspace.",
+    "Finance-trusted procurement savings tracking for SMEs worldwide. Small procurement and finance teams can govern saving cards, evidence, approvals, and reporting in one workspace.",
 };
 
 export default function RootLayout({

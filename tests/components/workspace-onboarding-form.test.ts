@@ -10,6 +10,7 @@ vi.mock("react", async () => {
     ...actual,
     useState: useStateMock,
     useRef: useRefMock,
+    useEffect: vi.fn(),
   };
 });
 
@@ -115,6 +116,9 @@ describe("workspace onboarding form", () => {
     useStateMock
       .mockReturnValueOnce(["", vi.fn()])
       .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["en-US", vi.fn()])
+      .mockReturnValueOnce(["UTC", vi.fn()])
+      .mockReturnValueOnce(["metric", vi.fn()])
       .mockReturnValueOnce([null, vi.fn()])
       .mockReturnValueOnce([false, vi.fn()]);
 
@@ -142,6 +146,9 @@ describe("workspace onboarding form", () => {
     useStateMock
       .mockReturnValueOnce(["Atlas Procurement", vi.fn()])
       .mockReturnValueOnce(["SME pilot workspace", vi.fn()])
+      .mockReturnValueOnce(["en-US", vi.fn()])
+      .mockReturnValueOnce(["UTC", vi.fn()])
+      .mockReturnValueOnce(["metric", vi.fn()])
       .mockReturnValueOnce([null, setError])
       .mockReturnValueOnce([false, setLoading]);
 
@@ -169,6 +176,9 @@ describe("workspace onboarding form", () => {
       body: JSON.stringify({
         name: "Atlas Procurement",
         description: "SME pilot workspace",
+        locale: "en-US",
+        timeZone: "UTC",
+        measurementSystem: "metric",
       }),
     });
     expect(setError).toHaveBeenCalledWith(null);
@@ -196,6 +206,9 @@ describe("workspace onboarding form", () => {
     useStateMock
       .mockReturnValueOnce(["Atlas Procurement", vi.fn()])
       .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["en-US", vi.fn()])
+      .mockReturnValueOnce(["UTC", vi.fn()])
+      .mockReturnValueOnce(["metric", vi.fn()])
       .mockReturnValueOnce([null, setError])
       .mockReturnValueOnce([false, setLoading]);
 
