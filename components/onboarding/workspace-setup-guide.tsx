@@ -1,1018 +1,470 @@
-import Link from "next/link";
-import type { OrganizationRole } from "@prisma/client";
+"use client";
 
-import { FirstValueLaunchpad } from "@/components/onboarding/first-value-launchpad";
-import { MasterDataStarterTable } from "@/components/onboarding/master-data-starter-table";
-import { MasterDataUploadStep } from "@/components/onboarding/master-data-upload-step";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import type { OrganizationRole } from "@prisma/client";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  FileSpreadsheet,
+  Lightbulb,
+  Plus,
+  Settings2,
+  Users,
+} from "lucide-react";
+
+import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
 import {
-  MASTER_DATA_IMPORT_ENTITY_KEYS,
+  OnboardingShell,
+  onboardingPrimaryClass,
+} from "@/components/onboarding/onboarding-shell";
+import {
   MASTER_DATA_ONBOARDING_ENTITY_KEYS,
   getMasterDataOnboardingStepConfig,
   getMasterDataTemplateDownloadHref,
-  isMasterDataImportEntityKey,
 } from "@/lib/onboarding/master-data-config";
-import { roleLabels } from "@/lib/constants";
-import type { WorkspaceMasterDataItem, WorkspaceReadiness } from "@/lib/types";
+import type { WorkspaceReadiness } from "@/lib/types";
+
+type StartingPath = "real" | "import" | "sample";
 
 type WorkspaceSetupGuideProps = {
   readiness: WorkspaceReadiness | null;
   readinessError?: string | null;
   userName: string;
   viewerMembershipRole: OrganizationRole;
+  canManageData?: boolean;
 };
 
-type StepStatus = "complete" | "current" | "pending" | "recommended";
+const paths = [
+  {
+    id: "real" as const,
+    icon: Plus,
+    title: "Start with one saving card",
+    description:
+      "Have an opportunity in mind? Add its prices, volume, and owner.",
+    hint: "A simple place to begin",
+    action: "Create first saving card",
+    href: "/saving-cards/new?from=onboarding",
+  },
+  {
+    id: "import" as const,
+    icon: FileSpreadsheet,
+    title: "Bring your spreadsheet",
+    description: "Move existing savings initiatives into a shared workspace.",
+    hint: "Use the XLSX import template",
+    action: "Open spreadsheet import",
+    href: "/reports#import-export",
+  },
+  {
+    id: "sample" as const,
+    icon: Lightbulb,
+    title: "Explore with sample cards",
+    description: "See how the workflow looks before entering your own data.",
+    hint: "For a demo or training workspace",
+    action: "Add sample cards",
+    href: "/dashboard",
+  },
+];
 
-type ActivationCheck = {
-  key: string;
-  label: string;
-  description: string;
-  ready: boolean;
-};
-
-const LINK_BUTTON_CLASS_NAME =
-  "inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-muted)]";
-
-const PRIMARY_LINK_BUTTON_CLASS_NAME =
-  "inline-flex items-center justify-center rounded-md border border-transparent bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-[var(--primary-action-hover)]";
-
-const GHOST_LINK_BUTTON_CLASS_NAME =
-  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[rgba(23,33,43,0.04)] hover:text-[var(--text-primary)]";
-
-const MASTER_DATA_BUSINESS_COPY: Record<
-  WorkspaceMasterDataItem["key"],
-  string
+const preparation: Record<
+  StartingPath,
+  Array<{ title: string; detail: string }>
 > = {
-  buyers:
-    "Buyers show who owns a savings initiative and who should keep it moving.",
-  suppliers:
-    "Suppliers make baseline and negotiated prices credible instead of anonymous.",
-  materials:
-    "Materials anchor volume, price, and scope so savings calculations are concrete.",
-  categories:
-    "Categories make savings easier to review by procurement area and ownership.",
-  plants:
-    "Plants show where operational impact lands and improve site-level reporting.",
-  businessUnits:
-    "Business units help leaders compare savings by division or operating group.",
+  real: [
+    {
+      title: "One opportunity",
+      detail:
+        "A supplier agreement, material change, or another savings initiative.",
+    },
+    {
+      title: "Your commercial assumptions",
+      detail: "Baseline and new prices, annual volume, and when savings begin.",
+    },
+    {
+      title: "Evidence when you have it",
+      detail: "Attach a quote or supporting file after creating the card.",
+    },
+  ],
+  import: [
+    {
+      title: "Start from the import template",
+      detail: "Download it from Reports and copy in your existing initiatives.",
+    },
+    {
+      title: "Keep currency and units explicit",
+      detail: "Use USD or EUR, a volume unit, and unambiguous dates.",
+    },
+    {
+      title: "Review any row errors",
+      detail: "Traxium checks the entire file before saving any cards.",
+    },
+  ],
+  sample: [
+    {
+      title: "Two illustrative saving cards",
+      detail:
+        "Example suppliers, materials, and prices are added to this workspace.",
+    },
+    {
+      title: "A safe place to learn the workflow",
+      detail:
+        "Explore the dashboard, evidence, and approval process with demo data.",
+    },
+    {
+      title: "Keep customer reporting separate",
+      detail:
+        "Use sample data for demo or training, and real data for your live workspace.",
+    },
+  ],
 };
-
-function getFirstName(name: string) {
-  const normalized = name.trim();
-
-  if (!normalized) {
-    return "there";
-  }
-
-  return normalized.split(/\s+/u)[0] ?? normalized;
-}
-
-function formatCount(count: number, singular: string, plural: string) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function getMasterDataItem(
-  readiness: WorkspaceReadiness | null,
-  key: WorkspaceMasterDataItem["key"]
-) {
-  return readiness?.masterData.find((item) => item.key === key) ?? null;
-}
-
-function getWorkflowItem(
-  readiness: WorkspaceReadiness | null,
-  key: "HEAD_OF_GLOBAL_PROCUREMENT" | "GLOBAL_CATEGORY_LEADER" | "FINANCIAL_CONTROLLER"
-) {
-  return readiness?.workflowCoverage.find((item) => item.key === key) ?? null;
-}
-
-function getActivationModel(readiness: WorkspaceReadiness | null) {
-  const buyerCount = readiness?.counts.buyers ?? 0;
-  const supplierCount = readiness?.counts.suppliers ?? 0;
-  const materialCount = readiness?.counts.materials ?? 0;
-  const categoryCount = readiness?.counts.categories ?? 0;
-  const plantCount = readiness?.counts.plants ?? 0;
-  const businessUnitCount = readiness?.counts.businessUnits ?? 0;
-  const savingCardCount = readiness?.counts.savingCards ?? 0;
-  const financialControllerReady =
-    getWorkflowItem(readiness, "FINANCIAL_CONTROLLER")?.ready ?? false;
-  const headOfGlobalProcurementReady =
-    getWorkflowItem(readiness, "HEAD_OF_GLOBAL_PROCUREMENT")?.ready ?? false;
-  const globalCategoryLeaderReady =
-    getWorkflowItem(readiness, "GLOBAL_CATEGORY_LEADER")?.ready ?? false;
-  const materialOrCategoryReady = materialCount > 0 || categoryCount > 0;
-
-  const requiredChecks: ActivationCheck[] = [
-    {
-      key: "workspace",
-      label: "Workspace identity",
-      description:
-        "Name and tenant boundary are ready for procurement savings work.",
-      ready: true,
-    },
-    {
-      key: "buyer",
-      label: "At least one buyer",
-      description:
-        "A named owner keeps the first saving card accountable.",
-      ready: buyerCount > 0,
-    },
-    {
-      key: "supplier",
-      label: "At least one supplier",
-      description:
-        "A supplier makes baseline and new price comparison credible.",
-      ready: supplierCount > 0,
-    },
-    {
-      key: "material-or-category",
-      label: "At least one material or category",
-      description:
-        "One commercial scope dimension is enough to start first value.",
-      ready: materialOrCategoryReady,
-    },
-    {
-      key: "saving-card",
-      label: "At least one saving card",
-      description:
-        "First value is created from one real savings initiative.",
-      ready: savingCardCount > 0,
-    },
-  ];
-
-  const recommendedChecks: ActivationCheck[] = [
-    {
-      key: "plants",
-      label: "Plants",
-      description:
-        "Optional. New workspaces include a default Main Plant; add more for site-level savings reporting.",
-      ready: plantCount > 0,
-    },
-    {
-      key: "business-units",
-      label: "Business units",
-      description: "Optional. Useful for division-level portfolio reviews.",
-      ready: businessUnitCount > 0,
-    },
-    {
-      key: "categories",
-      label: "More complete categories",
-      description: "Improves ownership, targets, and reports.",
-      ready: categoryCount > 0,
-    },
-    {
-      key: "finance-team",
-      label: "Finance reviewer/team setup",
-      description: "Finance validation and procurement approvals become clearer.",
-      ready:
-        financialControllerReady &&
-        headOfGlobalProcurementReady &&
-        globalCategoryLeaderReady,
-    },
-    {
-      key: "evidence",
-      label: "Evidence can be attached to saving cards",
-      description:
-        "After a card exists, attach quote, contract, invoice, and calculation evidence for finance trust.",
-      ready: savingCardCount > 0,
-    },
-  ];
-
-  const requiredReadyCount = requiredChecks.filter((check) => check.ready).length;
-  const progressPercent = Math.round(
-    (requiredReadyCount / requiredChecks.length) * 100
-  );
-  const firstValueReady = requiredChecks.every((check) => check.ready);
-  const businessStructureReady =
-    buyerCount > 0 && supplierCount > 0 && materialOrCategoryReady;
-  const roleCoverageReady =
-    financialControllerReady && headOfGlobalProcurementReady;
-
-  return {
-    buyerCount,
-    supplierCount,
-    materialCount,
-    categoryCount,
-    plantCount,
-    businessUnitCount,
-    savingCardCount,
-    requiredChecks,
-    recommendedChecks,
-    requiredReadyCount,
-    progressPercent,
-    firstValueReady,
-    businessStructureReady,
-    roleCoverageReady,
-    missingRequired: requiredChecks.filter((check) => !check.ready),
-    missingRecommended: recommendedChecks.filter((check) => !check.ready),
-  };
-}
-
-function getStepBadge(status: StepStatus) {
-  switch (status) {
-    case "complete":
-      return { label: "Complete", tone: "emerald" as const };
-    case "current":
-      return { label: "Recommended next", tone: "blue" as const };
-    case "recommended":
-      return { label: "Recommended", tone: "amber" as const };
-    default:
-      return { label: "Pending", tone: "slate" as const };
-  }
-}
-
-function StepShell({
-  stepNumber,
-  title,
-  description,
-  status,
-  children,
-}: {
-  stepNumber: number;
-  title: string;
-  description: string;
-  status: StepStatus;
-  children: React.ReactNode;
-}) {
-  const badge = getStepBadge(status);
-
-  return (
-    <Card className={status === "current" ? "border-[rgba(37,99,235,0.24)]" : undefined}>
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={badge.tone}>{badge.label}</Badge>
-          <span className="text-sm font-semibold text-[var(--muted-foreground)]">
-            Step {stepNumber} of 7
-          </span>
-        </div>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
-
-function ReadinessCheckList({
-  title,
-  checks,
-}: {
-  title: string;
-  checks: ActivationCheck[];
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
-      <div className="mt-4 space-y-3">
-        {checks.map((check) => (
-          <div key={check.key} className="flex gap-3">
-            <Badge tone={check.ready ? "emerald" : "amber"}>
-              {check.ready ? "Ready" : "Missing"}
-            </Badge>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {check.label}
-              </p>
-              <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-                {check.description}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReadinessSnapshot({
-  readiness,
-  model,
-}: {
-  readiness: WorkspaceReadiness | null;
-  model: ReturnType<typeof getActivationModel>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>First-value readiness</CardTitle>
-        <CardDescription>
-          Required checks keep the first saving card credible. Recommended checks
-          improve reporting, but they should not stop you from starting.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-            First-value progress
-          </p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-            {model.progressPercent}%
-          </p>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {model.requiredReadyCount} of {model.requiredChecks.length} required
-            checks ready
-          </p>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--muted)]">
-            <div
-              className="h-full rounded-full bg-[var(--primary)] transition-[width]"
-              style={{ width: `${model.progressPercent}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SnapshotFact
-            label="Saving cards"
-            value={String(readiness?.counts.savingCards ?? 0)}
-          />
-          <SnapshotFact
-            label="Buyers"
-            value={String(readiness?.counts.buyers ?? 0)}
-          />
-          <SnapshotFact
-            label="Suppliers"
-            value={String(readiness?.counts.suppliers ?? 0)}
-          />
-          <SnapshotFact
-            label="Optional gaps"
-            value={String(model.missingRecommended.length)}
-          />
-        </div>
-
-        <ReadinessCheckList
-          title="Required for first value"
-          checks={model.requiredChecks}
-        />
-        <ReadinessCheckList
-          title="Recommended for better reporting"
-          checks={model.recommendedChecks}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function SnapshotFact({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-        {label}
-      </p>
-      <p className="mt-2 text-lg font-semibold tracking-tight text-[var(--foreground)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function MasterDataAreaCard({
-  item,
-}: {
-  item: WorkspaceMasterDataItem;
-}) {
-  const config = getMasterDataOnboardingStepConfig(item.key);
-
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-[var(--foreground)]">
-            {item.label}
-          </p>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Current count: {item.count}
-          </p>
-        </div>
-        <Badge tone={item.ready ? "emerald" : "amber"}>
-          {item.ready ? "Ready" : "Missing"}
-        </Badge>
-      </div>
-      <p className="mt-3 text-sm leading-6 text-[var(--muted-foreground)]">
-        {MASTER_DATA_BUSINESS_COPY[item.key]}
-      </p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <a
-          href={getMasterDataTemplateDownloadHref(item.key)}
-          className={GHOST_LINK_BUTTON_CLASS_NAME}
-          download={config.templateFileName}
-        >
-          Download template
-        </a>
-        <MasterDataStarterTable entityKey={item.key} count={item.count} compact />
-      </div>
-    </div>
-  );
-}
-
-function buildMasterDataItems(readiness: WorkspaceReadiness | null) {
-  return MASTER_DATA_ONBOARDING_ENTITY_KEYS.map((key) => {
-    const liveItem = getMasterDataItem(readiness, key);
-    const config = getMasterDataOnboardingStepConfig(key);
-
-    return (
-      liveItem ?? {
-        key,
-        label: config.title.replace("Set up ", "").replace(/^\w/u, (match) =>
-          match.toUpperCase()
-        ),
-        count: 0,
-        ready: false,
-        description: config.description,
-      }
-    );
-  });
-}
-
-function BusinessStructureStep({
-  readiness,
-  status,
-}: {
-  readiness: WorkspaceReadiness | null;
-  status: StepStatus;
-}) {
-  const masterDataItems = buildMasterDataItems(readiness);
-  const uploadFocusKey =
-    MASTER_DATA_IMPORT_ENTITY_KEYS.find(
-      (key) => !getMasterDataItem(readiness, key)?.ready
-    ) ?? MASTER_DATA_IMPORT_ENTITY_KEYS[0];
-  const uploadFocusItem = getMasterDataItem(readiness, uploadFocusKey);
-  const uploadStatus: "complete" | "current" | "pending" =
-    uploadFocusItem?.ready ? "complete" : status === "pending" ? "pending" : "current";
-
-  return (
-    <StepShell
-      stepNumber={3}
-      title="Business structure and master data"
-      description="Add enough procurement structure to create a credible first saving card. You do not need a perfect setup to begin."
-      status={status}
-    >
-      <div id="business-structure-master-data" className="space-y-5">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4 text-sm leading-6 text-[var(--muted-foreground)]">
-          Start with one real savings initiative. Buyers, suppliers, and either
-          a material or category are enough for first value. Plants and business
-          units can be completed later for better reporting.
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {masterDataItems.map((item) => (
-            <MasterDataAreaCard key={item.key} item={item} />
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-              Upload-ready template
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">
-              Use the next missing upload-ready area below, or download any
-              template from the cards above.
-            </p>
-          </div>
-          {isMasterDataImportEntityKey(uploadFocusKey) ? (
-            <MasterDataUploadStep
-              stepNumber={3}
-              entityKey={uploadFocusKey}
-              status={uploadStatus}
-              count={uploadFocusItem?.count ?? 0}
-            />
-          ) : null}
-        </div>
-      </div>
-    </StepShell>
-  );
-}
-
-function RoleCoverageRow({
-  label,
-  detail,
-  count,
-  readyLabel,
-}: {
-  label: string;
-  detail: string;
-  count: number;
-  readyLabel: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-[var(--foreground)]">{label}</p>
-        <Badge tone={count > 0 ? "emerald" : "amber"}>
-          {count > 0 ? readyLabel : "Missing"}
-        </Badge>
-      </div>
-      <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-        {detail}
-      </p>
-    </div>
-  );
-}
-
-function TeamAndRolesStep({
-  readiness,
-  status,
-  viewerMembershipRole,
-}: {
-  readiness: WorkspaceReadiness | null;
-  status: StepStatus;
-  viewerMembershipRole: OrganizationRole;
-}) {
-  const financialController = getWorkflowItem(readiness, "FINANCIAL_CONTROLLER");
-  const headOfProcurement = getWorkflowItem(readiness, "HEAD_OF_GLOBAL_PROCUREMENT");
-  const categoryLeader = getWorkflowItem(readiness, "GLOBAL_CATEGORY_LEADER");
-
-  return (
-    <StepShell
-      stepNumber={5}
-      title="Team coverage"
-      description="Workspace access controls settings and billing. Business roles cover sourcing ownership, procurement approval, and finance review."
-      status={status}
-    >
-      <div className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <RoleCoverageRow
-            label="Workspace Admin / Owner"
-            detail={`Your current workspace access is ${viewerMembershipRole.toLowerCase()}. Owners and admins control workspace setup, members, and billing settings.`}
-            count={1}
-            readyLabel="Available"
-          />
-          <RoleCoverageRow
-            label={roleLabels.FINANCIAL_CONTROLLER}
-            detail="Needed for finance validation and confidence in reported savings."
-            count={financialController?.count ?? 0}
-            readyLabel="Covered"
-          />
-          <RoleCoverageRow
-            label={roleLabels.HEAD_OF_GLOBAL_PROCUREMENT}
-            detail="Needed for validated approvals and procurement governance."
-            count={headOfProcurement?.count ?? 0}
-            readyLabel="Covered"
-          />
-          <RoleCoverageRow
-            label="Category owners and buyers"
-            detail="Category owners and buyers keep saving cards moving through real commercial workflow."
-            count={categoryLeader?.count ?? 0}
-            readyLabel="Covered"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="max-w-2xl text-sm leading-6 text-[var(--muted-foreground)]">
-            Invite team members in Admin Members. Onboarding explains who is
-            needed, but the member and invitation system stays in the admin area.
-          </p>
-          <Link href="/admin/members" className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
-            Invite team members in Admin Members
-          </Link>
-        </div>
-      </div>
-    </StepShell>
-  );
-}
-
-function FirstSavingCardStep({
-  savingCardCount,
-  status,
-}: {
-  savingCardCount: number;
-  status: StepStatus;
-}) {
-  return (
-    <StepShell
-      stepNumber={2}
-      title="First saving card"
-      description="First value comes from one complete savings card, not from perfect setup."
-      status={status}
-    >
-      <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-            Current saving cards
-          </p>
-          <p className="mt-2 text-3xl font-semibold text-[var(--foreground)]">
-            {savingCardCount}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-            {savingCardCount > 0
-              ? "At least one saving card exists, so this step is complete."
-              : "Create one real saving card to turn setup into a live savings portfolio."}
-          </p>
-        </div>
-        <div className="space-y-4">
-          <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-            Add baseline price, new price, annual volume, currency, and impact
-            dates. Attach evidence if available and submit a phase change when
-            the record is ready for review.
-          </p>
-          <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-            You can complete master data later. Traxium becomes more useful as
-            your data improves.
-          </p>
-          <Link href="/saving-cards/new" className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
-            Create first saving card
-          </Link>
-        </div>
-      </div>
-    </StepShell>
-  );
-}
-
-function EvidenceTrustStep({
-  savingCardCount,
-  status,
-}: {
-  savingCardCount: number;
-  status: StepStatus;
-}) {
-  return (
-    <StepShell
-      stepNumber={4}
-      title="Evidence and finance trust"
-      description="Finance trust improves when savings cards include evidence and approval history."
-      status={status}
-    >
-      <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[
-            "Supplier quote or bid",
-            "Contract or purchase order",
-            "Invoice or actual proof",
-            "Calculation workbook",
-            "Finance approval support",
-          ].map((item) => (
-            <div
-              key={item}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground)]"
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-        <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-            Evidence upload is available inside the saving card context after a
-            record exists. Keep supporting files linked to the relevant card so
-            approval history and finance validation stay together.
-          </p>
-          <Link
-            href={savingCardCount > 0 ? "/saving-cards" : "/saving-cards/new"}
-            className={LINK_BUTTON_CLASS_NAME}
-          >
-            {savingCardCount > 0 ? "Open Saving Cards" : "Create first saving card"}
-          </Link>
-        </div>
-      </div>
-    </StepShell>
-  );
-}
-
-function ReportingStep({
-  model,
-  status,
-}: {
-  model: ReturnType<typeof getActivationModel>;
-  status: StepStatus;
-}) {
-  const missingRequiredLabels = model.missingRequired.map((item) => item.label);
-  const message = model.firstValueReady
-    ? "Your workspace is ready for first portfolio review."
-    : `Dashboard and reports are available, but first-value reporting will be limited until ${missingRequiredLabels.join(", ")} ${missingRequiredLabels.length === 1 ? "is" : "are"} ready.`;
-
-  return (
-    <StepShell
-      stepNumber={6}
-      title="Reporting and dashboard"
-      description="Move from setup into the operating surfaces your team will use every week."
-      status={status}
-    >
-      <div className="space-y-5">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-sm font-semibold text-[var(--foreground)]">
-            {message}
-          </p>
-          {model.missingRecommended.length ? (
-            <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-              Recommended gaps such as {model.missingRecommended
-                .slice(0, 3)
-                .map((item) => item.label)
-                .join(", ")} can be completed later for cleaner reporting.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {[
-            ["Dashboard", "Portfolio totals and current savings value."],
-            ["Kanban", "Move savings initiatives through workflow stages."],
-            ["Open Actions", "See approvals and pending work."],
-            ["Reports", "Review executive summaries and exports."],
-            ["Command Center", "Compare portfolio and governance signals."],
-          ].map(([label, detail]) => (
-            <div
-              key={label}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
-            >
-              <p className="text-sm font-semibold text-[var(--foreground)]">
-                {label}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-                {detail}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <Link href="/dashboard" className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
-            Go to Dashboard
-          </Link>
-          <Link href="/reports" className={LINK_BUTTON_CLASS_NAME}>
-            Go to Reports
-          </Link>
-          <Link href="/kanban" className={LINK_BUTTON_CLASS_NAME}>
-            Go to Kanban
-          </Link>
-        </div>
-      </div>
-    </StepShell>
-  );
-}
-
-function FinishStep({
-  model,
-  completedStepLabels,
-  status,
-}: {
-  model: ReturnType<typeof getActivationModel>;
-  completedStepLabels: string[];
-  status: StepStatus;
-}) {
-  const primaryAction =
-    model.savingCardCount <= 0
-      ? { href: "/saving-cards/new", label: "Create first saving card" }
-      : !model.businessStructureReady
-        ? { href: "/onboarding", label: "Complete setup" }
-        : { href: "/dashboard", label: "Open dashboard" };
-
-  return (
-    <StepShell
-      stepNumber={7}
-      title="Finish or continue later"
-      description="Use this checkpoint to decide whether to create first value now or come back after daily work."
-      status={status}
-    >
-      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-            Progress percentage
-          </p>
-          <p className="mt-2 text-4xl font-semibold text-[var(--foreground)]">
-            {model.progressPercent}%
-          </p>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--muted)]">
-            <div
-              className="h-full rounded-full bg-[var(--primary)] transition-[width]"
-              style={{ width: `${model.progressPercent}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              Completed steps
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-              {completedStepLabels.length
-                ? completedStepLabels.join(", ")
-                : "No guided steps are complete yet."}
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              Remaining blockers
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-              {model.missingRequired.length
-                ? model.missingRequired.map((item) => item.label).join(", ")
-                : "No first-value blockers remain."}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Link href={primaryAction.href} className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
-              {primaryAction.label}
-            </Link>
-            <Link href="/dashboard" className={LINK_BUTTON_CLASS_NAME}>
-              Continue later
-            </Link>
-          </div>
-        </div>
-      </div>
-    </StepShell>
-  );
-}
 
 export function WorkspaceSetupGuide({
   readiness,
   readinessError = null,
   userName,
   viewerMembershipRole,
+  canManageData,
 }: WorkspaceSetupGuideProps) {
-  const model = getActivationModel(readiness);
+  const hasCards = (readiness?.counts.savingCards ?? 0) > 0;
+  const canManageMembers =
+    viewerMembershipRole === "OWNER" || viewerMembershipRole === "ADMIN";
+  const canImport = canManageData ?? canManageMembers;
+  const [step, setStep] = useState<2 | 3>(hasCards ? 3 : 2);
+  const [showExistingSummary, setShowExistingSummary] = useState(hasCards);
+  const [path, setPath] = useState<StartingPath>("real");
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef(step);
   const workspaceName = readiness?.workspace.name ?? "Your workspace";
-  const workspaceDescription = readiness?.workspace.description ?? null;
-  const currentMissingKey = model.missingRequired[0]?.key ?? null;
-  const workspaceStatus: StepStatus = "complete";
-  const businessStatus: StepStatus = model.businessStructureReady
-    ? "complete"
-    : currentMissingKey && ["buyer", "supplier", "material-or-category"].includes(currentMissingKey)
-      ? "current"
-      : "pending";
-  const teamStatus: StepStatus = model.roleCoverageReady ? "complete" : "recommended";
-  const savingCardStatus: StepStatus =
-    model.savingCardCount > 0
-      ? "complete"
-      : currentMissingKey === "saving-card"
-        ? "current"
-        : "pending";
-  const evidenceStatus: StepStatus =
-    model.savingCardCount > 0 ? "recommended" : "pending";
-  const reportingStatus: StepStatus = model.firstValueReady ? "complete" : "pending";
-  const finishStatus: StepStatus = model.firstValueReady ? "complete" : "current";
-  const completedStepLabels = [
-    workspaceStatus === "complete" ? "Workspace identity" : null,
-    businessStatus === "complete" ? "Business structure and master data" : null,
-    teamStatus === "complete" ? "Team coverage" : null,
-    savingCardStatus === "complete" ? "First saving card" : null,
-    reportingStatus === "complete" ? "Reporting and dashboard" : null,
-  ].filter((value): value is string => Boolean(value));
+  const firstName = userName.trim().split(/\s+/u)[0] || "there";
+  const selected = paths.find((item) => item.id === path)!;
+  const availablePaths = paths.filter(
+    (item) =>
+      (item.id !== "import" || canImport) &&
+      (item.id !== "sample" || (readiness !== null && !hasCards)),
+  );
+
+  function chooseStartingPoint() {
+    setShowExistingSummary(false);
+    setStep(2);
+  }
+
+  useEffect(() => {
+    if (previousStep.current !== step) headingRef.current?.focus();
+    previousStep.current = step;
+  }, [step]);
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-6 py-10 text-[var(--foreground)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <Card className="bg-[var(--surface)]/95 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
-            <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="blue">Guided setup</Badge>
-                <Badge tone="slate">
-                  {completedStepLabels.length} of 7 steps completed
-                </Badge>
-              </div>
-              <CardTitle>
-                Set up {workspaceName} for first value
-              </CardTitle>
-              <CardDescription>
-                {getFirstName(userName)}, this wizard helps a new workspace move
-                from empty account to one credible procurement savings card
-                before setup cleanup.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/35 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                      First-value progress
-                    </p>
-                    <p className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                      {model.progressPercent}%
-                    </p>
-                  </div>
-                  <div className="max-w-sm text-right">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                      Next best action
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
-                      {model.savingCardCount <= 0
-                        ? "Create one real saving card"
-                        : model.businessStructureReady
-                          ? "Open dashboard for first portfolio review"
-                          : "Create another card or clean up setup later"}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--muted)]">
-                  <div
-                    className="h-full rounded-full bg-[var(--primary)] transition-[width]"
-                    style={{ width: `${model.progressPercent}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted-foreground)]">
-                Start with one real savings initiative. You can complete master
-                data later. Use sample data only for demo/training; use real data
-                when preparing a pilot or customer workspace.
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Link href="/saving-cards/new" className={PRIMARY_LINK_BUTTON_CLASS_NAME}>
-                  Create first saving card
-                </Link>
-                <Link href="/dashboard" className={LINK_BUTTON_CLASS_NAME}>
-                  Continue later
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          <FirstValueLaunchpad
-            viewerMembershipRole={viewerMembershipRole}
-            title="Create one real saving card first"
-            description="Start with one real savings initiative. You can complete master data later."
-            primaryActionLabel="Create first saving card"
-            reviewSetupLabel="Review readiness"
-          />
-        </section>
-
-        <ReadinessSnapshot readiness={readiness} model={model} />
-
-        {readinessError ? (
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-sm text-[var(--muted-foreground)]">
-                Live workspace progress could not be refreshed right now. You
-                can still continue setup, and this page will catch up as soon as
-                readiness data is available again.
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <StepShell
-          stepNumber={1}
-          title="Workspace identity"
-          description="This workspace is where your procurement savings initiatives, evidence, approvals, and reports will live."
-          status={workspaceStatus}
+    <OnboardingShell
+      step={step}
+      workspaceName={workspaceName}
+      onBackToStart={chooseStartingPoint}
+    >
+      <div className="mb-8">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#36826d]">
+          STEP {step} OF 3 ·{" "}
+          {step === 2 ? "CHOOSE YOUR PATH" : "LET’S PUT IT TO WORK"}
+        </p>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-3xl font-semibold tracking-[-0.035em] outline-none sm:text-4xl"
         >
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                Workspace name
-              </p>
-              <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                {workspaceName}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                Short description
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
-                {workspaceDescription ??
-                  "Add or refine the workspace description from Workspace Settings when the pilot scope is clearer."}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4">
-            <Link href="/admin/settings" className={LINK_BUTTON_CLASS_NAME}>
-              Review workspace identity
-            </Link>
-          </div>
-        </StepShell>
-
-        <FirstSavingCardStep
-          savingCardCount={model.savingCardCount}
-          status={savingCardStatus}
-        />
-
-        <BusinessStructureStep readiness={readiness} status={businessStatus} />
-
-        <EvidenceTrustStep
-          savingCardCount={model.savingCardCount}
-          status={evidenceStatus}
-        />
-
-        <TeamAndRolesStep
-          readiness={readiness}
-          status={teamStatus}
-          viewerMembershipRole={viewerMembershipRole}
-        />
-
-        <ReportingStep model={model} status={reportingStatus} />
-
-        <FinishStep
-          model={model}
-          completedStepLabels={completedStepLabels}
-          status={finishStatus}
-        />
+          {step === 2
+            ? "How would you like to start?"
+            : showExistingSummary
+              ? "Your workspace is ready."
+              : "You’re ready for your first step."}
+        </h1>
+        <p className="mt-4 max-w-xl text-[15px] leading-7 text-[#6a7e83]">
+          {step === 2
+            ? `${firstName}, there’s no need to set everything up at once. Choose the starting point that feels right for your team.`
+            : showExistingSummary
+              ? `${workspaceName} already has ${readiness?.counts.savingCards} saving card${readiness?.counts.savingCards === 1 ? "" : "s"}. Keep going from your dashboard.`
+              : `Your workspace is saved. Here’s what comes next for ${workspaceName}.`}
+        </p>
       </div>
-    </main>
+
+      {readinessError ? (
+        <div
+          role="status"
+          className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
+        >
+          We couldn’t refresh your setup progress. Your workspace is available,
+          and you can continue with a real saving card.
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-2xl border border-[#e1e8e8] bg-white shadow-[0_8px_32px_-16px_rgba(27,45,50,0.15)]">
+        {step === 2 ? (
+          <>
+            <fieldset className="space-y-3 p-5 sm:p-8">
+              <legend className="sr-only">Choose a starting point</legend>
+              {availablePaths.map((item) => {
+                const Icon = item.icon;
+                const active = path === item.id;
+                return (
+                  <label
+                    key={item.id}
+                    className={`relative flex cursor-pointer items-start gap-4 rounded-xl border p-4 transition sm:p-5 ${active ? "border-[#3e8b73] bg-[#f1f8f4] shadow-[0_0_0_1px_#3e8b73]" : "border-[#e2e8e8] hover:border-[#9bb8ad] hover:bg-[#fafcfb]"}`}
+                  >
+                    <input
+                      type="radio"
+                      name="starting-path"
+                      value={item.id}
+                      checked={active}
+                      onChange={() => setPath(item.id)}
+                      className="peer sr-only"
+                    />
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${active ? "bg-[#deeee5] text-[#22664f]" : "bg-[#f1f4f5] text-[#6e8388]"}`}
+                    >
+                      <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-[#253d43]">
+                        {item.title}
+                      </span>
+                      <span className="mt-1.5 block text-sm leading-6 text-[#6e8185]">
+                        {item.description}
+                      </span>
+                      <span
+                        className={`mt-2 block text-xs ${active ? "font-medium text-[#3b8065]" : "text-[#5b7075]"}`}
+                      >
+                        {item.hint}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${active ? "border-[#26765c] bg-[#26765c]" : "border-[#cbd7d9]"}`}
+                    >
+                      {active ? (
+                        <Check size={12} className="text-white" />
+                      ) : null}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-[-4px] rounded-2xl peer-focus-visible:ring-2 peer-focus-visible:ring-[#155e52]"
+                    />
+                  </label>
+                );
+              })}
+            </fieldset>
+            <div className="flex flex-col-reverse gap-4 border-t border-[#edf0f1] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+              <p className="text-xs text-[#5b7075]">
+                You can use the other options later.
+              </p>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className={onboardingPrimaryClass}
+              >
+                Continue <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-6 sm:p-8">
+              <div className="mb-7 flex items-center gap-3 border-b border-[#edf0f1] pb-6">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f3ec] text-[#28785a]">
+                  <CheckCircle2
+                    size={24}
+                    strokeWidth={1.6}
+                    aria-hidden="true"
+                  />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">
+                    {showExistingSummary
+                      ? "Your first saving card is in place"
+                      : selected.title}
+                  </p>
+                  <p className="mt-1 text-xs text-[#5b7075]">
+                    {showExistingSummary
+                      ? "You can add more detail as you go."
+                      : "A clear next step. Everything else can wait."}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-6">
+                {(showExistingSummary
+                  ? [
+                      {
+                        title: "See your savings portfolio",
+                        detail:
+                          "Open the dashboard to review your cards and the current forecast.",
+                      },
+                      {
+                        title: "Bring finance into the conversation",
+                        detail:
+                          "Add evidence and request finance validation when a card is ready.",
+                      },
+                      {
+                        title: "Build at your own pace",
+                        detail:
+                          "Add more initiatives, invite colleagues, or refine settings whenever you need.",
+                      },
+                    ]
+                  : preparation[path]
+                ).map((item, index) => (
+                  <div key={item.title} className="flex gap-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f0f4f3] text-[11px] font-semibold text-[#6b8480]">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#314b50]">
+                        {item.title}
+                      </h2>
+                      <p className="mt-1 text-sm leading-6 text-[#5b7075]">
+                        {item.detail}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col-reverse gap-4 border-t border-[#edf0f1] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+              <button
+                type="button"
+                onClick={chooseStartingPoint}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-[#72868a] hover:text-[#155e52] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52]"
+              >
+                <ArrowLeft size={15} aria-hidden="true" /> Change starting point
+              </button>
+              {showExistingSummary ? (
+                <Link href="/dashboard" className={onboardingPrimaryClass}>
+                  Open dashboard <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              ) : path === "sample" ? (
+                <LoadSampleDataButton
+                  variant="default"
+                  size="lg"
+                  className={onboardingPrimaryClass}
+                  successHref="/dashboard"
+                >
+                  Add sample cards <ArrowRight size={16} aria-hidden="true" />
+                </LoadSampleDataButton>
+              ) : (
+                <Link href={selected.href} className={onboardingPrimaryClass}>
+                  {selected.action} <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      <details className="group mt-6 rounded-xl border border-[#e0e7e7] bg-white/60">
+        <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-5 py-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] [&::-webkit-details-marker]:hidden">
+          <Settings2 size={17} className="text-[#7b9189]" aria-hidden="true" />
+          <span className="flex-1 font-medium text-[#556f72]">
+            Set up a little more{" "}
+            <span className="ml-1 font-normal text-[#5b7075]">— optional</span>
+          </span>
+          <ChevronDown
+            size={16}
+            className="text-[#8c9c9f] transition group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="space-y-5 border-t border-[#e3e9e8] p-5 text-sm">
+          <div className="flex items-start gap-3">
+            <Users
+              size={18}
+              className="mt-1 shrink-0 text-[#6f8880]"
+              aria-hidden="true"
+            />
+            <div>
+              <h2 className="font-medium">Bring your team along</h2>
+              <p className="mt-1 text-xs leading-6 text-[#5b7075]">
+                Procurement Lead and Finance Reviewer roles are needed for
+                finance validation. Team setup can wait until you’re ready to
+                request approval.
+              </p>
+              {canManageMembers ? (
+                <Link
+                  href="/admin/members"
+                  className="mt-2 inline-block text-xs font-semibold text-[#216f56] underline underline-offset-4"
+                >
+                  Invite team members
+                </Link>
+              ) : (
+                <p className="mt-2 text-xs text-[#5b7075]">
+                  Ask your workspace owner or admin to invite your colleagues.
+                </p>
+              )}
+            </div>
+          </div>
+          {canManageMembers ? (
+            <div className="border-t border-[#e3e9e8] pt-4">
+              <Link
+                href="/admin/settings"
+                className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+              >
+                Edit workspace and regional preferences
+              </Link>
+              <p className="mt-2 text-xs leading-5 text-[#5b7075]">
+                Choose display formats, time zone, suggested units, and USD or
+                EUR currency settings.
+              </p>
+            </div>
+          ) : null}
+          {canImport ? (
+            <div className="border-t border-[#e3e9e8] pt-4">
+              <p className="font-medium">
+                Already have supplier or buyer lists?
+              </p>
+              <p className="mt-1 text-xs leading-6 text-[#5b7075]">
+                Download a template, then use Reports to import buyers,
+                suppliers, materials, or categories. Plants and business units
+                can be added in Admin.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-3">
+                {MASTER_DATA_ONBOARDING_ENTITY_KEYS.map((key) => {
+                  const config = getMasterDataOnboardingStepConfig(key);
+                  return (
+                    <a
+                      key={key}
+                      href={getMasterDataTemplateDownloadHref(key)}
+                      download={config.templateFileName}
+                      className="text-xs font-medium text-[#216f56] underline underline-offset-4"
+                    >
+                      {config.pluralLabel} template
+                    </a>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex gap-4">
+                <Link
+                  href="/reports#import-export"
+                  className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+                >
+                  Open imports
+                </Link>
+                <Link
+                  href="/admin"
+                  className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+                >
+                  Manage reference data
+                </Link>
+              </div>
+            </div>
+          ) : null}
+          {hasCards ? (
+            <div className="border-t border-[#e3e9e8] pt-4">
+              <Link
+                href="/saving-cards/new?from=onboarding"
+                className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+              >
+                Create another saving card
+              </Link>
+            </div>
+          ) : null}
+        </div>
+      </details>
+    </OnboardingShell>
   );
 }

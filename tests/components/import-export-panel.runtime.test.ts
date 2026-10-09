@@ -35,6 +35,12 @@ vi.mock("react", async () => {
   };
 });
 
+vi.mock("@/components/layout/regional-context", () => ({
+  useRegionalDisplay: () => ({
+    formatTimestamp: (value: string | Date) => new Date(value).toISOString(),
+  }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,

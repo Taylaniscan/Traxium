@@ -2,10 +2,18 @@ import { redirect } from "next/navigation";
 
 import { WorkspaceSetupGuide } from "@/components/onboarding/workspace-setup-guide";
 import { WorkspaceOnboardingForm } from "@/components/onboarding/workspace-onboarding-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { bootstrapCurrentUser, getWorkspaceOnboardingState } from "@/lib/auth";
 import { getWorkspaceReadiness } from "@/lib/data";
 import { captureException } from "@/lib/observability";
+import { hasPermission } from "@/lib/permissions";
+import { canManageOrganizationMembers } from "@/lib/organizations";
 
 export default async function OnboardingPage() {
   const state = await getWorkspaceOnboardingState();
@@ -57,7 +65,8 @@ export default async function OnboardingPage() {
     redirect("/login");
   }
 
-  let readiness: Awaited<ReturnType<typeof getWorkspaceReadiness>> | null = null;
+  let readiness: Awaited<ReturnType<typeof getWorkspaceReadiness>> | null =
+    null;
   let readinessError: string | null = null;
 
   try {
@@ -84,6 +93,11 @@ export default async function OnboardingPage() {
       readinessError={readinessError}
       userName={session.user.name}
       viewerMembershipRole={session.user.activeOrganization.membershipRole}
+      canManageData={
+        canManageOrganizationMembers(
+          session.user.activeOrganization.membershipRole,
+        ) || hasPermission(session.user.role, "manageWorkspace")
+      }
     />
   );
 }

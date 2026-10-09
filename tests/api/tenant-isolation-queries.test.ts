@@ -149,6 +149,8 @@ describe("tenant isolation queries", () => {
         materialId: true,
         supplierId: true,
         volumeUnit: true,
+        currency: true,
+        fxRate: true,
         baselinePrice: true,
         newPrice: true,
         referencePrice: true,

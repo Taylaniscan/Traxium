@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type LoadSampleDataButtonProps = {
@@ -22,10 +22,13 @@ export function LoadSampleDataButton({
   className,
   successHref = null,
 }: LoadSampleDataButtonProps) {
+  const submissionInFlightRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
+    if (submissionInFlightRef.current) return;
+    submissionInFlightRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -35,8 +38,11 @@ export function LoadSampleDataButton({
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as LoadSampleDataErrorPayload | null;
+        const payload = (await response
+          .json()
+          .catch(() => null)) as LoadSampleDataErrorPayload | null;
         setError(payload?.error ?? "Sample data could not be loaded.");
+        submissionInFlightRef.current = false;
         setLoading(false);
         return;
       }
@@ -51,8 +57,9 @@ export function LoadSampleDataButton({
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Sample data could not be loaded."
+          : "Sample data could not be loaded.",
       );
+      submissionInFlightRef.current = false;
       setLoading(false);
     }
   }
@@ -70,7 +77,9 @@ export function LoadSampleDataButton({
         {loading ? "Loading sample data..." : children}
       </Button>
       {error ? (
-        <p className="text-xs text-red-600">{error}</p>
+        <p role="alert" className="text-xs text-red-600">
+          {error}
+        </p>
       ) : null}
     </div>
   );

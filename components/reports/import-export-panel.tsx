@@ -299,7 +299,7 @@ export function ImportExportPanel({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="import-export" className="scroll-mt-6">
           <CardHeader>
             <CardTitle>Controlled Workbook Import</CardTitle>
             <CardDescription>

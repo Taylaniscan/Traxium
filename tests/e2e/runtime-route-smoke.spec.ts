@@ -84,15 +84,16 @@ test("owner can render every protected primary route cleanly", async ({ page }) 
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(
     page.getByRole("heading", {
-      name: "Set up UtopiaTrax for first value",
+      name: "Your workspace is ready.",
       exact: true,
     })
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Create first saving card", exact: true }).first()
+    page.getByRole("link", { name: "Open dashboard", exact: true }).first()
   ).toBeVisible();
   await watchdog.checkpoint("/onboarding");
 
+  await page.getByRole("link", { name: "Open dashboard", exact: true }).click();
   await page.getByRole("link", { name: "Saving Cards", exact: true }).click();
   await expect(page).toHaveURL(/\/saving-cards$/);
   await page.getByRole("link", { name: "Dashboard", exact: true }).click();

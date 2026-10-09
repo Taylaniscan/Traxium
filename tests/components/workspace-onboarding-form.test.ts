@@ -76,6 +76,7 @@ type ReactElementWithProps = React.ReactElement<{
   children?: React.ReactNode;
   onSubmit?: (event: { preventDefault: () => void }) => Promise<void> | void;
   disabled?: boolean;
+  type?: string;
 }>;
 
 function collectElements(
@@ -127,7 +128,7 @@ describe("workspace onboarding form", () => {
     });
     const [button] = collectElements(
       tree,
-      (element) => typeof element.props.disabled !== "undefined"
+      (element) => element.props.type === "submit"
     );
 
     expect(button?.props.disabled).toBe(true);
@@ -226,4 +227,28 @@ describe("workspace onboarding form", () => {
     expect(setError).toHaveBeenCalledWith(null);
     expect(setLoading).toHaveBeenCalledWith(true);
   });
+
+  it.each([
+    ["A", "UTC", "Use at least two characters"],
+    ["Atlas Procurement", "Invalid/Zone", "Check the display format"],
+  ])("rejects invalid workspace preferences before submission (%s, %s)", async (name, timeZone, message) => {
+    const setError = vi.fn();
+    useRefMock.mockReturnValue({ current: false });
+    useStateMock
+      .mockReturnValueOnce([name, vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["en-US", vi.fn()])
+      .mockReturnValueOnce([timeZone, vi.fn()])
+      .mockReturnValueOnce(["metric", vi.fn()])
+      .mockReturnValueOnce([null, setError])
+      .mockReturnValueOnce([false, vi.fn()]);
+    const [form] = collectElements(
+      WorkspaceOnboardingForm({ userName: "Alex" }),
+      (element) => element.type === "form"
+    );
+    await form.props.onSubmit?.({ preventDefault: vi.fn() });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(setError).toHaveBeenCalledWith(expect.stringContaining(message));
+  });
+
 });

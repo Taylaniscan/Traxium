@@ -8,7 +8,7 @@ import { createSessionUser } from "../helpers/security-fixtures";
 const redirectMock = vi.hoisted(() =>
   vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`);
-  })
+  }),
 );
 const useRouterMock = vi.hoisted(() => vi.fn());
 const getWorkspaceOnboardingStateMock = vi.hoisted(() => vi.fn());
@@ -17,8 +17,12 @@ const getWorkspaceReadinessMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const workspaceOnboardingFormMock = vi.hoisted(() =>
   vi.fn(({ userName }: { userName: string }) =>
-    React.createElement("div", { "data-onboarding-form": userName }, `form:${userName}`)
-  )
+    React.createElement(
+      "div",
+      { "data-onboarding-form": userName },
+      `form:${userName}`,
+    ),
+  ),
 );
 
 vi.mock("next/navigation", () => ({
@@ -43,24 +47,8 @@ vi.mock("@/components/onboarding/workspace-onboarding-form", () => ({
   WorkspaceOnboardingForm: workspaceOnboardingFormMock,
 }));
 
-vi.mock("@/components/onboarding/first-value-launchpad", async () => {
-  const ReactModule = await vi.importActual<typeof import("react")>("react");
-
-  return {
-    FirstValueLaunchpad: ({
-      title,
-      description,
-    }: {
-      title?: string;
-      description?: string;
-    }) =>
-      ReactModule.createElement(
-        "div",
-        { "data-launchpad": title ?? "launchpad" },
-        `${title ?? "launchpad"}${description ? `:${description}` : ""}`
-      ),
-  };
-});
+import { WorkspaceSetupGuide } from "@/components/onboarding/workspace-setup-guide";
+import type { WorkspaceReadiness } from "@/lib/types";
 
 import OnboardingPage from "@/app/onboarding/page";
 
@@ -85,7 +73,7 @@ function createWorkspaceReadiness(
       workflowTotal: number;
       overallPercent: number;
     };
-  }> = {}
+  }> = {},
 ) {
   const counts = {
     users: 1,
@@ -182,8 +170,10 @@ function createWorkspaceReadiness(
       ...overrides.coverage,
     },
     activity: {
-      firstSavingCardCreatedAt: counts.savingCards > 0 ? new Date("2026-04-02T00:00:00.000Z") : null,
-      lastPortfolioUpdateAt: counts.savingCards > 0 ? new Date("2026-04-03T00:00:00.000Z") : null,
+      firstSavingCardCreatedAt:
+        counts.savingCards > 0 ? new Date("2026-04-02T00:00:00.000Z") : null,
+      lastPortfolioUpdateAt:
+        counts.savingCards > 0 ? new Date("2026-04-03T00:00:00.000Z") : null,
     },
     isMasterDataReady: false,
     isWorkflowReady: false,
@@ -224,13 +214,13 @@ describe("onboarding page", () => {
       {
         userName: "New User",
       },
-      undefined
+      undefined,
     );
     expect(bootstrapCurrentUserMock).not.toHaveBeenCalled();
     expect(getWorkspaceReadinessMock).not.toHaveBeenCalled();
   });
 
-  it("renders the readiness-driven guided setup for a new workspace", async () => {
+  it("welcomes a returning workspace without repeating setup", async () => {
     getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
       ok: true,
       needsWorkspace: false,
@@ -258,56 +248,21 @@ describe("onboarding page", () => {
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("Set up Atlas Procurement for first value");
-    expect(markup).toContain("2 of 7 steps completed");
-    expect(markup).toContain("First-value progress");
-    expect(markup).toContain("80%");
-    expect(markup).toContain("Workspace identity");
-    expect(markup).toContain("US manufacturing savings pilot for direct materials.");
-    expect(markup).toContain("Business structure and master data");
-    expect(markup).toContain("Buyers");
-    expect(markup).toContain("Set up suppliers");
-    expect(markup).toContain("Plants");
-    expect(markup).toContain("Business Units");
-    expect(markup).toContain("Current count");
-    expect(markup).toContain("Upload first");
-    expect(markup).toContain("Download template");
-    expect(markup).toContain("Field guide");
-    expect(markup).toContain("Accepted file types");
-    expect(markup).toContain("Required columns");
-    expect(markup).toContain("Optional columns");
-    expect(markup).toContain("Example row");
-    expect(markup).toContain("CSV (.csv)");
-    expect(markup).toContain("Excel workbook (.xlsx)");
-    expect(markup).toContain("name, code, country, contactEmail");
-    expect(markup).toContain("Result summary");
-    expect(markup).toContain("Team coverage");
+    expect(markup).toContain("Your workspace is ready.");
+    expect(markup).toContain("Atlas Procurement");
+    expect(markup).toContain("Your first saving card is in place");
+    expect(markup).toContain("Open dashboard");
+    expect(markup).toContain("Set up a little more");
     expect(markup).toContain("Finance Reviewer");
-    expect(markup).toContain("Create first saving card");
-    expect(markup).toContain("At least one saving card exists, so this step is complete.");
-    expect(markup).toContain("Evidence and finance trust");
-    expect(markup).toContain("Evidence can be attached to saving cards");
-    expect(markup).toContain(
-      "After a card exists, attach quote, contract, invoice, and calculation evidence for finance trust."
-    );
-    expect(markup).toContain("Supplier quote or bid");
-    expect(markup).toContain("Contract or purchase order");
-    expect(markup).toContain("Invoice or actual proof");
-    expect(markup).toContain("Calculation workbook");
-    expect(markup).toContain("Reporting and dashboard");
-    expect(markup).toContain("Go to Dashboard");
-    expect(markup).toContain("Go to Reports");
-    expect(markup).toContain("Go to Kanban");
-    expect(markup).toContain("Required for first value");
-    expect(markup).toContain("Recommended for better reporting");
+    expect(markup).toContain('href="/admin/members"');
+    expect(markup).toContain('href="/admin/settings"');
+    expect(markup).toContain('href="/reports#import-export"');
     expect(markup).toContain("Continue later");
-    expect(markup).toContain('href="/dashboard"');
-    expect(markup).toContain(
-      'data-launchpad="Create one real saving card first"'
-    );
+    expect(markup).not.toContain("Remaining blockers");
+    expect(markup).not.toContain("Explore with sample cards");
   });
 
-  it("shows first-value blockers for an empty workspace", async () => {
+  it("offers three clear starting paths for an empty workspace", async () => {
     getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
       ok: true,
       needsWorkspace: false,
@@ -349,19 +304,19 @@ describe("onboarding page", () => {
           workflowTotal: 3,
           overallPercent: 0,
         },
-      })
+      }),
     );
 
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("20%");
-    expect(markup).toContain("At least one buyer");
-    expect(markup).toContain("At least one supplier");
-    expect(markup).toContain("At least one material or category");
-    expect(markup).toContain("At least one saving card");
-    expect(markup).toContain("Remaining blockers");
-    expect(markup).toContain("Create first saving card");
+    expect(markup).toContain("How would you like to start?");
+    expect(markup).toContain("Start with one saving card");
+    expect(markup).toContain("Bring your spreadsheet");
+    expect(markup).toContain("Explore with sample cards");
+    expect(markup.match(/name="starting-path"/g)).toHaveLength(3);
+    expect(markup).toContain("Continue");
+    expect(markup).not.toContain("Remaining blockers");
   });
 
   it("keeps optional reporting gaps from blocking first-value readiness", async () => {
@@ -406,15 +361,15 @@ describe("onboarding page", () => {
           workflowTotal: 3,
           overallPercent: 33,
         },
-      })
+      }),
     );
 
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("100%");
-    expect(markup).toContain("Your workspace is ready for first portfolio review.");
-    expect(markup).toContain("Recommended gaps such as Plants, Business units, More complete categories");
+    expect(markup).toContain("Your workspace is ready.");
+    expect(markup).toContain("Set up a little more");
+    expect(markup).not.toContain("Remaining blockers");
     expect(markup).toContain("Open dashboard");
   });
 
@@ -442,23 +397,53 @@ describe("onboarding page", () => {
       }),
     });
     getWorkspaceReadinessMock.mockRejectedValueOnce(
-      new Error("Workspace readiness query failed.")
+      new Error("Workspace readiness query failed."),
     );
 
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain(
-      "Live workspace progress could not be refreshed right now."
-    );
-    expect(markup).toContain("Create one real saving card first");
+    expect(markup).toContain("We couldn’t refresh your setup progress.");
+    expect(markup).toContain("Start with one saving card");
+    expect(markup).not.toContain("Explore with sample cards");
     expect(captureExceptionMock).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({
         event: "onboarding.page.readiness_load_failed",
         route: "/onboarding",
         organizationId: "org-1",
-      })
+      }),
     );
+  });
+
+  it("keeps member invitations and imports behind their existing permissions", () => {
+    const readiness = createWorkspaceReadiness();
+    readiness.counts.savingCards = 0;
+    const props = {
+      readiness: readiness as WorkspaceReadiness,
+      userName: "Alex",
+      viewerMembershipRole: OrganizationRole.MEMBER,
+    };
+    const memberMarkup = renderToStaticMarkup(
+      React.createElement(WorkspaceSetupGuide, {
+        ...props,
+        canManageData: false,
+      }),
+    );
+    expect(memberMarkup).not.toContain('href="/admin/members"');
+    expect(memberMarkup).not.toContain('href="/admin/settings"');
+    expect(memberMarkup).not.toContain("Bring your spreadsheet");
+    expect(memberMarkup).toContain("Start with one saving card");
+    expect(memberMarkup).toContain("Ask your workspace owner or admin");
+
+    const dataManagerMarkup = renderToStaticMarkup(
+      React.createElement(WorkspaceSetupGuide, {
+        ...props,
+        canManageData: true,
+      }),
+    );
+    expect(dataManagerMarkup).toContain("Bring your spreadsheet");
+    expect(dataManagerMarkup).toContain('href="/reports#import-export"');
+    expect(dataManagerMarkup).not.toContain('href="/admin/members"');
   });
 });

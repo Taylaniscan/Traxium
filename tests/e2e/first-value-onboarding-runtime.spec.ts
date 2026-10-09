@@ -19,18 +19,34 @@ test("fresh workspace creates its first saving card with inline master data", as
   await loginAs(page, personas.foreignOwner);
 
   await page.goto("/onboarding");
+  await page.getByText("Bring your spreadsheet", { exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   await expect(
-    page.getByRole("link", { name: "Create first saving card" }).first()
+    page.getByRole("link", { name: "Open spreadsheet import" }),
+  ).toHaveAttribute("href", "/reports#import-export");
+  await page.getByRole("button", { name: "Change starting point" }).click();
+  await expect(
+    page.getByRole("radio", { name: /Bring your spreadsheet/ }),
+  ).toBeChecked();
+  await page.getByText("Start with one saving card", { exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(
+    page.getByRole("link", { name: "Create first saving card" }).first(),
   ).toBeVisible();
   await watchdog.checkpoint("fresh workspace onboarding");
 
   await page.goto("/saving-cards/new");
-  await page.getByPlaceholder("Enter initiative title").fill("E2E resin recovery");
+  await page
+    .getByPlaceholder("Enter initiative title")
+    .fill("E2E resin recovery");
   await page
     .getByPlaceholder(
-      "Summarize the sourcing opportunity, business case, and expected impact."
+      "Summarize the sourcing opportunity, business case, and expected impact.",
     )
-    .fill("Renegotiate resin pricing against the current annual demand baseline.");
+    .fill(
+      "Renegotiate resin pricing against the current annual demand baseline.",
+    );
   await page.getByPlaceholder("Enter first buyer name").fill("E2E Buyer");
   await page
     .getByPlaceholder("Enter first current supplier name")
@@ -66,14 +82,18 @@ test("fresh workspace creates its first saving card with inline master data", as
     timeout: 60_000,
   });
   await expect(
-    page.getByRole("heading", { name: "E2E resin recovery" })
+    page.getByRole("heading", { name: "E2E resin recovery" }),
   ).toBeVisible();
   await expect(page.getByText("First saving card created")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Attach evidence" })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Request validation" })
+    page.getByRole("link", { name: "Attach evidence" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open dashboard" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Request validation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open dashboard" }),
+  ).toBeVisible();
   await watchdog.checkpoint("first saving card detail");
 
   const workspace = await prisma.organization.findUnique({

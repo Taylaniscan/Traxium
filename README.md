@@ -116,7 +116,7 @@ Current engineering priorities:
 - API hardening
 - tenant isolation
 - role-based access control
-- SaaS-ready onboarding and admin controls
+- [Three-step onboarding](docs/onboarding-experience.md) and admin controls
 
 ## Tech stack
 
