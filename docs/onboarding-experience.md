@@ -1,35 +1,18 @@
-# Onboarding experience
+# Guided onboarding
 
-Traxium uses three short steps for a new workspace:
+Traxium introduces a new workspace in six short steps:
 
-1. **Your workspace:** enter a workspace name. Regional preferences are suggested from the browser and can be changed before creation. An optional description is collapsed by default.
-2. **Your starting point:** choose one real saving card, an existing spreadsheet, or sample cards. Selecting a path does not create data.
-3. **Ready to track:** see a short preparation list and open the relevant workflow. Sample records are added only after clicking **Add sample cards**.
+1. **Your workspace:** name the workspace and confirm optional regional preferences.
+2. **Your team:** add the first buyer, the named owner of a saving card. Workspace owners and admins can invite colleagues from this screen. Invited colleagues join as members or admins. Workspace access and finance approval permissions are separate.
+3. **Your materials:** add a material, part, or service by name.
+4. **Your suppliers:** add a current supplier by name.
+5. **Your categories:** add a category for reporting.
+6. **First saving card:** open the existing card creation workflow with the shared records now available for selection. The card captures prices, annual volume, currency, and evidence. Finance approval remains a separate governed action.
 
-The workspace is saved in step 1. Returning with existing saving cards shows the dashboard handoff. Before adding a card, returning users can choose a starting path again; the temporary path selection is not stored. **Continue later** opens the dashboard.
+Each record step shows the count already present in the active workspace and offers a small inline form. The existing tenant-scoped onboarding API handles validation, duplicate detection, rate limiting, and writes. For larger sets, spreadsheet templates and import remain available behind the existing permission checks. A user can skip a step, revisit it, or create a card immediately. Skipped steps are shown as unfilled in the progress indicator.
 
-## Optional setup
+Wizard position is saved only in the browser session, scoped by workspace ID. Real records are persisted through the existing services. On a new session, Traxium suggests the first incomplete step based on saved record counts. Returning workspaces that already have saving cards open at the final step with a dashboard link.
 
-Team invitations, regional settings, and reference-data templates are in **Set up a little more**. Users can create required reference records inline while creating their first saving card. Invitations and workspace settings remain limited to owners/admins. Import options follow the existing workspace-management permission. The API remains authoritative for every mutation.
+The team invitation form calls the existing invitation service only after the owner or admin clicks **Create invitation**. If delivery needs a manual handoff, the wizard shows the invitation link. Other members can see guidance but cannot create invitations or shared records without permission. Server checks remain authoritative.
 
-Regional preferences change display formats, time zone, and suggested units. Financial currency is configured separately in workspace settings. The interface remains in English.
-
-## Safety and accessibility
-
-- The existing workspace API, billing checks, tenant boundaries, approval workflow, and finance locks are unchanged.
-- Sample cards are offered only when readiness is known and no cards exist. They are intended for demo/training workspaces. The sample-data service retains its server-side checks.
-- Submission controls prevent duplicate requests and show recoverable errors.
-- Starting paths use native radio controls; optional sections use native disclosure controls. Step transitions move keyboard focus to the main heading.
-- If readiness cannot load, users can still open the real-card workflow. No guessed readiness status permits sample insertion.
-
-No database migration or provider setup is required for this onboarding redesign.
-
-## Verification (9 October 2026)
-
-- `npm test`: 840 tests passed across 169 files.
-- `npm run test:ci:smoke`: 4 tests passed.
-- `npm run typecheck` and `npm run build`: passed.
-- `npm run lint`: no errors; 35 existing repository warnings.
-- Headless Chrome checks at desktop and mobile sizes covered browser regional suggestions, invalid preferences, duplicate workspace submission, recoverable API errors, all starting paths, keyboard selection, heading focus, member permissions, missing readiness, and returning workspaces. API writes were intercepted against a temporary local preview route; the route was removed afterward.
-
-The database-backed end-to-end suite was updated but not executed: its global setup resets demo data and creates authentication users. These UI checks did not modify production data.
+Regional preferences change display formats, time zone, and suggested units. Financial currency is configured separately in workspace settings. The interface remains in English. The redesign needs no database migration and does not change approval, finance lock, tenant, or billing rules.

@@ -1,35 +1,37 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { OrganizationRole } from "@prisma/client";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   CheckCircle2,
   ChevronDown,
   FileSpreadsheet,
-  Lightbulb,
-  Plus,
-  Settings2,
+  Layers3,
+  Package,
+  Tags,
+  Truck,
   Users,
 } from "lucide-react";
 
-import { LoadSampleDataButton } from "@/components/onboarding/load-sample-data-button";
+import { InviteColleague } from "@/components/onboarding/invite-colleague";
+import { QuickAddRecord } from "@/components/onboarding/quick-add-record";
 import {
   OnboardingShell,
   onboardingPrimaryClass,
+  onboardingSteps,
 } from "@/components/onboarding/onboarding-shell";
 import {
-  MASTER_DATA_ONBOARDING_ENTITY_KEYS,
   getMasterDataOnboardingStepConfig,
   getMasterDataTemplateDownloadHref,
 } from "@/lib/onboarding/master-data-config";
 import type { WorkspaceReadiness } from "@/lib/types";
 
-type StartingPath = "real" | "import" | "sample";
-
+type GuideStep = 2 | 3 | 4 | 5 | 6;
+type SetupKey = "buyers" | "materials" | "suppliers" | "categories";
 type WorkspaceSetupGuideProps = {
   readiness: WorkspaceReadiness | null;
   readinessError?: string | null;
@@ -38,88 +40,73 @@ type WorkspaceSetupGuideProps = {
   canManageData?: boolean;
 };
 
-const paths = [
+const stages: Record<
+  2 | 3 | 4 | 5,
   {
-    id: "real" as const,
-    icon: Plus,
-    title: "Start with one saving card",
-    description:
-      "Have an opportunity in mind? Add its prices, volume, and owner.",
-    hint: "A simple place to begin",
-    action: "Create first saving card",
-    href: "/saving-cards/new?from=onboarding",
-  },
-  {
-    id: "import" as const,
-    icon: FileSpreadsheet,
-    title: "Bring your spreadsheet",
-    description: "Move existing savings initiatives into a shared workspace.",
-    hint: "Use the XLSX import template",
-    action: "Open spreadsheet import",
-    href: "/reports#import-export",
-  },
-  {
-    id: "sample" as const,
-    icon: Lightbulb,
-    title: "Explore with sample cards",
-    description: "See how the workflow looks before entering your own data.",
-    hint: "For a demo or training workspace",
-    action: "Add sample cards",
-    href: "/dashboard",
-  },
-];
-
-const preparation: Record<
-  StartingPath,
-  Array<{ title: string; detail: string }>
+    key: SetupKey;
+    title: string;
+    subtitle: string;
+    label: string;
+    example: string;
+    suggestion: string;
+    icon: typeof Users;
+  }
 > = {
-  real: [
-    {
-      title: "One opportunity",
-      detail:
-        "A supplier agreement, material change, or another savings initiative.",
-    },
-    {
-      title: "Your commercial assumptions",
-      detail: "Baseline and new prices, annual volume, and when savings begin.",
-    },
-    {
-      title: "Evidence when you have it",
-      detail: "Attach a quote or supporting file after creating the card.",
-    },
-  ],
-  import: [
-    {
-      title: "Start from the import template",
-      detail: "Download it from Reports and copy in your existing initiatives.",
-    },
-    {
-      title: "Keep currency and units explicit",
-      detail: "Use USD or EUR, a volume unit, and unambiguous dates.",
-    },
-    {
-      title: "Review any row errors",
-      detail: "Traxium checks the entire file before saving any cards.",
-    },
-  ],
-  sample: [
-    {
-      title: "Two illustrative saving cards",
-      detail:
-        "Example suppliers, materials, and prices are added to this workspace.",
-    },
-    {
-      title: "A safe place to learn the workflow",
-      detail:
-        "Explore the dashboard, evidence, and approval process with demo data.",
-    },
-    {
-      title: "Keep customer reporting separate",
-      detail:
-        "Use sample data for demo or training, and real data for your live workspace.",
-    },
-  ],
+  2: {
+    key: "buyers",
+    title: "Introduce your team.",
+    subtitle:
+      "Start with the person who owns a procurement opportunity. Invite other colleagues when you are ready to collaborate.",
+    label: "Buyer",
+    example: "e.g. Alex Morgan",
+    suggestion:
+      "A buyer is the named owner on a saving card. Invited teammates receive workspace access separately.",
+    icon: Users,
+  },
+  3: {
+    key: "materials",
+    title: "What does your team buy?",
+    subtitle:
+      "Add a material, part, or service you want to track. One familiar example is enough to begin.",
+    label: "Material",
+    example: "e.g. PET resin or maintenance service",
+    suggestion:
+      "You will choose the unit on each saving card, so quantities stay explicit.",
+    icon: Package,
+  },
+  4: {
+    key: "suppliers",
+    title: "Who do you buy from?",
+    subtitle:
+      "Add a current supplier. You can add alternative suppliers and more detail as opportunities take shape.",
+    label: "Supplier",
+    example: "e.g. Northstar Components",
+    suggestion:
+      "Use the supplier name your finance and procurement teams already recognize.",
+    icon: Truck,
+  },
+  5: {
+    key: "categories",
+    title: "How do you group your work?",
+    subtitle:
+      "Create a category for reporting, such as Packaging, Logistics, or Direct Materials.",
+    label: "Category",
+    example: "e.g. Packaging",
+    suggestion:
+      "Categories help the portfolio make sense. Sites and business units can be added later if useful.",
+    icon: Tags,
+  },
 };
+
+function suggestedStep(readiness: WorkspaceReadiness | null): GuideStep {
+  if (!readiness) return 2;
+  if (readiness.counts.savingCards > 0) return 6;
+  if (!readiness.counts.buyers) return 2;
+  if (!readiness.counts.materials) return 3;
+  if (!readiness.counts.suppliers) return 4;
+  if (!readiness.counts.categories) return 5;
+  return 6;
+}
 
 export function WorkspaceSetupGuide({
   readiness,
@@ -128,62 +115,88 @@ export function WorkspaceSetupGuide({
   viewerMembershipRole,
   canManageData,
 }: WorkspaceSetupGuideProps) {
+  const router = useRouter();
   const hasCards = (readiness?.counts.savingCards ?? 0) > 0;
-  const canManageMembers =
+  const canInvite =
     viewerMembershipRole === "OWNER" || viewerMembershipRole === "ADMIN";
-  const canImport = canManageData ?? canManageMembers;
-  const [step, setStep] = useState<2 | 3>(hasCards ? 3 : 2);
-  const [showExistingSummary, setShowExistingSummary] = useState(hasCards);
-  const [path, setPath] = useState<StartingPath>("real");
+  const canAddData = canManageData ?? canInvite;
+  const [step, setStep] = useState<GuideStep>(() => suggestedStep(readiness));
+  const [added, setAdded] = useState<Partial<Record<SetupKey, number>>>({});
   const headingRef = useRef<HTMLHeadingElement>(null);
   const previousStep = useRef(step);
   const workspaceName = readiness?.workspace.name ?? "Your workspace";
+  const storageKey = readiness?.workspace.id
+    ? `traxium-onboarding:${readiness.workspace.id}`
+    : null;
   const firstName = userName.trim().split(/\s+/u)[0] || "there";
-  const selected = paths.find((item) => item.id === path)!;
-  const availablePaths = paths.filter(
-    (item) =>
-      (item.id !== "import" || canImport) &&
-      (item.id !== "sample" || (readiness !== null && !hasCards)),
-  );
-
-  function chooseStartingPoint() {
-    setShowExistingSummary(false);
-    setStep(2);
-  }
+  const stage = step < 6 ? stages[step as 2 | 3 | 4 | 5] : null;
+  const count = stage
+    ? Math.max(readiness?.counts[stage.key] ?? 0, added[stage.key] ?? 0)
+    : 0;
+  const completedSteps = [
+    1,
+    ...([2, 3, 4, 5] as const).filter((number) => {
+      const key = stages[number].key;
+      return Math.max(readiness?.counts[key] ?? 0, added[key] ?? 0) > 0;
+    }),
+  ];
 
   useEffect(() => {
+    if (!storageKey || hasCards) return;
+    const saved = Number(window.sessionStorage.getItem(storageKey));
+    if (saved >= 2 && saved <= 6) setStep(saved as GuideStep);
+  }, [storageKey, hasCards]);
+
+  useEffect(() => {
+    if (storageKey && !hasCards)
+      window.sessionStorage.setItem(storageKey, String(step));
     if (previousStep.current !== step) headingRef.current?.focus();
     previousStep.current = step;
-  }, [step]);
+  }, [step, storageKey, hasCards]);
+
+  function goTo(next: GuideStep) {
+    setStep(next);
+  }
+
+  function recordCreated(key: SetupKey) {
+    setAdded((current) => ({
+      ...current,
+      [key]: Math.max(current[key] ?? 0, readiness?.counts[key] ?? 0) + 1,
+    }));
+    router.refresh();
+  }
 
   return (
     <OnboardingShell
       step={step}
       workspaceName={workspaceName}
-      onBackToStart={chooseStartingPoint}
+      onNavigate={goTo}
+      completedSteps={completedSteps}
     >
       <div className="mb-8">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#36826d]">
-          STEP {step} OF 3 ·{" "}
-          {step === 2 ? "CHOOSE YOUR PATH" : "LET’S PUT IT TO WORK"}
+          STEP {step} OF {onboardingSteps.length} ·{" "}
+          {stage
+            ? onboardingSteps[step - 1].title.toUpperCase()
+            : "FIRST SAVING CARD"}
         </p>
         <h1
           ref={headingRef}
           tabIndex={-1}
           className="text-3xl font-semibold tracking-[-0.035em] outline-none sm:text-4xl"
         >
-          {step === 2
-            ? "How would you like to start?"
-            : showExistingSummary
-              ? "Your workspace is ready."
-              : "You’re ready for your first step."}
+          {stage
+            ? stage.title
+            : hasCards
+              ? "Your work is underway."
+              : "Ready for your first saving card?"}
         </h1>
-        <p className="mt-4 max-w-xl text-[15px] leading-7 text-[#6a7e83]">
-          {step === 2
-            ? `${firstName}, there’s no need to set everything up at once. Choose the starting point that feels right for your team.`
-            : showExistingSummary
-              ? `${workspaceName} already has ${readiness?.counts.savingCards} saving card${readiness?.counts.savingCards === 1 ? "" : "s"}. Keep going from your dashboard.`
-              : `Your workspace is saved. Here’s what comes next for ${workspaceName}.`}
+        <p className="mt-4 max-w-2xl text-[15px] leading-7 text-[#5b7075]">
+          {stage
+            ? stage.subtitle
+            : hasCards
+              ? `${workspaceName} already has ${readiness?.counts.savingCards} saving card${readiness?.counts.savingCards === 1 ? "" : "s"}. Explore your portfolio or add another opportunity.`
+              : `${firstName}, your workspace now has a place for the people, materials, suppliers, and categories behind your savings. Start with one real opportunity.`}
         </p>
       </div>
 
@@ -192,279 +205,212 @@ export function WorkspaceSetupGuide({
           role="status"
           className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
         >
-          We couldn’t refresh your setup progress. Your workspace is available,
-          and you can continue with a real saving card.
+          We couldn’t refresh your workspace counts. You can continue; saved
+          records remain in your workspace.
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-[#e1e8e8] bg-white shadow-[0_8px_32px_-16px_rgba(27,45,50,0.15)]">
-        {step === 2 ? (
-          <>
-            <fieldset className="space-y-3 p-5 sm:p-8">
-              <legend className="sr-only">Choose a starting point</legend>
-              {availablePaths.map((item) => {
-                const Icon = item.icon;
-                const active = path === item.id;
-                return (
-                  <label
-                    key={item.id}
-                    className={`relative flex cursor-pointer items-start gap-4 rounded-xl border p-4 transition sm:p-5 ${active ? "border-[#3e8b73] bg-[#f1f8f4] shadow-[0_0_0_1px_#3e8b73]" : "border-[#e2e8e8] hover:border-[#9bb8ad] hover:bg-[#fafcfb]"}`}
-                  >
-                    <input
-                      type="radio"
-                      name="starting-path"
-                      value={item.id}
-                      checked={active}
-                      onChange={() => setPath(item.id)}
-                      className="peer sr-only"
-                    />
-                    <span
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${active ? "bg-[#deeee5] text-[#22664f]" : "bg-[#f1f4f5] text-[#6e8388]"}`}
-                    >
-                      <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-[#253d43]">
-                        {item.title}
-                      </span>
-                      <span className="mt-1.5 block text-sm leading-6 text-[#6e8185]">
-                        {item.description}
-                      </span>
-                      <span
-                        className={`mt-2 block text-xs ${active ? "font-medium text-[#3b8065]" : "text-[#5b7075]"}`}
-                      >
-                        {item.hint}
-                      </span>
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${active ? "border-[#26765c] bg-[#26765c]" : "border-[#cbd7d9]"}`}
-                    >
-                      {active ? (
-                        <Check size={12} className="text-white" />
-                      ) : null}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-[-4px] rounded-2xl peer-focus-visible:ring-2 peer-focus-visible:ring-[#155e52]"
-                    />
-                  </label>
-                );
-              })}
-            </fieldset>
-            <div className="flex flex-col-reverse gap-4 border-t border-[#edf0f1] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-              <p className="text-xs text-[#5b7075]">
-                You can use the other options later.
-              </p>
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className={onboardingPrimaryClass}
-              >
-                Continue <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="p-6 sm:p-8">
-              <div className="mb-7 flex items-center gap-3 border-b border-[#edf0f1] pb-6">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f3ec] text-[#28785a]">
-                  <CheckCircle2
-                    size={24}
-                    strokeWidth={1.6}
-                    aria-hidden="true"
-                  />
+      {stage ? (
+        <>
+          <div className="overflow-hidden rounded-2xl border border-[#e1e8e8] bg-white shadow-[0_8px_32px_-16px_rgba(27,45,50,0.15)]">
+            <div className="space-y-6 p-5 sm:p-8">
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e8f3ed] text-[#226f55]">
+                  <stage.icon size={24} strokeWidth={1.7} aria-hidden="true" />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold">
-                    {showExistingSummary
-                      ? "Your first saving card is in place"
-                      : selected.title}
+                  <p className="text-sm font-semibold text-[#253d43]">
+                    {stage.label} records
                   </p>
-                  <p className="mt-1 text-xs text-[#5b7075]">
-                    {showExistingSummary
-                      ? "You can add more detail as you go."
-                      : "A clear next step. Everything else can wait."}
+                  <p className="mt-1 text-sm text-[#5b7075]">
+                    {count > 0
+                      ? `${count} already in this workspace. Add more if you like.`
+                      : `Add your first ${stage.label.toLowerCase()} to make the next step easier.`}
                   </p>
                 </div>
               </div>
-              <div className="space-y-6">
-                {(showExistingSummary
-                  ? [
-                      {
-                        title: "See your savings portfolio",
-                        detail:
-                          "Open the dashboard to review your cards and the current forecast.",
-                      },
-                      {
-                        title: "Bring finance into the conversation",
-                        detail:
-                          "Add evidence and request finance validation when a card is ready.",
-                      },
-                      {
-                        title: "Build at your own pace",
-                        detail:
-                          "Add more initiatives, invite colleagues, or refine settings whenever you need.",
-                      },
-                    ]
-                  : preparation[path]
-                ).map((item, index) => (
-                  <div key={item.title} className="flex gap-4">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f0f4f3] text-[11px] font-semibold text-[#6b8480]">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <h2 className="text-sm font-semibold text-[#314b50]">
-                        {item.title}
-                      </h2>
-                      <p className="mt-1 text-sm leading-6 text-[#5b7075]">
-                        {item.detail}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-col-reverse gap-4 border-t border-[#edf0f1] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-              <button
-                type="button"
-                onClick={chooseStartingPoint}
-                className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-[#72868a] hover:text-[#155e52] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52]"
-              >
-                <ArrowLeft size={15} aria-hidden="true" /> Change starting point
-              </button>
-              {showExistingSummary ? (
-                <Link href="/dashboard" className={onboardingPrimaryClass}>
-                  Open dashboard <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-              ) : path === "sample" ? (
-                <LoadSampleDataButton
-                  variant="default"
-                  size="lg"
-                  className={onboardingPrimaryClass}
-                  successHref="/dashboard"
-                >
-                  Add sample cards <ArrowRight size={16} aria-hidden="true" />
-                </LoadSampleDataButton>
-              ) : (
-                <Link href={selected.href} className={onboardingPrimaryClass}>
-                  {selected.action} <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <details className="group mt-6 rounded-xl border border-[#e0e7e7] bg-white/60">
-        <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-5 py-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] [&::-webkit-details-marker]:hidden">
-          <Settings2 size={17} className="text-[#7b9189]" aria-hidden="true" />
-          <span className="flex-1 font-medium text-[#556f72]">
-            Set up a little more{" "}
-            <span className="ml-1 font-normal text-[#5b7075]">— optional</span>
-          </span>
-          <ChevronDown
-            size={16}
-            className="text-[#8c9c9f] transition group-open:rotate-180"
-            aria-hidden="true"
-          />
-        </summary>
-        <div className="space-y-5 border-t border-[#e3e9e8] p-5 text-sm">
-          <div className="flex items-start gap-3">
-            <Users
-              size={18}
-              className="mt-1 shrink-0 text-[#6f8880]"
-              aria-hidden="true"
-            />
-            <div>
-              <h2 className="font-medium">Bring your team along</h2>
-              <p className="mt-1 text-xs leading-6 text-[#5b7075]">
-                Procurement Lead and Finance Reviewer roles are needed for
-                finance validation. Team setup can wait until you’re ready to
-                request approval.
+              <p className="rounded-xl bg-[#f3f7f5] px-4 py-3 text-sm leading-6 text-[#46665c]">
+                {stage.suggestion}
               </p>
-              {canManageMembers ? (
-                <Link
-                  href="/admin/members"
-                  className="mt-2 inline-block text-xs font-semibold text-[#216f56] underline underline-offset-4"
-                >
-                  Invite team members
-                </Link>
+              {canAddData ? (
+                <QuickAddRecord
+                  key={stage.key}
+                  entity={stage.key}
+                  label={stage.label}
+                  example={stage.example}
+                  allowEmail={stage.key === "buyers"}
+                  onCreated={() => recordCreated(stage.key)}
+                />
               ) : (
-                <p className="mt-2 text-xs text-[#5b7075]">
-                  Ask your workspace owner or admin to invite your colleagues.
+                <p className="rounded-xl border border-[#e1e8e8] p-5 text-sm text-[#5b7075]">
+                  A workspace admin can add shared {stage.label.toLowerCase()}{" "}
+                  records. You can still continue to your saving card and create
+                  the record there.
                 </p>
               )}
+              {step === 2 ? (
+                <div className="border-t border-[#edf0f1] pt-6">
+                  <h2 className="mb-3 text-sm font-semibold">
+                    Bring your colleagues in
+                  </h2>
+                  <InviteColleague canInvite={canInvite} />
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-col-reverse gap-3 border-t border-[#edf0f1] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+              {step > 2 ? (
+                <button
+                  type="button"
+                  onClick={() => goTo((step - 1) as GuideStep)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-[#5b7075] hover:text-[#155e52] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52]"
+                >
+                  <ArrowLeft size={16} aria-hidden="true" /> Back
+                </button>
+              ) : (
+                <span className="text-xs text-[#5b7075]">
+                  You can return to any step later.
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => goTo((step + 1) as GuideStep)}
+                className={onboardingPrimaryClass}
+              >
+                {count > 0 ? "Continue" : "Skip for now"}{" "}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
             </div>
           </div>
-          {canManageMembers ? (
-            <div className="border-t border-[#e3e9e8] pt-4">
-              <Link
-                href="/admin/settings"
-                className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+          {canAddData && step > 2 ? (
+            <details className="group mt-6 rounded-xl border border-[#e1e8e8] bg-white/80">
+              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-5 py-4 text-sm font-medium text-[#506d66] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] [&::-webkit-details-marker]:hidden">
+                <FileSpreadsheet size={18} aria-hidden="true" />
+                <span className="flex-1">
+                  Have many{" "}
+                  {getMasterDataOnboardingStepConfig(stage.key).pluralLabel}?
+                  Use a spreadsheet
+                </span>
+                <ChevronDown
+                  size={16}
+                  className="group-open:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="space-y-2 border-t border-[#edf0f1] px-5 py-4 text-sm text-[#5b7075]">
+                <p>
+                  Download the{" "}
+                  {getMasterDataOnboardingStepConfig(stage.key).pluralLabel}{" "}
+                  template, then upload it from Reports.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <a
+                    href={getMasterDataTemplateDownloadHref(stage.key)}
+                    download
+                    className="font-semibold text-[#216f56] underline underline-offset-4"
+                  >
+                    Download template
+                  </a>
+                  <Link
+                    href="/reports#import-export"
+                    className="font-semibold text-[#216f56] underline underline-offset-4"
+                  >
+                    Open import
+                  </Link>
+                </div>
+              </div>
+            </details>
+          ) : null}
+          <p className="mt-5 text-center text-sm text-[#5b7075]">
+            Have a saving opportunity already?{" "}
+            <Link
+              href="/saving-cards/new?from=onboarding"
+              className="font-semibold text-[#216f56] underline underline-offset-4"
+            >
+              Create a saving card now
+            </Link>
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-2xl border border-[#e1e8e8] bg-white shadow-[0_8px_32px_-16px_rgba(27,45,50,0.15)]">
+            <div className="space-y-6 p-6 sm:p-8">
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e6f3ec] text-[#28785a]">
+                  <CheckCircle2 size={26} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">
+                    Your workspace is ready for real work
+                  </p>
+                  <p className="mt-1 text-xs text-[#5b7075]">
+                    Start one card and add more detail as you go.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 border-t border-[#edf0f1] pt-6 sm:grid-cols-2">
+                <div className="rounded-xl bg-[#f3f7f5] p-4">
+                  <Layers3
+                    size={20}
+                    className="text-[#26765c]"
+                    aria-hidden="true"
+                  />
+                  <h2 className="mt-3 text-sm font-semibold">
+                    Use your foundation
+                  </h2>
+                  <p className="mt-1 text-xs leading-6 text-[#5b7075]">
+                    Select the buyer, material, supplier, and category you
+                    introduced. Missing records can still be created in the
+                    card.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[#f3f7f5] p-4">
+                  <CheckCircle2
+                    size={20}
+                    className="text-[#26765c]"
+                    aria-hidden="true"
+                  />
+                  <h2 className="mt-3 text-sm font-semibold">
+                    Track a credible saving
+                  </h2>
+                  <p className="mt-1 text-xs leading-6 text-[#5b7075]">
+                    Enter baseline and new prices, annual volume, currency, and
+                    supporting evidence. Finance approval happens afterward.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse gap-3 border-t border-[#edf0f1] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+              <button
+                type="button"
+                onClick={() => goTo(5)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-[#5b7075] hover:text-[#155e52]"
               >
-                Edit workspace and regional preferences
+                <ArrowLeft size={16} aria-hidden="true" /> Back to categories
+              </button>
+              <Link
+                href={
+                  hasCards ? "/dashboard" : "/saving-cards/new?from=onboarding"
+                }
+                className={onboardingPrimaryClass}
+              >
+                {hasCards ? "Open dashboard" : "Create first saving card"}{" "}
+                <ArrowRight size={16} aria-hidden="true" />
               </Link>
-              <p className="mt-2 text-xs leading-5 text-[#5b7075]">
-                Choose display formats, time zone, suggested units, and USD or
-                EUR currency settings.
-              </p>
             </div>
-          ) : null}
-          {canImport ? (
-            <div className="border-t border-[#e3e9e8] pt-4">
-              <p className="font-medium">
-                Already have supplier or buyer lists?
-              </p>
-              <p className="mt-1 text-xs leading-6 text-[#5b7075]">
-                Download a template, then use Reports to import buyers,
-                suppliers, materials, or categories. Plants and business units
-                can be added in Admin.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-3">
-                {MASTER_DATA_ONBOARDING_ENTITY_KEYS.map((key) => {
-                  const config = getMasterDataOnboardingStepConfig(key);
-                  return (
-                    <a
-                      key={key}
-                      href={getMasterDataTemplateDownloadHref(key)}
-                      download={config.templateFileName}
-                      className="text-xs font-medium text-[#216f56] underline underline-offset-4"
-                    >
-                      {config.pluralLabel} template
-                    </a>
-                  );
-                })}
-              </div>
-              <div className="mt-4 flex gap-4">
-                <Link
-                  href="/reports#import-export"
-                  className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
-                >
-                  Open imports
-                </Link>
-                <Link
-                  href="/admin"
-                  className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
-                >
-                  Manage reference data
-                </Link>
-              </div>
-            </div>
-          ) : null}
+          </div>
           {hasCards ? (
-            <div className="border-t border-[#e3e9e8] pt-4">
+            <p className="mt-5 text-center text-sm text-[#5b7075]">
+              Have another idea?{" "}
               <Link
                 href="/saving-cards/new?from=onboarding"
-                className="text-xs font-semibold text-[#216f56] underline underline-offset-4"
+                className="font-semibold text-[#216f56] underline underline-offset-4"
               >
                 Create another saving card
               </Link>
-            </div>
+            </p>
           ) : null}
-        </div>
-      </details>
+        </>
+      )}
     </OnboardingShell>
   );
 }

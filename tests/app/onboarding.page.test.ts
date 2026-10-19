@@ -248,21 +248,15 @@ describe("onboarding page", () => {
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("Your workspace is ready.");
+    expect(markup).toContain("Your work is underway.");
     expect(markup).toContain("Atlas Procurement");
-    expect(markup).toContain("Your first saving card is in place");
     expect(markup).toContain("Open dashboard");
-    expect(markup).toContain("Set up a little more");
-    expect(markup).toContain("Finance Reviewer");
-    expect(markup).toContain('href="/admin/members"');
-    expect(markup).toContain('href="/admin/settings"');
-    expect(markup).toContain('href="/reports#import-export"');
+    expect(markup).toContain("Create another saving card");
     expect(markup).toContain("Continue later");
-    expect(markup).not.toContain("Remaining blockers");
     expect(markup).not.toContain("Explore with sample cards");
   });
 
-  it("offers three clear starting paths for an empty workspace", async () => {
+  it("starts an empty workspace with its team", async () => {
     getWorkspaceOnboardingStateMock.mockResolvedValueOnce({
       ok: true,
       needsWorkspace: false,
@@ -310,13 +304,15 @@ describe("onboarding page", () => {
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("How would you like to start?");
-    expect(markup).toContain("Start with one saving card");
-    expect(markup).toContain("Bring your spreadsheet");
-    expect(markup).toContain("Explore with sample cards");
-    expect(markup.match(/name="starting-path"/g)).toHaveLength(3);
-    expect(markup).toContain("Continue");
-    expect(markup).not.toContain("Remaining blockers");
+    expect(markup).toContain("Introduce your team.");
+    expect(markup).toContain("Your materials");
+    expect(markup).toContain("Your suppliers");
+    expect(markup).toContain("Your categories");
+    expect(markup).toContain("First saving card");
+    expect(markup).toContain("Add buyer");
+    expect(markup).toContain("Invite a colleague");
+    expect(markup).toContain("Skip for now");
+    expect(markup).not.toContain("Choose a starting point");
   });
 
   it("keeps optional reporting gaps from blocking first-value readiness", async () => {
@@ -367,8 +363,7 @@ describe("onboarding page", () => {
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("Your workspace is ready.");
-    expect(markup).toContain("Set up a little more");
+    expect(markup).toContain("Your work is underway.");
     expect(markup).not.toContain("Remaining blockers");
     expect(markup).toContain("Open dashboard");
   });
@@ -403,8 +398,8 @@ describe("onboarding page", () => {
     const page = await OnboardingPage();
     const markup = renderToStaticMarkup(page as React.ReactElement);
 
-    expect(markup).toContain("We couldn’t refresh your setup progress.");
-    expect(markup).toContain("Start with one saving card");
+    expect(markup).toContain("We couldn’t refresh your workspace counts.");
+    expect(markup).toContain("Introduce your team.");
     expect(markup).not.toContain("Explore with sample cards");
     expect(captureExceptionMock).toHaveBeenCalledWith(
       expect.any(Error),
@@ -416,8 +411,9 @@ describe("onboarding page", () => {
     );
   });
 
-  it("keeps member invitations and imports behind their existing permissions", () => {
+  it("keeps shared-data and invitation controls behind existing permissions", () => {
     const readiness = createWorkspaceReadiness();
+    readiness.counts.buyers = 0;
     readiness.counts.savingCards = 0;
     const props = {
       readiness: readiness as WorkspaceReadiness,
@@ -430,20 +426,27 @@ describe("onboarding page", () => {
         canManageData: false,
       }),
     );
-    expect(memberMarkup).not.toContain('href="/admin/members"');
-    expect(memberMarkup).not.toContain('href="/admin/settings"');
-    expect(memberMarkup).not.toContain("Bring your spreadsheet");
-    expect(memberMarkup).toContain("Start with one saving card");
-    expect(memberMarkup).toContain("Ask your workspace owner or admin");
+    expect(memberMarkup).toContain("Introduce your team.");
+    expect(memberMarkup).not.toContain("Add buyer");
+    expect(memberMarkup).not.toContain("Create invitation");
+    expect(memberMarkup).toContain("Ask a workspace owner or admin");
 
-    const dataManagerMarkup = renderToStaticMarkup(
+    const managerMarkup = renderToStaticMarkup(
       React.createElement(WorkspaceSetupGuide, {
         ...props,
         canManageData: true,
       }),
     );
-    expect(dataManagerMarkup).toContain("Bring your spreadsheet");
-    expect(dataManagerMarkup).toContain('href="/reports#import-export"');
-    expect(dataManagerMarkup).not.toContain('href="/admin/members"');
+    expect(managerMarkup).toContain("Add buyer");
+    expect(managerMarkup).not.toContain("Create invitation");
+
+    const ownerMarkup = renderToStaticMarkup(
+      React.createElement(WorkspaceSetupGuide, {
+        ...props,
+        viewerMembershipRole: OrganizationRole.OWNER,
+        canManageData: true,
+      }),
+    );
+    expect(ownerMarkup).toContain("Create invitation");
   });
 });

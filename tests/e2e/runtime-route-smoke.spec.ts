@@ -84,7 +84,7 @@ test("owner can render every protected primary route cleanly", async ({ page }) 
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(
     page.getByRole("heading", {
-      name: "Your workspace is ready.",
+      name: "Your work is underway.",
       exact: true,
     })
   ).toBeVisible();

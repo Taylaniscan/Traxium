@@ -19,20 +19,24 @@ test("fresh workspace creates its first saving card with inline master data", as
   await loginAs(page, personas.foreignOwner);
 
   await page.goto("/onboarding");
-  await page.getByText("Bring your spreadsheet", { exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   await expect(
-    page.getByRole("link", { name: "Open spreadsheet import" }),
-  ).toHaveAttribute("href", "/reports#import-export");
-  await page.getByRole("button", { name: "Change starting point" }).click();
+    page.getByRole("heading", { name: "Introduce your team." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(
-    page.getByRole("radio", { name: /Bring your spreadsheet/ }),
-  ).toBeChecked();
-  await page.getByText("Start with one saving card", { exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+    page.getByRole("heading", { name: "What does your team buy?" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(
-    page.getByRole("link", { name: "Create first saving card" }).first(),
+    page.getByRole("heading", { name: "Who do you buy from?" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(
+    page.getByRole("heading", { name: "How do you group your work?" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(
+    page.getByRole("link", { name: "Create first saving card" }),
   ).toBeVisible();
   await watchdog.checkpoint("fresh workspace onboarding");
 

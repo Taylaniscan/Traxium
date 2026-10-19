@@ -138,14 +138,15 @@ export function WorkspaceOnboardingForm({
     <OnboardingShell step={1}>
       <div className="mb-8">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#36826d]">
-          STEP 1 OF 3 · THE BASICS
+          STEP 1 OF 6 · YOUR WORKSPACE
         </p>
         <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">
           Make room for better savings.
         </h1>
         <p className="mt-4 max-w-xl text-[15px] leading-7 text-[#6a7e83]">
           Welcome, {userName.trim().split(/\s+/u)[0] || "there"}. Give your team
-          a workspace. You can add your first savings initiative next.
+          a workspace. Next, introduce your team, materials, and suppliers
+          before your first saving card.
         </p>
       </div>
 

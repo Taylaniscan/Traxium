@@ -2,24 +2,29 @@ import Link from "next/link";
 import { ArrowUpRight, Check, Layers3, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
-const steps = [
-  { title: "Your workspace", detail: "Give your team a home" },
-  { title: "Your starting point", detail: "Choose what works for you" },
-  { title: "Ready to track", detail: "Take the first useful step" },
-];
+export const onboardingSteps = [
+  { title: "Your workspace", detail: "Name your shared space" },
+  { title: "Your team", detail: "Introduce owners and colleagues" },
+  { title: "Your materials", detail: "Add what you buy" },
+  { title: "Your suppliers", detail: "Add who you buy from" },
+  { title: "Your categories", detail: "Organize your work" },
+  { title: "First saving card", detail: "Track your first opportunity" },
+] as const;
 
 export const onboardingPrimaryClass =
-  "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#155e52] px-6 py-3 text-sm font-semibold text-white! transition hover:bg-[#104b42] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] focus-visible:ring-offset-4 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500";
+  "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#155e52] px-6 py-3 text-sm font-semibold text-white! transition hover:bg-[#104b42] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] focus-visible:ring-offset-4 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600!";
 
 export function OnboardingShell({
   step,
   workspaceName,
-  onBackToStart,
+  onNavigate,
+  completedSteps,
   children,
 }: {
-  step: 1 | 2 | 3;
+  step: 1 | 2 | 3 | 4 | 5 | 6;
   workspaceName?: string;
-  onBackToStart?: () => void;
+  onNavigate?: (step: 2 | 3 | 4 | 5 | 6) => void;
+  completedSteps?: readonly number[];
   children: ReactNode;
 }) {
   return (
@@ -57,10 +62,11 @@ export function OnboardingShell({
             Your setup, simplified
           </p>
           <nav aria-label="Onboarding progress">
-            <ol className="grid grid-cols-3 gap-3 lg:grid-cols-1 lg:gap-0">
-              {steps.map((item, index) => {
+            <ol className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-6 lg:grid-cols-1 lg:gap-0">
+              {onboardingSteps.map((item, index) => {
                 const number = index + 1;
-                const complete = number < step;
+                const complete =
+                  number < step && (completedSteps?.includes(number) ?? true);
                 const active = number === step;
                 const content = (
                   <>
@@ -91,16 +97,16 @@ export function OnboardingShell({
                     aria-current={active ? "step" : undefined}
                     className="relative lg:pb-9"
                   >
-                    {index < 2 ? (
+                    {index < onboardingSteps.length - 1 ? (
                       <span
                         aria-hidden="true"
                         className="absolute bottom-0 left-[17px] top-9 hidden w-px bg-[#dce5e4] lg:block"
                       />
                     ) : null}
-                    {number === 2 && step === 3 && onBackToStart ? (
+                    {number > 1 && number < step && onNavigate ? (
                       <button
                         type="button"
-                        onClick={onBackToStart}
+                        onClick={() => onNavigate(number as 2 | 3 | 4 | 5 | 6)}
                         className="flex flex-col items-start gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] lg:flex-row"
                       >
                         {content}
@@ -140,7 +146,10 @@ export function OnboardingShell({
           ) : null}
         </aside>
 
-        <section className="min-w-0" aria-label={`Step ${step} of 3`}>
+        <section
+          className="min-w-0"
+          aria-label={`Step ${step} of ${onboardingSteps.length}`}
+        >
           {children}
           <p className="mt-6 text-center text-xs leading-5 text-[#5b7075]">
             Built for small procurement and finance teams.
