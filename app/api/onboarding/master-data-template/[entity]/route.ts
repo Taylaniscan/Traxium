@@ -3,6 +3,7 @@ import { ZodError, z } from "zod";
 
 import {
   buildMasterDataTemplateCsv,
+  buildStarterUploadTemplateCsv,
   getMasterDataOnboardingStepConfig,
   MASTER_DATA_ONBOARDING_ENTITY_KEYS,
 } from "@/lib/onboarding/master-data-config";
@@ -12,19 +13,22 @@ const templateParamsSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ entity: string }> }
+  request: Request,
+  { params }: { params: Promise<{ entity: string }> },
 ) {
   try {
     const { entity } = templateParamsSchema.parse(await params);
     const config = getMasterDataOnboardingStepConfig(entity);
-    const csv = buildMasterDataTemplateCsv(entity);
+    const starter = new URL(request.url).searchParams.get("starter") === "1";
+    const csv = starter
+      ? buildStarterUploadTemplateCsv(entity)
+      : buildMasterDataTemplateCsv(entity);
 
     return new NextResponse(csv, {
       status: 200,
       headers: {
         "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${config.templateFileName}"`,
+        "content-disposition": `attachment; filename="${starter ? `traxium-${entity}-starter-template.csv` : config.templateFileName}"`,
         "cache-control": "no-store",
       },
     });
@@ -34,7 +38,7 @@ export async function GET(
         {
           error: "Template not found.",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -45,7 +49,7 @@ export async function GET(
             ? error.message
             : "Could not build onboarding template.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

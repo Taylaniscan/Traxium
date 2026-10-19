@@ -138,7 +138,7 @@ export function WorkspaceOnboardingForm({
     <OnboardingShell step={1}>
       <div className="mb-8">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#36826d]">
-          STEP 1 OF 6 · YOUR WORKSPACE
+          STEP 1 OF 8 · YOUR WORKSPACE
         </p>
         <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">
           Make room for better savings.

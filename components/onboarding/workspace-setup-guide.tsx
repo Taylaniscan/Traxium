@@ -8,10 +8,10 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  FileSpreadsheet,
   Layers3,
   Package,
+  Factory,
+  Building2,
   Tags,
   Truck,
   Users,
@@ -19,19 +19,23 @@ import {
 
 import { InviteColleague } from "@/components/onboarding/invite-colleague";
 import { QuickAddRecord } from "@/components/onboarding/quick-add-record";
+import { UploadStepData } from "@/components/onboarding/upload-step-data";
+import { UploadSavingCards } from "@/components/onboarding/upload-saving-cards";
 import {
   OnboardingShell,
   onboardingPrimaryClass,
   onboardingSteps,
 } from "@/components/onboarding/onboarding-shell";
-import {
-  getMasterDataOnboardingStepConfig,
-  getMasterDataTemplateDownloadHref,
-} from "@/lib/onboarding/master-data-config";
 import type { WorkspaceReadiness } from "@/lib/types";
 
-type GuideStep = 2 | 3 | 4 | 5 | 6;
-type SetupKey = "buyers" | "materials" | "suppliers" | "categories";
+type GuideStep = 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type SetupKey =
+  | "buyers"
+  | "materials"
+  | "suppliers"
+  | "categories"
+  | "plants"
+  | "businessUnits";
 type WorkspaceSetupGuideProps = {
   readiness: WorkspaceReadiness | null;
   readinessError?: string | null;
@@ -41,7 +45,7 @@ type WorkspaceSetupGuideProps = {
 };
 
 const stages: Record<
-  2 | 3 | 4 | 5,
+  2 | 3 | 4 | 5 | 6 | 7,
   {
     key: SetupKey;
     title: string;
@@ -50,6 +54,7 @@ const stages: Record<
     example: string;
     suggestion: string;
     icon: typeof Users;
+    uploadLabel: string;
   }
 > = {
   2: {
@@ -62,6 +67,7 @@ const stages: Record<
     suggestion:
       "A buyer is the named owner on a saving card. Invited teammates receive workspace access separately.",
     icon: Users,
+    uploadLabel: "Upload your team",
   },
   3: {
     key: "materials",
@@ -73,6 +79,7 @@ const stages: Record<
     suggestion:
       "You will choose the unit on each saving card, so quantities stay explicit.",
     icon: Package,
+    uploadLabel: "Upload your materials",
   },
   4: {
     key: "suppliers",
@@ -84,6 +91,7 @@ const stages: Record<
     suggestion:
       "Use the supplier name your finance and procurement teams already recognize.",
     icon: Truck,
+    uploadLabel: "Upload your suppliers",
   },
   5: {
     key: "categories",
@@ -93,19 +101,46 @@ const stages: Record<
     label: "Category",
     example: "e.g. Packaging",
     suggestion:
-      "Categories help the portfolio make sense. Sites and business units can be added later if useful.",
+      "Categories help the portfolio make sense. Production sites and business units come next if they matter to your reporting.",
     icon: Tags,
+    uploadLabel: "Upload your categories",
+  },
+  6: {
+    key: "plants",
+    title: "Where does production happen?",
+    subtitle:
+      "Introduce a production site or operational location affected by your procurement work.",
+    label: "Production site",
+    example: "e.g. Amsterdam Plant",
+    suggestion:
+      "Give each site a region or country. This helps teams locate savings without building a complex hierarchy.",
+    icon: Factory,
+    uploadLabel: "Upload your production sites",
+  },
+  7: {
+    key: "businessUnits",
+    title: "How is your business organized?",
+    subtitle:
+      "Add business units only if you want to group savings by division or operating team.",
+    label: "Business unit",
+    example: "e.g. Beverages",
+    suggestion:
+      "This step is optional. A single-team workspace can continue straight to its first saving card.",
+    icon: Building2,
+    uploadLabel: "Upload your business units",
   },
 };
 
 function suggestedStep(readiness: WorkspaceReadiness | null): GuideStep {
   if (!readiness) return 2;
-  if (readiness.counts.savingCards > 0) return 6;
+  if (readiness.counts.savingCards > 0) return 8;
   if (!readiness.counts.buyers) return 2;
   if (!readiness.counts.materials) return 3;
   if (!readiness.counts.suppliers) return 4;
   if (!readiness.counts.categories) return 5;
-  return 6;
+  if (!readiness.counts.plants) return 6;
+  if (!readiness.counts.businessUnits) return 7;
+  return 8;
 }
 
 export function WorkspaceSetupGuide({
@@ -116,7 +151,9 @@ export function WorkspaceSetupGuide({
   canManageData,
 }: WorkspaceSetupGuideProps) {
   const router = useRouter();
-  const hasCards = (readiness?.counts.savingCards ?? 0) > 0;
+  const [uploadedCards, setUploadedCards] = useState(0);
+  const hasCards =
+    (readiness?.counts.savingCards ?? 0) > 0 || uploadedCards > 0;
   const canInvite =
     viewerMembershipRole === "OWNER" || viewerMembershipRole === "ADMIN";
   const canAddData = canManageData ?? canInvite;
@@ -129,13 +166,13 @@ export function WorkspaceSetupGuide({
     ? `traxium-onboarding:${readiness.workspace.id}`
     : null;
   const firstName = userName.trim().split(/\s+/u)[0] || "there";
-  const stage = step < 6 ? stages[step as 2 | 3 | 4 | 5] : null;
+  const stage = step < 8 ? stages[step as 2 | 3 | 4 | 5 | 6 | 7] : null;
   const count = stage
     ? Math.max(readiness?.counts[stage.key] ?? 0, added[stage.key] ?? 0)
     : 0;
   const completedSteps = [
     1,
-    ...([2, 3, 4, 5] as const).filter((number) => {
+    ...([2, 3, 4, 5, 6, 7] as const).filter((number) => {
       const key = stages[number].key;
       return Math.max(readiness?.counts[key] ?? 0, added[key] ?? 0) > 0;
     }),
@@ -144,7 +181,7 @@ export function WorkspaceSetupGuide({
   useEffect(() => {
     if (!storageKey || hasCards) return;
     const saved = Number(window.sessionStorage.getItem(storageKey));
-    if (saved >= 2 && saved <= 6) setStep(saved as GuideStep);
+    if (saved >= 2 && saved <= 8) setStep(saved as GuideStep);
   }, [storageKey, hasCards]);
 
   useEffect(() => {
@@ -158,10 +195,10 @@ export function WorkspaceSetupGuide({
     setStep(next);
   }
 
-  function recordCreated(key: SetupKey) {
+  function recordCreated(key: SetupKey, amount = 1) {
     setAdded((current) => ({
       ...current,
-      [key]: Math.max(current[key] ?? 0, readiness?.counts[key] ?? 0) + 1,
+      [key]: Math.max(current[key] ?? 0, readiness?.counts[key] ?? 0) + amount,
     }));
     router.refresh();
   }
@@ -195,8 +232,8 @@ export function WorkspaceSetupGuide({
           {stage
             ? stage.subtitle
             : hasCards
-              ? `${workspaceName} already has ${readiness?.counts.savingCards} saving card${readiness?.counts.savingCards === 1 ? "" : "s"}. Explore your portfolio or add another opportunity.`
-              : `${firstName}, your workspace now has a place for the people, materials, suppliers, and categories behind your savings. Start with one real opportunity.`}
+              ? `${workspaceName} has saving cards ready. Explore your portfolio or add another opportunity.`
+              : `${firstName}, your workspace now has a place for the people, materials, suppliers, sites, and categories behind your savings. Start with one real opportunity.`}
         </p>
       </div>
 
@@ -239,6 +276,7 @@ export function WorkspaceSetupGuide({
                   label={stage.label}
                   example={stage.example}
                   allowEmail={stage.key === "buyers"}
+                  allowRegion={stage.key === "plants"}
                   onCreated={() => recordCreated(stage.key)}
                 />
               ) : (
@@ -248,6 +286,14 @@ export function WorkspaceSetupGuide({
                   the record there.
                 </p>
               )}
+              {canAddData ? (
+                <UploadStepData
+                  key={`upload-${stage.key}`}
+                  entity={stage.key}
+                  buttonLabel={stage.uploadLabel}
+                  onCreated={(amount) => recordCreated(stage.key, amount)}
+                />
+              ) : null}
               {step === 2 ? (
                 <div className="border-t border-[#edf0f1] pt-6">
                   <h2 className="mb-3 text-sm font-semibold">
@@ -281,45 +327,6 @@ export function WorkspaceSetupGuide({
               </button>
             </div>
           </div>
-          {canAddData && step > 2 ? (
-            <details className="group mt-6 rounded-xl border border-[#e1e8e8] bg-white/80">
-              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-5 py-4 text-sm font-medium text-[#506d66] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] [&::-webkit-details-marker]:hidden">
-                <FileSpreadsheet size={18} aria-hidden="true" />
-                <span className="flex-1">
-                  Have many{" "}
-                  {getMasterDataOnboardingStepConfig(stage.key).pluralLabel}?
-                  Use a spreadsheet
-                </span>
-                <ChevronDown
-                  size={16}
-                  className="group-open:rotate-180"
-                  aria-hidden="true"
-                />
-              </summary>
-              <div className="space-y-2 border-t border-[#edf0f1] px-5 py-4 text-sm text-[#5b7075]">
-                <p>
-                  Download the{" "}
-                  {getMasterDataOnboardingStepConfig(stage.key).pluralLabel}{" "}
-                  template, then upload it from Reports.
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  <a
-                    href={getMasterDataTemplateDownloadHref(stage.key)}
-                    download
-                    className="font-semibold text-[#216f56] underline underline-offset-4"
-                  >
-                    Download template
-                  </a>
-                  <Link
-                    href="/reports#import-export"
-                    className="font-semibold text-[#216f56] underline underline-offset-4"
-                  >
-                    Open import
-                  </Link>
-                </div>
-              </div>
-            </details>
-          ) : null}
           <p className="mt-5 text-center text-sm text-[#5b7075]">
             Have a saving opportunity already?{" "}
             <Link
@@ -378,14 +385,23 @@ export function WorkspaceSetupGuide({
                   </p>
                 </div>
               </div>
+              {canAddData ? (
+                <UploadSavingCards
+                  onImported={(amount) => {
+                    setUploadedCards((current) => current + amount);
+                    router.refresh();
+                  }}
+                />
+              ) : null}
             </div>
             <div className="flex flex-col-reverse gap-3 border-t border-[#edf0f1] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
               <button
                 type="button"
-                onClick={() => goTo(5)}
+                onClick={() => goTo(7)}
                 className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-[#5b7075] hover:text-[#155e52]"
               >
-                <ArrowLeft size={16} aria-hidden="true" /> Back to categories
+                <ArrowLeft size={16} aria-hidden="true" /> Back to business
+                units
               </button>
               <Link
                 href={

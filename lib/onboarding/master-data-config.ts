@@ -72,7 +72,8 @@ export const MASTER_DATA_ONBOARDING_STEP_CONFIG: Record<
       {
         key: "email",
         label: "email",
-        description: "Work email for the buyer, if you want it available from day one.",
+        description:
+          "Work email for the buyer, if you want it available from day one.",
       },
       {
         key: "code",
@@ -128,7 +129,8 @@ export const MASTER_DATA_ONBOARDING_STEP_CONFIG: Record<
       {
         key: "contactEmail",
         label: "contactEmail",
-        description: "Main supplier contact email, if you want to keep it with the record.",
+        description:
+          "Main supplier contact email, if you want to keep it with the record.",
       },
     ],
     exampleRow: {
@@ -169,12 +171,14 @@ export const MASTER_DATA_ONBOARDING_STEP_CONFIG: Record<
       {
         key: "description",
         label: "description",
-        description: "Short plain-language description to help people recognize the item.",
+        description:
+          "Short plain-language description to help people recognize the item.",
       },
       {
         key: "unitOfMeasure",
         label: "unitOfMeasure",
-        description: "Unit used to track the material, such as kg, pcs, or liters.",
+        description:
+          "Unit used to track the material, such as kg, pcs, or liters.",
       },
     ],
     exampleRow: {
@@ -300,19 +304,19 @@ export const MASTER_DATA_ONBOARDING_STEP_CONFIG: Record<
 };
 
 export function getMasterDataOnboardingStepConfig(
-  entityKey: MasterDataOnboardingEntityKey
+  entityKey: MasterDataOnboardingEntityKey,
 ) {
   return MASTER_DATA_ONBOARDING_STEP_CONFIG[entityKey];
 }
 
 export function isMasterDataOnboardingEntityKey(
-  value: string
+  value: string,
 ): value is MasterDataOnboardingEntityKey {
   return value in MASTER_DATA_ONBOARDING_STEP_CONFIG;
 }
 
 export function isMasterDataImportEntityKey(
-  value: string
+  value: string,
 ): value is MasterDataImportEntityKey {
   return (MASTER_DATA_IMPORT_ENTITY_KEYS as readonly string[]).includes(value);
 }
@@ -321,8 +325,24 @@ function escapeCsvValue(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+export function getStoredStarterColumns(
+  entityKey: MasterDataOnboardingEntityKey,
+) {
+  return entityKey === "buyers"
+    ? (["name", "email"] as const)
+    : entityKey === "plants"
+      ? (["name", "region"] as const)
+      : (["name"] as const);
+}
+
+export function buildStarterUploadTemplateCsv(
+  entityKey: MasterDataOnboardingEntityKey,
+) {
+  return `${getStoredStarterColumns(entityKey).map(escapeCsvValue).join(",")}\n`;
+}
+
 export function buildMasterDataTemplateCsv(
-  entityKey: MasterDataOnboardingEntityKey
+  entityKey: MasterDataOnboardingEntityKey,
 ) {
   const config = getMasterDataOnboardingStepConfig(entityKey);
 
@@ -330,7 +350,7 @@ export function buildMasterDataTemplateCsv(
 }
 
 export function getMasterDataTemplateDownloadHref(
-  entityKey: MasterDataOnboardingEntityKey
+  entityKey: MasterDataOnboardingEntityKey,
 ) {
   return `/api/onboarding/master-data-template/${entityKey}`;
 }

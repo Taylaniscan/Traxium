@@ -308,7 +308,10 @@ describe("onboarding page", () => {
     expect(markup).toContain("Your materials");
     expect(markup).toContain("Your suppliers");
     expect(markup).toContain("Your categories");
+    expect(markup).toContain("Production sites");
+    expect(markup).toContain("Business units");
     expect(markup).toContain("First saving card");
+    expect(markup).toContain("Upload your team");
     expect(markup).toContain("Add buyer");
     expect(markup).toContain("Invite a colleague");
     expect(markup).toContain("Skip for now");
@@ -428,6 +431,7 @@ describe("onboarding page", () => {
     );
     expect(memberMarkup).toContain("Introduce your team.");
     expect(memberMarkup).not.toContain("Add buyer");
+    expect(memberMarkup).not.toContain("Upload your team");
     expect(memberMarkup).not.toContain("Create invitation");
     expect(memberMarkup).toContain("Ask a workspace owner or admin");
 
@@ -438,6 +442,7 @@ describe("onboarding page", () => {
       }),
     );
     expect(managerMarkup).toContain("Add buyer");
+    expect(managerMarkup).toContain("Upload your team");
     expect(managerMarkup).not.toContain("Create invitation");
 
     const ownerMarkup = renderToStaticMarkup(
@@ -448,5 +453,53 @@ describe("onboarding page", () => {
       }),
     );
     expect(ownerMarkup).toContain("Create invitation");
+  });
+
+  it("shows an upload action for every shared-data step", () => {
+    const cases = [
+      ["materials", "Upload your materials", { buyers: 1 }],
+      ["suppliers", "Upload your suppliers", { buyers: 1, materials: 1 }],
+      [
+        "categories",
+        "Upload your categories",
+        { buyers: 1, materials: 1, suppliers: 1 },
+      ],
+      [
+        "plants",
+        "Upload your production sites",
+        { buyers: 1, materials: 1, suppliers: 1, categories: 1 },
+      ],
+      [
+        "businessUnits",
+        "Upload your business units",
+        { buyers: 1, materials: 1, suppliers: 1, categories: 1, plants: 1 },
+      ],
+    ] as const;
+    for (const [key, label, counts] of cases) {
+      const readiness = createWorkspaceReadiness();
+      Object.assign(
+        readiness.counts,
+        {
+          buyers: 0,
+          materials: 0,
+          suppliers: 0,
+          categories: 0,
+          plants: 0,
+          businessUnits: 0,
+          savingCards: 0,
+        },
+        counts,
+      );
+      const markup = renderToStaticMarkup(
+        React.createElement(WorkspaceSetupGuide, {
+          readiness: readiness as WorkspaceReadiness,
+          userName: "Alex",
+          viewerMembershipRole: OrganizationRole.OWNER,
+          canManageData: true,
+        }),
+      );
+      expect(markup, key).toContain(label);
+      expect(markup).toContain(`master-data-template/${key}?starter=1`);
+    }
   });
 });

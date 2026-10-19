@@ -8,6 +8,8 @@ export const onboardingSteps = [
   { title: "Your materials", detail: "Add what you buy" },
   { title: "Your suppliers", detail: "Add who you buy from" },
   { title: "Your categories", detail: "Organize your work" },
+  { title: "Production sites", detail: "Show where savings land" },
+  { title: "Business units", detail: "Group reporting if useful" },
   { title: "First saving card", detail: "Track your first opportunity" },
 ] as const;
 
@@ -21,9 +23,9 @@ export function OnboardingShell({
   completedSteps,
   children,
 }: {
-  step: 1 | 2 | 3 | 4 | 5 | 6;
+  step: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   workspaceName?: string;
-  onNavigate?: (step: 2 | 3 | 4 | 5 | 6) => void;
+  onNavigate?: (step: 2 | 3 | 4 | 5 | 6 | 7 | 8) => void;
   completedSteps?: readonly number[];
   children: ReactNode;
 }) {
@@ -106,7 +108,9 @@ export function OnboardingShell({
                     {number > 1 && number < step && onNavigate ? (
                       <button
                         type="button"
-                        onClick={() => onNavigate(number as 2 | 3 | 4 | 5 | 6)}
+                        onClick={() =>
+                          onNavigate(number as 2 | 3 | 4 | 5 | 6 | 7 | 8)
+                        }
                         className="flex flex-col items-start gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155e52] lg:flex-row"
                       >
                         {content}

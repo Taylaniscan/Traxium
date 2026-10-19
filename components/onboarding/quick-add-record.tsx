@@ -14,6 +14,7 @@ type QuickAddRecordProps = {
   example: string;
   onCreated: () => void;
   allowEmail?: boolean;
+  allowRegion?: boolean;
 };
 
 type SaveResult = {
@@ -28,9 +29,11 @@ export function QuickAddRecord({
   example,
   onCreated,
   allowEmail = false,
+  allowRegion = false,
 }: QuickAddRecordProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [region, setRegion] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
@@ -40,7 +43,8 @@ export function QuickAddRecord({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current || !name.trim()) return;
+    if (inFlight.current || !name.trim() || (allowRegion && !region.trim()))
+      return;
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
@@ -54,6 +58,7 @@ export function QuickAddRecord({
             {
               name: name.trim(),
               ...(allowEmail ? { email: email.trim() } : {}),
+              ...(allowRegion ? { region: region.trim() } : {}),
             },
           ],
         }),
@@ -78,6 +83,7 @@ export function QuickAddRecord({
         });
         setName("");
         setEmail("");
+        setRegion("");
         onCreated();
       } else {
         setMessage({
@@ -133,6 +139,20 @@ export function QuickAddRecord({
           />
         </div>
       ) : null}
+      {allowRegion ? (
+        <div>
+          <Label htmlFor="quick-site-region">Region or country</Label>
+          <Input
+            id="quick-site-region"
+            value={region}
+            onChange={(event) => setRegion(event.target.value)}
+            maxLength={120}
+            placeholder="e.g. Benelux"
+            className="mt-2 h-11 rounded-xl"
+            required
+          />
+        </div>
+      ) : null}
       {message ? (
         <p
           role={message.error ? "alert" : "status"}
@@ -144,7 +164,7 @@ export function QuickAddRecord({
       <button
         type="submit"
         className={onboardingPrimaryClass}
-        disabled={busy || !name.trim()}
+        disabled={busy || !name.trim() || (allowRegion && !region.trim())}
       >
         {busy ? (
           "Saving…"

@@ -36,6 +36,14 @@ test("fresh workspace creates its first saving card with inline master data", as
   ).toBeFocused();
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(
+    page.getByRole("heading", { name: "Where does production happen?" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(
+    page.getByRole("heading", { name: "How is your business organized?" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(
     page.getByRole("link", { name: "Create first saving card" }),
   ).toBeVisible();
   await watchdog.checkpoint("fresh workspace onboarding");

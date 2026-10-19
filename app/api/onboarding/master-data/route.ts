@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
+import {
+  parseStarterUpload,
+  StarterUploadError,
+} from "@/lib/onboarding/starter-upload";
 
 import { createAuthGuardErrorResponse, requireOrganization } from "@/lib/auth";
 import {
   MASTER_DATA_ONBOARDING_ENTITY_KEYS,
   getMasterDataOnboardingStepConfig,
+  getStoredStarterColumns,
   type MasterDataOnboardingEntityKey,
 } from "@/lib/onboarding/master-data-config";
 import { canManageOrganizationMembers } from "@/lib/organizations";
@@ -50,12 +55,15 @@ function normalizeKey(value: string) {
 
 function normalizeStarterRow(
   entity: MasterDataOnboardingEntityKey,
-  row: Record<string, unknown>
+  row: Record<string, unknown>,
 ) {
   const config = getMasterDataOnboardingStepConfig(entity);
 
   return Object.fromEntries(
-    config.templateHeaders.map((header) => [header, normalizeCell(row[header])])
+    config.templateHeaders.map((header) => [
+      header,
+      normalizeCell(row[header]),
+    ]),
   ) as NormalizedStarterRow;
 }
 
@@ -67,7 +75,7 @@ function createResult(
   row: number,
   status: StarterDataStatus,
   name: string,
-  message: string
+  message: string,
 ): StarterDataResult {
   return {
     row,
@@ -79,7 +87,7 @@ function createResult(
 
 function validateStarterRow(
   entity: MasterDataOnboardingEntityKey,
-  row: NormalizedStarterRow
+  row: NormalizedStarterRow,
 ): { ok: true; value: NormalizedStarterRow } | { ok: false; message: string } {
   const config = getMasterDataOnboardingStepConfig(entity);
 
@@ -96,7 +104,10 @@ function validateStarterRow(
   const contactEmail = row.contactEmail;
 
   if (email) {
-    const validation = z.string().email("Email must be a valid email address.").safeParse(email);
+    const validation = z
+      .string()
+      .email("Email must be a valid email address.")
+      .safeParse(email);
 
     if (!validation.success) {
       return {
@@ -129,7 +140,7 @@ function validateStarterRow(
 
 async function getExistingNames(
   entity: MasterDataOnboardingEntityKey,
-  organizationId: string
+  organizationId: string,
 ) {
   switch (entity) {
     case "buyers": {
@@ -180,7 +191,7 @@ async function getExistingNames(
 async function createStarterRecord(
   entity: MasterDataOnboardingEntityKey,
   organizationId: string,
-  row: NormalizedStarterRow
+  row: NormalizedStarterRow,
 ) {
   switch (entity) {
     case "buyers":
@@ -268,14 +279,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    const payload = starterDataSchema.parse(await request.json());
+    const isUpload =
+      request.headers.get("content-type")?.includes("multipart/form-data") ??
+      false;
+    const payload = isUpload
+      ? await parseStarterUpload(await request.formData())
+      : { ...starterDataSchema.parse(await request.json()), rowOffset: 0 };
 
     await enforceRateLimit({
       policy: "bulkImport",
       request,
       userId: user.id,
       organizationId: user.organizationId,
-      action: getStarterDataRateLimitAction(payload.entity),
+      action: isUpload
+        ? `onboarding.master_data.file.${payload.entity}`
+        : getStarterDataRateLimitAction(payload.entity),
     });
 
     const normalizedRows = payload.rows
@@ -288,11 +306,14 @@ export async function POST(request: Request) {
     if (!normalizedRows.length) {
       return NextResponse.json(
         { error: "Add at least one starter-data row before saving." },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
-    const existingNames = await getExistingNames(payload.entity, user.organizationId);
+    const existingNames = await getExistingNames(
+      payload.entity,
+      user.organizationId,
+    );
     const requestNames = new Set<string>();
     const results: StarterDataResult[] = [];
     const summary = {
@@ -302,13 +323,33 @@ export async function POST(request: Request) {
     };
 
     for (const { index, row } of normalizedRows) {
-      const rowNumber = index + 1;
+      const rowNumber = index + 1 + payload.rowOffset;
+      if (isUpload) {
+        const stored = new Set<string>(getStoredStarterColumns(payload.entity));
+        const ignoredColumn = Object.entries(row).find(
+          ([key, value]) => !stored.has(key) && value,
+        );
+        if (ignoredColumn) {
+          summary.failed += 1;
+          results.push(
+            createResult(
+              rowNumber,
+              "failed",
+              row.name,
+              `${ignoredColumn[0]} is not stored in Traxium. Remove its value and upload again.`,
+            ),
+          );
+          continue;
+        }
+      }
       const validation = validateStarterRow(payload.entity, row);
       const name = row.name;
 
       if (!validation.ok) {
         summary.failed += 1;
-        results.push(createResult(rowNumber, "failed", name, validation.message));
+        results.push(
+          createResult(rowNumber, "failed", name, validation.message),
+        );
         continue;
       }
 
@@ -321,8 +362,8 @@ export async function POST(request: Request) {
             rowNumber,
             "skipped",
             validation.value.name,
-            "Duplicate name already appears in this starter table."
-          )
+            "Duplicate name already appears in this starter table.",
+          ),
         );
         continue;
       }
@@ -334,8 +375,8 @@ export async function POST(request: Request) {
             rowNumber,
             "skipped",
             validation.value.name,
-            "Already exists in this workspace."
-          )
+            "Already exists in this workspace.",
+          ),
         );
         continue;
       }
@@ -344,7 +385,7 @@ export async function POST(request: Request) {
         await createStarterRecord(
           payload.entity,
           user.organizationId,
-          validation.value
+          validation.value,
         );
 
         requestNames.add(nameKey);
@@ -355,8 +396,8 @@ export async function POST(request: Request) {
             rowNumber,
             "created",
             validation.value.name,
-            `Created ${getSingularLabel(payload.entity)} record.`
-          )
+            `Created ${getSingularLabel(payload.entity)} record.`,
+          ),
         );
       } catch (error) {
         summary.failed += 1;
@@ -365,8 +406,10 @@ export async function POST(request: Request) {
             rowNumber,
             "failed",
             validation.value.name,
-            error instanceof Error ? error.message : "Starter row could not be saved."
-          )
+            error instanceof Error
+              ? error.message
+              : "Starter row could not be saved.",
+          ),
         );
       }
     }
@@ -377,13 +420,15 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
+    if (error instanceof StarterUploadError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
     if (error instanceof ZodError) {
       return NextResponse.json(
         {
-          error:
-            error.issues[0]?.message ?? "Starter-data payload is invalid.",
+          error: error.issues[0]?.message ?? "Starter-data payload is invalid.",
         },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
@@ -398,7 +443,7 @@ export async function POST(request: Request) {
             ? error.message
             : "Starter data could not be saved.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
