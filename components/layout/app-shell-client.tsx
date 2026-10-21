@@ -401,12 +401,15 @@ export function SidebarWorkspaceAccount({
           </form>
 
           {!collapsed ? (
-            <Link
-              href="/privacy"
-              className="text-center text-xs text-[var(--muted-foreground)] transition hover:text-[var(--foreground)]"
-            >
-              Privacy Policy
-            </Link>
+            <p className="text-center text-xs text-[var(--muted-foreground)]">
+              <Link href="/terms" className="transition hover:text-[var(--foreground)]">
+                Terms
+              </Link>
+              {" · "}
+              <Link href="/privacy" className="transition hover:text-[var(--foreground)]">
+                Privacy
+              </Link>
+            </p>
           ) : null}
         </div>
       </div>

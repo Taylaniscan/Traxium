@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import type { ReactNode } from "react";
 
+import {
+  LegalContactLink,
+  LegalDocument,
+  LegalList as List,
+  LegalParagraph as Paragraph,
+  LegalTerm as Term,
+  type LegalSection,
+} from "@/components/legal/legal-document";
 import {
   LEGAL_COMPANY_NAME,
   LEGAL_WEBSITE_DOMAIN,
   PILOT_LEAD_RETENTION_MONTHS,
-  PRIVACY_CONTACT_EMAIL,
   PRIVACY_POLICY_EFFECTIVE_DATE,
   WORKSPACE_DELETION_DAYS_AFTER_TERMINATION,
 } from "@/lib/legal";
@@ -16,40 +21,9 @@ export const metadata: Metadata = {
   description: `How ${LEGAL_COMPANY_NAME} collects, uses, and protects personal data on its website and in the Traxium application.`,
 };
 
-type PolicySection = {
-  id: string;
-  title: string;
-  body: ReactNode;
-};
+const contactLink = <LegalContactLink />;
 
-const contactLink = (
-  <a
-    href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
-    className="font-medium text-[var(--primary-action)] underline underline-offset-2"
-  >
-    {PRIVACY_CONTACT_EMAIL}
-  </a>
-);
-
-function Paragraph({ children }: { children: ReactNode }) {
-  return <p className="text-sm leading-7 text-[var(--muted-foreground)]">{children}</p>;
-}
-
-function List({ items }: { items: ReactNode[] }) {
-  return (
-    <ul className="list-disc space-y-2 pl-5 text-sm leading-7 text-[var(--muted-foreground)]">
-      {items.map((item, index) => (
-        <li key={index}>{item}</li>
-      ))}
-    </ul>
-  );
-}
-
-function Term({ children }: { children: ReactNode }) {
-  return <strong className="font-semibold text-[var(--foreground)]">{children}</strong>;
-}
-
-const sections: PolicySection[] = [
+const sections: LegalSection[] = [
   {
     id: "who-we-are",
     title: "1. Who we are",
@@ -347,59 +321,10 @@ const sections: PolicySection[] = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="border-b border-[var(--border)] bg-[var(--surface)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <Link href="/" className="text-base font-semibold">
-            Traxium
-          </Link>
-          <nav className="flex items-center gap-2 text-sm">
-            <Link href="/trust" className="rounded-md px-3 py-2 font-medium">
-              Trust &amp; security
-            </Link>
-            <Link href="/login" className="rounded-md px-3 py-2 font-medium">
-              Sign in
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <article className="mx-auto max-w-3xl px-6 py-12">
-        <h1 className="text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">
-          Privacy Policy
-        </h1>
-        <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-          Effective {PRIVACY_POLICY_EFFECTIVE_DATE}
-        </p>
-
-        <nav
-          aria-label="Privacy policy sections"
-          className="mt-8 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5"
-        >
-          <p className="text-sm font-semibold">Contents</p>
-          <ol className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
-            {sections.map((section) => (
-              <li key={section.id}>
-                <a
-                  href={`#${section.id}`}
-                  className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                >
-                  {section.title}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </nav>
-
-        <div className="mt-10 space-y-10">
-          {sections.map((section) => (
-            <section key={section.id} id={section.id} className="scroll-mt-8 space-y-3">
-              <h2 className="text-xl font-semibold">{section.title}</h2>
-              {section.body}
-            </section>
-          ))}
-        </div>
-      </article>
-    </main>
+    <LegalDocument
+      title="Privacy Policy"
+      effectiveDate={PRIVACY_POLICY_EFFECTIVE_DATE}
+      sections={sections}
+    />
   );
 }

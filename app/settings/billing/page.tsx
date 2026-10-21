@@ -337,6 +337,15 @@ export default async function BillingReturnPage({
                   />
                 </div>
               ))}
+              <p className="text-xs leading-5 text-[var(--muted-foreground)] md:col-span-2">
+                Subscriptions renew automatically each billing period and can be
+                canceled at any time, effective at the end of the paid period.
+                See the{" "}
+                <Link href="/terms" className="font-medium underline underline-offset-2">
+                  Terms of Service
+                </Link>
+                .
+              </p>
             </CardContent>
           </Card>
         ) : null}

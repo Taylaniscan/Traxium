@@ -10,3 +10,11 @@ export const PRIVACY_POLICY_EFFECTIVE_DATE = "October 21, 2026";
 // changes a published promise; update operational processes to match.
 export const PILOT_LEAD_RETENTION_MONTHS = 24;
 export const WORKSPACE_DELETION_DAYS_AFTER_TERMINATION = 90;
+
+export const TERMS_OF_SERVICE_PATH = "/terms";
+export const TERMS_OF_SERVICE_EFFECTIVE_DATE = "October 21, 2026";
+
+// Contract choices stated in the Terms of Service.
+export const GOVERNING_LAW = "the laws of the Netherlands";
+export const COMPETENT_COURT = "the competent court in Amsterdam, the Netherlands";
+export const LIABILITY_CAP_MONTHS = 12;

@@ -11,6 +11,7 @@ const PUBLIC_PAGES: Array<{
   { path: "/pilot", priority: 0.8, changeFrequency: "monthly" },
   { path: "/trust", priority: 0.6, changeFrequency: "monthly" },
   { path: "/privacy", priority: 0.3, changeFrequency: "monthly" },
+  { path: "/terms", priority: 0.3, changeFrequency: "monthly" },
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

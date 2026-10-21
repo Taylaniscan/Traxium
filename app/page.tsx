@@ -684,6 +684,9 @@ export default async function HomePage() {
             <Link href="/login" className="transition-colors hover:text-foreground">
               Sign in
             </Link>
+            <Link href="/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </Link>
             <Link href="/privacy" className="transition-colors hover:text-foreground">
               Privacy
             </Link>

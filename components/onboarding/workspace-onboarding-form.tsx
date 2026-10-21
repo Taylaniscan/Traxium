@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -291,8 +292,13 @@ export function WorkspaceOnboardingForm({
           </div>
         ) : null}
         <div className="flex flex-col-reverse gap-4 border-t border-[#edf0f1] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <p className="text-xs text-[#5b7075]">
-            All you need to start is a name.
+          <p className="text-xs leading-5 text-[#5b7075]">
+            All you need to start is a name. By creating a workspace, you accept
+            the{" "}
+            <Link href="/terms" className="font-medium underline underline-offset-2">
+              Terms of Service
+            </Link>{" "}
+            on behalf of your organization.
           </p>
           <Button
             type="submit"

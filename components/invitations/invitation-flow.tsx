@@ -400,7 +400,11 @@ export function InvitationFlow({
       ) : null}
 
       <p className="text-xs leading-5 text-[var(--muted-foreground)]">
-        Learn how we handle your account information in our{" "}
+        By completing your account, you agree to the{" "}
+        <Link href="/terms" className="font-medium text-[var(--foreground)] underline underline-offset-2">
+          Terms of Service
+        </Link>{" "}
+        and acknowledge the{" "}
         <Link href="/privacy" className="font-medium text-[var(--foreground)] underline underline-offset-2">
           Privacy Policy
         </Link>

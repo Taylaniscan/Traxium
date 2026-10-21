@@ -220,6 +220,10 @@ export default function TrustPage() {
               <Link href="/privacy" className="font-medium text-[var(--foreground)] underline underline-offset-2">
                 Privacy Policy
               </Link>
+              ; contract terms are in the{" "}
+              <Link href="/terms" className="font-medium text-[var(--foreground)] underline underline-offset-2">
+                Terms of Service
+              </Link>
               .
             </p>
           </div>
