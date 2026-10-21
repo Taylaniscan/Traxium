@@ -1,13 +1,7 @@
-import { EvidenceType, Role, UsageFeature, UsageWindow } from "@prisma/client";
+import { EvidenceType, UsageFeature } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+
 import { createAuthGuardErrorResponse, requireUser } from "@/lib/auth";
-import {
-  MAX_EVIDENCE_FILE_SIZE,
-  allowedEvidenceMimeTypes,
-  evidenceTypes,
-  isAllowedEvidenceFileName,
-} from "@/lib/evidence-config";
 import { auditEventTypes, writeAuditEvent } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import {
@@ -21,106 +15,21 @@ import {
   UsageQuotaExceededError,
 } from "@/lib/usage";
 import { storeEvidenceFile } from "@/lib/uploads";
-import type { AuthenticatedUser } from "@/lib/types";
 
-const GLOBAL_ACCESS_ROLES = new Set<Role>([
-  Role.HEAD_OF_GLOBAL_PROCUREMENT,
-  Role.GLOBAL_CATEGORY_LEADER,
-  Role.FINANCIAL_CONTROLLER,
-]);
+import {
+  buildSavingCardAccessWhere,
+  EVIDENCE_UPLOAD_QUOTA_WINDOW,
+  evidenceErrorResponse as errorResponse,
+  evidenceTypeSchema,
+  getFileValidationError,
+  savingCardIdSchema,
+} from "./shared";
+
+// Multipart upload through the app. Vercel caps function request bodies at
+// 4.5 MB, so the browser uses the signed direct-to-storage flow
+// (./sign + ./complete) instead; this route remains for small files and scripts.
 const ALLOWED_FORM_FIELDS = new Set(["savingCardId", "evidenceType", "files"]);
 const MAX_FILES_PER_UPLOAD = 10;
-const EVIDENCE_UPLOAD_QUOTA_WINDOW = UsageWindow.MONTH;
-const savingCardIdSchema = z.object({
-  savingCardId: z
-    .string()
-    .trim()
-    .min(1, "Saving card id is required.")
-    .refine((value) => !value.includes("/"), "Saving card id is invalid."),
-});
-const evidenceTypeSchema = z.enum(evidenceTypes).default(EvidenceType.OTHER);
-
-function hasGlobalAccess(role: Role) {
-  return GLOBAL_ACCESS_ROLES.has(role);
-}
-
-function errorResponse(error: string, status: number) {
-  return NextResponse.json(
-    {
-      success: false,
-      error,
-    },
-    { status }
-  );
-}
-
-function formatMaxEvidenceFileSize() {
-  return `${Math.round(MAX_EVIDENCE_FILE_SIZE / (1024 * 1024))} MB`;
-}
-
-function getFileExtension(fileName: string) {
-  const index = fileName.lastIndexOf(".");
-  return index >= 0 ? fileName.slice(index).toLowerCase() : "";
-}
-
-function getFileValidationError(file: File) {
-  const fileName = file.name.trim();
-
-  if (!fileName) {
-    return "Uploaded files must include a file name.";
-  }
-
-  if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("\0")) {
-    return "Uploaded file names are invalid.";
-  }
-
-  if (!isAllowedEvidenceFileName(fileName)) {
-    return "Unsupported file type. Upload PDF, Office, or image files only.";
-  }
-
-  if (file.size <= 0) {
-    return "Uploaded files must be non-empty.";
-  }
-
-  if (file.size > MAX_EVIDENCE_FILE_SIZE) {
-    return `Each file must be ${formatMaxEvidenceFileSize()} or smaller.`;
-  }
-
-  const normalizedType = file.type.trim().toLowerCase();
-  if (normalizedType && normalizedType !== "application/octet-stream") {
-    const allowedTypes =
-      allowedEvidenceMimeTypes[
-        getFileExtension(fileName) as keyof typeof allowedEvidenceMimeTypes
-      ];
-
-    if (
-      allowedTypes &&
-      !allowedTypes.some((allowedType) => allowedType === normalizedType)
-    ) {
-      return "Uploaded file content type does not match the file extension.";
-    }
-  }
-
-  return null;
-}
-
-function buildSavingCardAccessWhere(
-  user: AuthenticatedUser,
-  savingCardId: string
-) {
-  return {
-    id: savingCardId,
-    organizationId: user.organizationId,
-    ...(hasGlobalAccess(user.role)
-      ? {}
-      : {
-          OR: [
-            { stakeholders: { some: { userId: user.id } } },
-            { approvals: { some: { approverId: user.id } } },
-          ],
-        }),
-  };
-}
 
 export async function POST(request: Request) {
   try {
@@ -155,9 +64,9 @@ export async function POST(request: Request) {
       return errorResponse("Exactly one savingCardId field is required.", 400);
     }
 
-    const savingCardIdResult = savingCardIdSchema.safeParse({
-      savingCardId: savingCardIdValues[0],
-    });
+    const savingCardIdResult = savingCardIdSchema.safeParse(
+      savingCardIdValues[0]
+    );
 
     if (!savingCardIdResult.success) {
       return errorResponse(
@@ -166,7 +75,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const savingCardId = savingCardIdResult.data.savingCardId;
+    const savingCardId = savingCardIdResult.data;
     const evidenceTypeResult = evidenceTypeSchema.safeParse(
       formData.get("evidenceType") ?? EvidenceType.OTHER
     );

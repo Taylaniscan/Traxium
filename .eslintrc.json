@@ -1,5 +1,8 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"],
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
   "ignorePatterns": [
     ".next/**",
     ".next-e2e/**",
@@ -7,5 +10,17 @@
     "outputs/**",
     "next-env.d.ts",
     "tsconfig.tsbuildinfo"
-  ]
+  ],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ]
+  }
 }

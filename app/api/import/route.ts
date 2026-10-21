@@ -32,6 +32,7 @@ import {
   phaseLabels,
   phases,
 } from "@/lib/constants";
+import { isSpreadsheetTooLarge, spreadsheetTooLargeMessage } from "@/lib/upload-limits";
 
 const IMPORT_QUOTA_WINDOW = UsageWindow.MONTH;
 const MASTER_DATA_IMPORT_TYPES = MASTER_DATA_IMPORT_ENTITY_KEYS;
@@ -1018,6 +1019,10 @@ export async function POST(request: Request) {
 
     if (!file.size) {
       return NextResponse.json({ error: "The uploaded file is empty." }, { status: 422 });
+    }
+
+    if (isSpreadsheetTooLarge(file)) {
+      return NextResponse.json({ error: spreadsheetTooLargeMessage }, { status: 413 });
     }
 
     let workbook: XLSX.WorkBook;

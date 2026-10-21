@@ -7,6 +7,16 @@ const bootstrapCurrentUserFromAuthUserMock = vi.hoisted(() => vi.fn());
 const trackServerEventMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const createRouteObservabilityContextMock = vi.hoisted(() => vi.fn());
+const enforceRateLimitMock = vi.hoisted(() => vi.fn());
+const RateLimitExceededErrorMock = vi.hoisted(
+  () =>
+    class RateLimitExceededError extends Error {
+      constructor(message: string) {
+        super(message);
+        this.name = "RateLimitExceededError";
+      }
+    }
+);
 
 vi.mock("@/lib/auth", () => ({
   bootstrapCurrentUserFromAuthUser: bootstrapCurrentUserFromAuthUserMock,
@@ -14,6 +24,11 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseRouteClient: createSupabaseRouteClientMock,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  RateLimitExceededError: RateLimitExceededErrorMock,
 }));
 
 vi.mock("@/lib/observability", () => ({
@@ -52,6 +67,7 @@ function createLoginRequest(input: {
 describe("auth login route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    enforceRateLimitMock.mockResolvedValue({ limit: 20, remaining: 19 });
 
     createRouteObservabilityContextMock.mockReturnValue({
       event: "auth.login.requested",
@@ -209,6 +225,28 @@ describe("auth login route", () => {
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
       "http://localhost/login?message=invalid-credentials&email=user%40example.com"
+    );
+  });
+
+  it("throttles repeated sign-in attempts per IP before contacting Supabase", async () => {
+    enforceRateLimitMock.mockRejectedValueOnce(
+      new RateLimitExceededErrorMock("Too many sign-in attempts.")
+    );
+
+    const response = await POST(
+      createLoginRequest({
+        email: "user@example.com",
+        password: "guess",
+      })
+    );
+
+    expect(enforceRateLimitMock).toHaveBeenCalledWith(
+      expect.objectContaining({ policy: "login", action: "auth.login" })
+    );
+    expect(signInWithPasswordMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/login?message=rate-limited&email=user%40example.com"
     );
   });
 

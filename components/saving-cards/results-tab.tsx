@@ -6,7 +6,6 @@ import { formatRegionalMonth, formatRegionalNumber } from "@/lib/regional";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  CheckCircle2,
   ChevronDown,
   Download,
   Loader2,
@@ -49,6 +48,7 @@ import {
   savingsImpactTypeLabels,
 } from "@/lib/constants";
 import { resolveUnitSaving } from "@/lib/calculations";
+import { resolveUploadErrorMessage } from "@/lib/upload-limits";
 
 type EditableField = "forecast" | "actual";
 
@@ -308,7 +308,9 @@ export function ResultsTab({
       };
 
       if (!response.ok) {
-        throw new Error(result?.error ?? "Volume import failed.");
+        throw new Error(
+          resolveUploadErrorMessage(response.status, result?.error, "Volume import failed.")
+        );
       }
 
       setImportResult(result);

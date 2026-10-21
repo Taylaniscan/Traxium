@@ -459,7 +459,7 @@ export function getBillingCommercialSummary(
 export function getBillingWorkspacePresentation(
   accessState: OrganizationAccessStateResult,
   canManageBilling: boolean,
-  now: Date = new Date()
+  _now: Date = new Date()
 ): BillingWorkspacePresentation {
   const accessSummary = getAccessStateSummary(accessState);
   const actionSummary = getRecommendedActionSummary(accessState, canManageBilling);

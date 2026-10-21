@@ -23,11 +23,16 @@ This is the default for the standard Vercel deployment (the repo ships only the 
 - `app/api/jobs/run/route.ts` executes one bounded worker pass (`--once` semantics):
   it drains up to 25 jobs and stops when the queue is empty or a ~50s wall-clock budget
   is reached, keeping it well within the serverless function timeout.
-- The endpoint is protected by a shared secret. Set `JOB_RUNNER_SECRET` in the Vercel
-  project environment, and set `CRON_SECRET` to the **same value** — Vercel attaches
-  `Authorization: Bearer <CRON_SECRET>` to scheduled cron requests, which the endpoint
-  accepts. Requests without the matching secret are rejected (401), and the endpoint is
-  disabled (503) until `JOB_RUNNER_SECRET` is configured.
+- The endpoint is protected by a shared secret. Set `JOB_RUNNER_SECRET` and `CRON_SECRET`
+  in the Vercel project environment. Vercel attaches `Authorization: Bearer <CRON_SECRET>`
+  to scheduled cron requests; the endpoint accepts either secret (constant-time
+  comparison), so the two values do not need to match. Requests without a matching
+  secret are rejected (401), and the endpoint is disabled (503) until
+  `JOB_RUNNER_SECRET` is configured. The predeploy check fails Vercel production builds
+  that are missing `CRON_SECRET`.
+- Vercel runs cron jobs only for production deployments, and the 5-minute schedule
+  requires a Vercel Pro (or higher) plan; Hobby projects are limited to daily crons and
+  are licensed for non-commercial use only.
 - The route records a heartbeat after each successful pass; the admin Job Health page
   shows the last successful pass and warns if it is older than 30 minutes.
 
@@ -100,6 +105,21 @@ always-on process) instead of, or in addition to, the Vercel cron:
 - Production rollout is incomplete until the separate worker process is deployed with `npm run jobs:worker`.
 - Run `npm run jobs:worker:healthcheck` from the worker environment after deploy and after any worker restart.
 - Maintain at least one healthy worker replica before enabling or announcing the release, otherwise invitation and password recovery delivery will stall even if the web deployment looks healthy.
+
+## Vercel Build Guards
+
+`vercel.json` runs `npm run predeploy && npm run release:assert-migrated && npm run build`:
+
+- `predeploy` validates environment configuration (see above), including `CRON_SECRET`
+  for production.
+- `release:assert-migrated` runs `prisma migrate status` against the target database on
+  Vercel preview and production builds and fails the build if any migration is pending,
+  so code is never deployed ahead of its schema. Run `npm run release:migrate` first.
+- `package.json` pins `"engines": { "node": "22.x" }` to match CI.
+- `vercel.json` pins serverless functions to `fra1` (Frankfurt) so they run next to the
+  Supabase database in `eu-central-1`. If the production Supabase project is created in
+  another region, change `regions` to the matching Vercel region; every dashboard query
+  otherwise pays a cross-region round trip.
 
 ## Migration Strategy
 

@@ -17,7 +17,6 @@ import {
 } from "@/lib/constants";
 import type { SavingCardPortfolio, WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/utils/numberFormatter";
 import { toNumber } from "@/lib/utils/decimal";
 import { getEvidenceStatus } from "@/lib/evidence";
 import { useRegionalDisplay } from "@/components/layout/regional-context";
@@ -420,20 +419,6 @@ function PortfolioLaunchMetric({
   );
 }
 
-function PortfolioPromise({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--muted)]/40 p-4">
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{description}</p>
-    </div>
-  );
-}
 
 function PortfolioRampUpCard({
   readiness,

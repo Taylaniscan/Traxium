@@ -9,10 +9,35 @@ const figtree = Figtree({
   variable: "--font-sans",
 });
 
+const siteTitle = "Traxium | Finance-Trusted Procurement Savings for SMEs";
+const siteDescription =
+  "Finance-trusted procurement savings tracking for SMEs worldwide. Small procurement and finance teams can govern saving cards, evidence, approvals, and reporting in one workspace.";
+
+function resolveMetadataBase() {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000");
+  } catch {
+    return new URL("http://localhost:3000");
+  }
+}
+
 export const metadata: Metadata = {
-  title: "Traxium | Finance-Trusted Procurement Savings for SMEs",
-  description:
-    "Finance-trusted procurement savings tracking for SMEs worldwide. Small procurement and finance teams can govern saving cards, evidence, approvals, and reporting in one workspace.",
+  metadataBase: resolveMetadataBase(),
+  title: siteTitle,
+  description: siteDescription,
+  applicationName: "Traxium",
+  openGraph: {
+    type: "website",
+    siteName: "Traxium",
+    title: siteTitle,
+    description: siteDescription,
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: siteTitle,
+    description: siteDescription,
+  },
 };
 
 export default function RootLayout({

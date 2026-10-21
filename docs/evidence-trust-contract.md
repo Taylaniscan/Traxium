@@ -57,6 +57,7 @@ Evidence does not automatically mean:
 - Storage bucket and organization/saving-card namespaces are validated before signing.
 - Path traversal, bucket mismatch, and cross-tenant access are rejected.
 - Uploads are rate-limited, quota-checked, file-type checked, content-type checked, batch-limited, and size-limited.
+- Browser uploads go directly to private storage through a one-time signed upload URL for a server-chosen tenant path; the evidence record is created only after the server verifies the stored object's real size and content type.
 - Upload and download actions are written as organization-scoped audit events.
 - Signed URLs, provider service keys, storage paths, and tokens must not be printed in logs or exported.
 

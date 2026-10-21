@@ -33,10 +33,10 @@ describe("middleware auth routing", () => {
     expect(updateSessionMock).toHaveBeenCalledWith(request);
   });
 
-  it("keeps the existing matcher unchanged", () => {
+  it("keeps the matcher limited to page routes (no API, static assets, robots, or sitemap)", () => {
     expect(config).toEqual({
       matcher: [
-        "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
+        "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
       ],
     });
   });

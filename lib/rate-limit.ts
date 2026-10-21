@@ -52,6 +52,13 @@ export type RateLimitStore = {
 };
 
 export const rateLimitPolicies = {
+  login: {
+    scope: "ip",
+    maxRequests: 20,
+    windowMs: 10 * 60 * 1000,
+    // A throttling outage must not lock every user out of the product.
+    failureMode: "open",
+  },
   forgotPassword: {
     scope: "ip",
     maxRequests: 5,
@@ -443,6 +450,8 @@ function getRateLimitStore() {
 
 function buildRateLimitMessage(policy: RateLimitPolicyKey) {
   switch (policy) {
+    case "login":
+      return "Too many sign-in attempts. Please wait a few minutes and try again.";
     case "forgotPassword":
       return "Too many password recovery attempts. Please try again later.";
     case "resetPassword":
@@ -470,6 +479,7 @@ function buildRateLimitMessage(policy: RateLimitPolicyKey) {
 
 function buildRateLimitBackendUnavailableMessage(policy: RateLimitPolicyKey) {
   switch (policy) {
+    case "login":
     case "forgotPassword":
     case "resetPassword":
     case "pilotLeadSubmission":

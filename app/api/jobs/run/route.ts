@@ -1,6 +1,8 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
-import { getJobRunnerSecret } from "@/lib/env";
+import { getCronSecret, getJobRunnerSecret } from "@/lib/env";
 import { registerDefaultJobHandlers } from "@/lib/job-handlers";
 import { runJobLoop } from "@/lib/job-runner";
 import { enqueueDueMonthlyCloseReminders } from "@/lib/monthly-close-reminder";
@@ -41,6 +43,16 @@ function extractProvidedSecret(request: Request): string | null {
   return headerSecret || null;
 }
 
+function secretsMatch(provided: string, expected: string) {
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(providedBuffer, expectedBuffer)
+  );
+}
+
 async function handleRun(request: Request) {
   const requestContext = createRouteObservabilityContext(request, {
     event: "jobs.run.requested",
@@ -68,7 +80,15 @@ async function handleRun(request: Request) {
   }
 
   const providedSecret = extractProvidedSecret(request);
-  if (!providedSecret || providedSecret !== expectedSecret) {
+  // Vercel cron authenticates with CRON_SECRET; manual and dedicated callers use
+  // JOB_RUNNER_SECRET. Either is accepted so the two values need not be kept equal.
+  const acceptedSecrets = [expectedSecret, getCronSecret()].filter(
+    (value): value is string => Boolean(value)
+  );
+  if (
+    !providedSecret ||
+    !acceptedSecrets.some((secret) => secretsMatch(providedSecret, secret))
+  ) {
     trackServerEvent(
       { ...requestContext, event: "jobs.run.unauthorized", status: 401 },
       "warn"

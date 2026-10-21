@@ -2,9 +2,7 @@ import {
   ApprovalStatus,
   Currency,
   MembershipStatus,
-  OrganizationRole,
   Phase,
-  Role,
   SavingsImpactType,
   SubscriptionStatus,
 } from "@prisma/client";

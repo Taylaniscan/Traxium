@@ -39,23 +39,12 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { POST } from "@/app/api/invitations/[token]/accept/route";
 
-function createMembership(
-  organizationId = DEFAULT_ORGANIZATION_ID,
-  overrides: Partial<{
-    id: string;
-    organizationId: string;
-    role: OrganizationRole;
-    status: MembershipStatus;
-  }> = {}
-) {
-  return {
-    id: `membership-${organizationId}`,
-    organizationId,
-    role: OrganizationRole.MEMBER,
-    status: MembershipStatus.ACTIVE,
-    ...overrides,
-  };
-}
+type MembershipRecord = {
+  id: string;
+  organizationId: string;
+  role: OrganizationRole;
+  status: MembershipStatus;
+};
 
 function createResolvedUserRecord(
   overrides: Partial<{
@@ -64,7 +53,7 @@ function createResolvedUserRecord(
     email: string;
     role: Role;
     activeOrganizationId: string | null;
-    memberships: Array<ReturnType<typeof createMembership>>;
+    memberships: MembershipRecord[];
   }> = {}
 ) {
   return {

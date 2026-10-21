@@ -151,6 +151,105 @@ export function isManagedEvidenceStorageLocation({
   });
 }
 
+function buildEvidenceObjectLocation(
+  fileName: string,
+  context: {
+    organizationId: string;
+    savingCardId: string;
+  }
+) {
+  const bucketName = getEvidenceStorageBucketName();
+  const extension = path.extname(fileName).toLowerCase();
+  const safeBaseName = sanitizeBaseName(fileName, extension);
+  const uniqueName = `${safeBaseName || "evidence"}-${crypto.randomUUID()}${extension}`;
+  const storagePath = `${buildTenantEvidencePrefix(context.organizationId, context.savingCardId)}/${uniqueName}`;
+
+  return { bucketName, storagePath, extension };
+}
+
+/**
+ * Issues a one-time signed upload URL so the browser can send the file straight
+ * to the private bucket. Vercel functions reject request bodies over 4.5 MB, so
+ * evidence bytes must not pass through the app. The object path is chosen here,
+ * under the tenant/card prefix, and the URL cannot overwrite an existing object.
+ */
+export async function createEvidenceUploadTarget(
+  file: {
+    name: string;
+    size: number;
+  },
+  context: {
+    organizationId: string;
+    savingCardId: string;
+  }
+) {
+  if (!isAllowedEvidenceFileName(file.name)) {
+    throw new Error("Unsupported file type. Upload PDF, Office, or image files only.");
+  }
+
+  if (file.size > MAX_EVIDENCE_FILE_SIZE) {
+    throw new Error("File exceeds 25 MB. Please upload a smaller file.");
+  }
+
+  const { bucketName, storagePath } = buildEvidenceObjectLocation(file.name, context);
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .createSignedUploadUrl(storagePath);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(
+      `Could not prepare the upload: ${error?.message ?? "Unknown error"}`
+    );
+  }
+
+  return {
+    storageBucket: bucketName,
+    storagePath,
+    signedUrl: data.signedUrl,
+  };
+}
+
+/**
+ * Reads the stored object's real size and content type, which the server trusts
+ * instead of anything the browser reported. Returns null when nothing was
+ * uploaded to the path.
+ */
+export async function getEvidenceObjectInfo(
+  storageBucket: string,
+  storagePath: string
+) {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.storage
+    .from(storageBucket)
+    .info(normalizeStoragePath(storagePath));
+
+  if (error || !data) {
+    const message = error?.message ?? "";
+
+    if (!error || /not found|not exist|missing|404/i.test(message)) {
+      return null;
+    }
+
+    throw new Error(`Could not verify the uploaded file: ${message}`);
+  }
+
+  return {
+    size: typeof data.size === "number" ? data.size : Number(data.size ?? 0),
+    contentType: data.contentType ?? null,
+  };
+}
+
+export async function removeEvidenceObject(
+  storageBucket: string,
+  storagePath: string
+) {
+  const supabase = createSupabaseAdminClient();
+  await supabase.storage
+    .from(storageBucket)
+    .remove([normalizeStoragePath(storagePath)]);
+}
+
 export async function storeEvidenceFile(
   file: File,
   context: {
@@ -166,11 +265,10 @@ export async function storeEvidenceFile(
     throw new Error("File exceeds 25 MB. Please upload a smaller file.");
   }
 
-  const bucketName = getEvidenceStorageBucketName();
-  const extension = path.extname(file.name).toLowerCase();
-  const safeBaseName = sanitizeBaseName(file.name, extension);
-  const uniqueName = `${safeBaseName || "evidence"}-${crypto.randomUUID()}${extension}`;
-  const storagePath = `${buildTenantEvidencePrefix(context.organizationId, context.savingCardId)}/${uniqueName}`;
+  const { bucketName, storagePath, extension } = buildEvidenceObjectLocation(
+    file.name,
+    context
+  );
 
   const bytes = Buffer.from(await file.arrayBuffer());
   const supabase = createSupabaseAdminClient();

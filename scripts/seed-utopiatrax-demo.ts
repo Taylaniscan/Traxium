@@ -1531,10 +1531,6 @@ function monthRange(start: Date, end: Date) {
   return periods;
 }
 
-function createMap<T extends { name: string }>(items: readonly T[]) {
-  return new Map(items.map((item) => [item.name, item]));
-}
-
 function getDuplicateValues(values: readonly string[]) {
   const seen = new Set<string>();
   const duplicates = new Set<string>();

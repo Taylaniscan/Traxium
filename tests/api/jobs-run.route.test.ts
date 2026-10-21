@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getJobRunnerSecretMock = vi.hoisted(() => vi.fn());
+const getCronSecretMock = vi.hoisted(() => vi.fn());
 const registerDefaultJobHandlersMock = vi.hoisted(() => vi.fn());
 const runJobLoopMock = vi.hoisted(() => vi.fn());
 const recordJobRunnerHeartbeatMock = vi.hoisted(() => vi.fn());
@@ -8,6 +9,7 @@ const enqueueDueMonthlyCloseRemindersMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/env", () => ({
   getJobRunnerSecret: getJobRunnerSecretMock,
+  getCronSecret: getCronSecretMock,
 }));
 
 vi.mock("@/lib/monthly-close-reminder", () => ({
@@ -44,6 +46,7 @@ describe("/api/jobs/run", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getJobRunnerSecretMock.mockReturnValue(SECRET);
+    getCronSecretMock.mockReturnValue(null);
     runJobLoopMock.mockResolvedValue({ processedJobs: 3, idle: true });
     recordJobRunnerHeartbeatMock.mockResolvedValue(undefined);
     enqueueDueMonthlyCloseRemindersMock.mockResolvedValue({
@@ -87,6 +90,29 @@ describe("/api/jobs/run", () => {
     expect(recordJobRunnerHeartbeatMock).toHaveBeenCalledWith(
       expect.objectContaining({ processedJobs: 3 })
     );
+  });
+
+  it("accepts Vercel's CRON_SECRET bearer token when it differs from JOB_RUNNER_SECRET", async () => {
+    getCronSecretMock.mockReturnValue("vercel-cron-secret");
+
+    const response = await GET(
+      request({ authorization: "Bearer vercel-cron-secret" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(runJobLoopMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not accept CRON_SECRET when JOB_RUNNER_SECRET is missing", async () => {
+    getJobRunnerSecretMock.mockReturnValue("");
+    getCronSecretMock.mockReturnValue("vercel-cron-secret");
+
+    const response = await GET(
+      request({ authorization: "Bearer vercel-cron-secret" })
+    );
+
+    expect(response.status).toBe(503);
+    expect(runJobLoopMock).not.toHaveBeenCalled();
   });
 
   it("also accepts the x-job-runner-secret header", async () => {

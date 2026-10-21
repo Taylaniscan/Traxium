@@ -23,10 +23,6 @@ const sessionUserSelect = {
   activeOrganizationId: true,
 } satisfies Prisma.UserSelect;
 
-type SessionUserRecord = Prisma.UserGetPayload<{
-  select: typeof sessionUserSelect;
-}>;
-
 type AuthSessionUser = {
   id: string;
   email?: string | null;

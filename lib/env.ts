@@ -56,6 +56,7 @@ export const serverEnvKeys = [
   "JOB_WORKER_ORGANIZATION_ID",
   "JOB_WORKER_TYPES",
   "JOB_RUNNER_SECRET",
+  "CRON_SECRET",
   "SEED_HEAD_OF_PROCUREMENT_EMAIL",
   "SEED_FINANCIAL_CONTROLLER_EMAIL",
   "SEED_TACTICAL_BUYER_EMAIL",
@@ -507,6 +508,11 @@ export function getJobRunnerSecret(source: EnvSource = process.env) {
     description:
       "Shared secret required to invoke the protected /api/jobs/run worker endpoint.",
   });
+}
+
+// Vercel attaches `Authorization: Bearer <CRON_SECRET>` to scheduled cron requests.
+export function getCronSecret(source: EnvSource = process.env) {
+  return readOptionalServerEnv("CRON_SECRET", { source });
 }
 
 export function getDirectDatabaseUrl(source: EnvSource = process.env) {

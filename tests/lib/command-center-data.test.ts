@@ -48,8 +48,30 @@ describe("command center data helpers", () => {
       )
     ).toEqual({
       month: "Apr 2026",
-      sortValue: new Date(2026, 3, 1).getTime(),
+      sortValue: Date.UTC(2026, 3, 1),
     });
+  });
+
+  it("buckets UTC calendar dates into the same month in a negative-offset time zone", () => {
+    const originalTimeZone = process.env.TZ;
+    process.env.TZ = "America/Chicago";
+
+    try {
+      expect(
+        resolveCommandCenterForecastBucket(
+          new Date("2026-01-01T00:00:00.000Z")
+        )
+      ).toEqual({
+        month: "Jan 2026",
+        sortValue: Date.UTC(2026, 0, 1),
+      });
+    } finally {
+      if (originalTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimeZone;
+      }
+    }
   });
 
   it("loads command-center analytics without an interactive transaction timeout risk", async () => {

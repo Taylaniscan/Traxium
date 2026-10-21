@@ -23,6 +23,7 @@ import {
   type MasterDataOnboardingEntityKey,
 } from "@/lib/onboarding/master-data-config";
 import { cn } from "@/lib/utils";
+import { resolveUploadErrorMessage } from "@/lib/upload-limits";
 
 type UploadMessage = {
   tone: "success" | "error";
@@ -121,10 +122,11 @@ export function MasterDataUploadStep({
       if (!response.ok) {
         setUploadMessage({
           tone: "error",
-          text:
-            result && "error" in result
-              ? result.error ?? "Upload failed."
-              : "Upload failed.",
+          text: resolveUploadErrorMessage(
+            response.status,
+            result && "error" in result ? result.error : null,
+            "Upload failed."
+          ),
         });
         return;
       }

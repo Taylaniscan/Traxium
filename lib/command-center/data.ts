@@ -31,8 +31,9 @@ export function resolveCommandCenterForecastBucket(value: unknown) {
     month: new Intl.DateTimeFormat("en-US", {
       month: "short",
       year: "numeric",
+      timeZone: "UTC",
     }).format(date),
-    sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
+    sortValue: Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1),
   };
 }
 

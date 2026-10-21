@@ -178,11 +178,14 @@ function resolveDashboardMonthBucket(value: unknown) {
   }
 
   return {
+    // Card dates are stored as UTC calendar dates; bucket in UTC so a browser in
+    // a negative-offset time zone does not shift them into the previous month.
     month: new Intl.DateTimeFormat("en-US", {
       month: "short",
       year: "numeric",
+      timeZone: "UTC",
     }).format(date),
-    sortValue: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
+    sortValue: Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1),
   };
 }
 
@@ -191,12 +194,12 @@ function parseDashboardDate(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function startOfTodayTimestamp(reference = new Date()) {
-  return new Date(
-    reference.getFullYear(),
-    reference.getMonth(),
-    reference.getDate()
-  ).getTime();
+function startOfUtcDayTimestamp(reference = new Date()) {
+  return Date.UTC(
+    reference.getUTCFullYear(),
+    reference.getUTCMonth(),
+    reference.getUTCDate()
+  );
 }
 
 function formatDashboardPercent(value: number) {
@@ -424,7 +427,7 @@ function buildDashboardExceptions(
   cards: DashboardData["cards"],
   formatUsd: (value: number) => string
 ): DashboardExceptionItem[] {
-  const todayTimestamp = startOfTodayTimestamp();
+  const todayTimestamp = startOfUtcDayTimestamp();
 
   return cards
     .flatMap((card) => {
@@ -441,11 +444,7 @@ function buildDashboardExceptions(
         phaseLabels[card.phase] ?? normalizeDashboardLabel(card.phase, "Unknown phase");
       const impactStartDate = parseDashboardDate(card.impactStartDate);
       const impactStartTimestamp = impactStartDate
-        ? new Date(
-            impactStartDate.getFullYear(),
-            impactStartDate.getMonth(),
-            impactStartDate.getDate()
-          ).getTime()
+        ? startOfUtcDayTimestamp(impactStartDate)
         : null;
       const daysToImpact =
         impactStartTimestamp === null

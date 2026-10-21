@@ -1,7 +1,10 @@
 {
   "framework": "nextjs",
   "installCommand": "npm ci",
-  "buildCommand": "npm run predeploy && npm run build",
+  "buildCommand": "npm run predeploy && npm run release:assert-migrated && npm run build",
+  "regions": [
+    "fra1"
+  ],
   "crons": [
     {
       "path": "/api/jobs/run",

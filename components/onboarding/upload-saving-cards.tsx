@@ -3,6 +3,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { Select } from "@/components/ui/select";
+import { resolveUploadErrorMessage } from "@/lib/upload-limits";
 
 type ImportResult = {
   error?: string;
@@ -51,7 +52,11 @@ export function UploadSavingCards({
         .catch(() => null)) as ImportResult | null;
       if (!response.ok) {
         setMessage({
-          text: result?.error ?? "The workbook could not be imported.",
+          text: resolveUploadErrorMessage(
+            response.status,
+            result?.error,
+            "The workbook could not be imported."
+          ),
           error: true,
         });
         setIssues(result?.results ?? []);

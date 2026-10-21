@@ -10,6 +10,10 @@ import {
   createRouteObservabilityContext,
   trackServerEvent,
 } from "@/lib/observability";
+import {
+  enforceRateLimit,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 type CookieToSet = {
@@ -91,6 +95,40 @@ export async function POST(request: NextRequest) {
     email = readTrimmedFormValue(formData, "email");
     const password = readRawFormValue(formData, "password");
     nextPath = resolveInviteNextPath(readTrimmedFormValue(formData, "next"));
+
+    try {
+      await enforceRateLimit({
+        policy: "login",
+        request,
+        action: "auth.login",
+      });
+    } catch (error) {
+      if (!(error instanceof RateLimitExceededError)) {
+        throw error;
+      }
+
+      trackServerEvent(
+        {
+          ...requestContext,
+          event: "auth.login.rate_limited",
+          status: 303,
+          payload: {
+            hasInviteNextPath: Boolean(nextPath),
+          },
+        },
+        "warn"
+      );
+
+      return redirectWithCookies(
+        request,
+        response,
+        buildLoginHref({
+          nextPath,
+          email,
+          message: "rate-limited",
+        })
+      );
+    }
 
     if (!email || !password) {
       trackServerEvent(

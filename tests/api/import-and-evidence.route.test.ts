@@ -443,6 +443,22 @@ describe("import and evidence API routes", () => {
       expect(xlsxReadMock).not.toHaveBeenCalled();
     });
 
+    it("returns 413 with a clear message for workbooks above the 4 MB import limit", async () => {
+      const oversized = createWorkbookFile("x");
+      Object.defineProperty(oversized, "size", { value: 4 * 1024 * 1024 + 1 });
+
+      const response = await postImportRoute(
+        createFormDataRequest(createImportForm(oversized, "buyers"))
+      );
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "This file is larger than 4 MB. Split it into smaller files and import them one at a time.",
+      });
+      expect(xlsxReadMock).not.toHaveBeenCalled();
+    });
+
     it("returns row-level saving-card validation errors without partially importing", async () => {
       xlsxReadMock.mockReturnValueOnce({
         SheetNames: ["Sheet1"],

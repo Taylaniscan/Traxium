@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/select";
 import type { WorkspaceReadiness } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { resolveUploadErrorMessage } from "@/lib/upload-limits";
 
 type ImportMessage = {
   tone: "success" | "error";
@@ -160,7 +161,11 @@ export function ImportExportPanel({
       );
       setSavingCardMessage({
         tone: "error",
-        text: result && "error" in result ? result.error ?? "Import failed." : "Import failed.",
+        text: resolveUploadErrorMessage(
+          response.status,
+          result && "error" in result ? result.error : null,
+          "Import failed."
+        ),
       });
     } catch {
       setSavingCardResult(null);
@@ -186,7 +191,11 @@ export function ImportExportPanel({
         setMasterDataResult(null);
         setMasterDataMessage({
           tone: "error",
-          text: result && "error" in result ? result.error ?? "Import failed." : "Import failed.",
+          text: resolveUploadErrorMessage(
+            response.status,
+            result && "error" in result ? result.error : null,
+            "Import failed."
+          ),
         });
         return;
       }

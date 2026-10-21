@@ -12,6 +12,7 @@ import {
   resolveVolumeCardContext,
   volumeCardParamsSchema,
 } from "../shared";
+import { isSpreadsheetTooLarge, spreadsheetTooLargeMessage } from "@/lib/upload-limits";
 
 const ACCEPTED_EXTENSIONS = new Set([".csv", ".xlsx", ".xls"]);
 
@@ -60,6 +61,10 @@ export async function POST(
 
     if (!file.size) {
       return jsonError("The uploaded file is empty.", 422);
+    }
+
+    if (isSpreadsheetTooLarge(file)) {
+      return jsonError(spreadsheetTooLargeMessage, 413);
     }
 
     const extension = getExtension(file.name);

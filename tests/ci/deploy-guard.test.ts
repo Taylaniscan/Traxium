@@ -21,6 +21,7 @@ function createDeployEnv(
       "sb_publishable_previewkey000000000000000000",
     SUPABASE_SECRET_KEY: "sb_secret_previewkey000000000000000000000000",
     JOB_RUNNER_SECRET: "job-runner-secret",
+    CRON_SECRET: "vercel-cron-secret",
     STRIPE_SECRET_KEY:
       "sk_test_FAKE",
     STRIPE_WEBHOOK_SECRET:
@@ -150,6 +151,34 @@ describe("deploy guard", () => {
     });
   });
 
+  it("requires CRON_SECRET for Vercel production deploys so the job cron can authenticate", () => {
+    const productionEnv = {
+      APP_ENV: "production",
+      VERCEL_ENV: "production",
+      NEXT_PUBLIC_APP_URL: "https://app.traxium.com",
+      PROJECT_REF: "prodproj",
+      STRIPE_SECRET_KEY: "sk_live_FAKE",
+      STRIPE_STARTER_PRODUCT_ID: "prod_1starterlivecatalog2026",
+      STRIPE_STARTER_BASE_PRICE_ID: "price_1starterlivecatalog2026",
+      STRIPE_STARTER_METERED_PRICE_ID: "price_1starterlivelogusage2026",
+      STRIPE_GROWTH_PRODUCT_ID: "prod_1growthlivecatalog2026",
+      STRIPE_GROWTH_BASE_PRICE_ID: "price_1growthlivecatalog2026",
+      STRIPE_GROWTH_METERED_PRICE_ID: "price_1growthlivelogusage2026",
+    };
+
+    expect(() =>
+      assertPredeployConfiguration(
+        createDeployEnv({ ...productionEnv, CRON_SECRET: undefined })
+      )
+    ).toThrow("CRON_SECRET is required for Vercel production deployments");
+
+    expect(() =>
+      assertPredeployConfiguration(
+        createDeployEnv({ CRON_SECRET: undefined })
+      )
+    ).not.toThrow();
+  });
+
   it("keeps migrate deploy as the documented release strategy", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(
@@ -180,6 +209,8 @@ describe("deploy guard", () => {
     );
     expect(deploymentStrategy).toContain("prisma migrate deploy");
     expect(deploymentStrategy).toContain("Never use `prisma migrate dev`");
-    expect(vercelConfig.buildCommand).toBe("npm run predeploy && npm run build");
+    expect(vercelConfig.buildCommand).toBe(
+      "npm run predeploy && npm run release:assert-migrated && npm run build"
+    );
   });
 });

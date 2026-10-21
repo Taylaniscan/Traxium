@@ -371,44 +371,99 @@ async function performUploads(
   }
 }
 
-function uploadSingleFile(
+type EvidenceUploadTarget = {
+  storageBucket: string;
+  storagePath: string;
+  signedUrl: string;
+};
+
+async function readJsonResponse<T>(response: Response): Promise<T & { error?: string }> {
+  try {
+    return (await response.json()) as T & { error?: string };
+  } catch {
+    return {} as T & { error?: string };
+  }
+}
+
+/**
+ * Evidence bytes go straight from the browser to the private storage bucket via
+ * a one-time signed URL (Vercel functions reject request bodies over 4.5 MB).
+ * The app authorizes the upload first and records it only after verifying the
+ * stored object.
+ */
+async function uploadSingleFile(
   savingCardId: string,
   file: File,
   evidenceType: EvidenceType,
   onProgress: (progress: number) => void,
 ): Promise<UploadedEvidenceFile> {
-  return new Promise((resolve, reject) => {
+  const signResponse = await fetch("/api/upload/evidence/sign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      savingCardId,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    }),
+  });
+  const signResult = await readJsonResponse<{ upload?: EvidenceUploadTarget }>(signResponse);
+
+  if (!signResponse.ok || !signResult.upload) {
+    throw new Error(signResult.error ?? "Upload could not be prepared.");
+  }
+
+  const target = signResult.upload;
+
+  await new Promise<void>((resolve, reject) => {
     const formData = new FormData();
-    formData.append("savingCardId", savingCardId);
-    formData.append("evidenceType", evidenceType);
-    formData.append("files", file);
+    formData.append("cacheControl", "3600");
+    formData.append("", file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload/evidence");
+    xhr.open("PUT", target.signedUrl);
+    xhr.setRequestHeader("x-upsert", "false");
 
     xhr.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
-      onProgress(Math.round((event.loaded / event.total) * 100));
+      // Leave headroom for the server-side verification step.
+      onProgress(Math.min(95, Math.round((event.loaded / event.total) * 100)));
     });
 
     xhr.addEventListener("load", () => {
-      if (xhr.status < 200 || xhr.status >= 300) {
-        const message =
-          JSON.parse(xhr.responseText || "{}").error ?? "Upload failed.";
-        reject(new Error(message));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
         return;
       }
 
-      const result = JSON.parse(xhr.responseText) as {
-        files: UploadedEvidenceFile[];
-      };
-
-      resolve(result.files[0]);
+      reject(new Error("Upload failed. Please try again."));
     });
 
-    xhr.addEventListener("error", () => reject(new Error("Upload failed.")));
+    xhr.addEventListener("error", () => reject(new Error("Upload failed. Check your connection and try again.")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload was canceled.")));
     xhr.send(formData);
   });
+
+  const completeResponse = await fetch("/api/upload/evidence/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      savingCardId,
+      evidenceType,
+      storageBucket: target.storageBucket,
+      storagePath: target.storagePath,
+      fileName: file.name,
+    }),
+  });
+  const completeResult = await readJsonResponse<{ files?: UploadedEvidenceFile[] }>(completeResponse);
+  const uploaded = completeResult.files?.[0];
+
+  if (!completeResponse.ok || !uploaded) {
+    throw new Error(completeResult.error ?? "Upload could not be recorded.");
+  }
+
+  onProgress(100);
+  return uploaded;
 }
 
 function getFileStatusLabel(file: UploadedEvidenceFile) {

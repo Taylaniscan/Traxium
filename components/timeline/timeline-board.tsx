@@ -716,18 +716,18 @@ function buildSegmentForDate(date: Date, scale: ZoomLevel, locale: string): Time
     return {
       start,
       end,
-      primaryLabel: `${start.getFullYear()}`,
+      primaryLabel: `${start.getUTCFullYear()}`,
       secondaryLabel: "Year"
     };
   }
 
   if (scale === "QUARTER") {
-    const quarter = Math.floor(start.getMonth() / 3) + 1;
+    const quarter = Math.floor(start.getUTCMonth() / 3) + 1;
     return {
       start,
       end,
       primaryLabel: `Q${quarter}`,
-      secondaryLabel: `${start.getFullYear()}`
+      secondaryLabel: `${start.getUTCFullYear()}`
     };
   }
 
@@ -735,8 +735,8 @@ function buildSegmentForDate(date: Date, scale: ZoomLevel, locale: string): Time
     return {
       start,
       end,
-      primaryLabel: new Intl.DateTimeFormat(locale, { month: "short" }).format(start),
-      secondaryLabel: `${start.getFullYear()}`
+      primaryLabel: new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" }).format(start),
+      secondaryLabel: `${start.getUTCFullYear()}`
     };
   }
 
@@ -744,37 +744,37 @@ function buildSegmentForDate(date: Date, scale: ZoomLevel, locale: string): Time
     start,
     end,
     primaryLabel: `W${getWeekNumber(start)}`,
-    secondaryLabel: new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(start)
+    secondaryLabel: new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", timeZone: "UTC" }).format(start)
   };
 }
 
 function getSegmentStart(date: Date, scale: ZoomLevel) {
-  if (scale === "YEAR") return new Date(date.getFullYear(), 0, 1);
-  if (scale === "QUARTER") return new Date(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1);
-  if (scale === "MONTH") return new Date(date.getFullYear(), date.getMonth(), 1);
+  if (scale === "YEAR") return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  if (scale === "QUARTER") return new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3, 1));
+  if (scale === "MONTH") return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
   return startOfWeek(date);
 }
 
 function getSegmentEnd(date: Date, scale: ZoomLevel) {
   const start = getSegmentStart(date, scale);
 
-  if (scale === "YEAR") return new Date(start.getFullYear(), 11, 31, 23, 59, 59, 999);
-  if (scale === "QUARTER") return new Date(start.getFullYear(), start.getMonth() + 3, 0, 23, 59, 59, 999);
-  if (scale === "MONTH") return new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
-  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+  if (scale === "YEAR") return new Date(Date.UTC(start.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
+  if (scale === "QUARTER") return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 3, 0, 23, 59, 59, 999));
+  if (scale === "MONTH") return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6, 23, 59, 59, 999));
 }
 
 function getNextSegmentStart(date: Date, scale: ZoomLevel) {
-  if (scale === "YEAR") return new Date(date.getFullYear() + 1, 0, 1);
-  if (scale === "QUARTER") return new Date(date.getFullYear(), date.getMonth() + 3, 1);
-  if (scale === "MONTH") return new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7);
+  if (scale === "YEAR") return new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 1));
+  if (scale === "QUARTER") return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 3, 1));
+  if (scale === "MONTH") return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 7));
 }
 
 function getCurrentMonthRange(now: Date) {
   return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1),
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999))
   };
 }
 
@@ -819,15 +819,15 @@ function buildGridBackground(segmentWidth: number) {
 }
 
 function startOfWeek(date: Date) {
-  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const day = normalized.getDay();
+  const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = normalized.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  normalized.setDate(normalized.getDate() + diff);
+  normalized.setUTCDate(normalized.getUTCDate() + diff);
   return normalized;
 }
 
 function getWeekNumber(date: Date) {
-  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNumber = target.getUTCDay() || 7;
   target.setUTCDate(target.getUTCDate() + 4 - dayNumber);
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));

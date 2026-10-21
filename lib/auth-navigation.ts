@@ -155,6 +155,8 @@ export function resolveLoginErrorMessage(value: string | null) {
       return "Invalid email or password.";
     case "signin-retry":
       return "We couldn't sign you in. Please try again.";
+    case "rate-limited":
+      return "Too many sign-in attempts. Please wait a few minutes and try again.";
     default:
       return null;
   }

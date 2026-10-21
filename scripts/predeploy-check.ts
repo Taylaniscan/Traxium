@@ -185,6 +185,24 @@ function assertPreviewProductionSeparation(input: {
   }
 }
 
+// vercel.json schedules /api/jobs/run, and Vercel only runs crons for production
+// deployments. Without CRON_SECRET every scheduled pass is rejected (401), so
+// invitation, password-recovery, and notification emails would silently stall.
+function assertVercelCronSecret(
+  source: EnvSource,
+  hostingEnvironment: HostingEnvironment
+) {
+  if (hostingEnvironment !== "production") {
+    return;
+  }
+
+  if (!readOptionalValue(source, "CRON_SECRET")) {
+    throw new Error(
+      "CRON_SECRET is required for Vercel production deployments so the scheduled /api/jobs/run cron can authenticate."
+    );
+  }
+}
+
 export function assertPredeployConfiguration(
   source: EnvSource = process.env
 ): PredeployCheckResult {
@@ -241,6 +259,7 @@ export function assertPredeployConfiguration(
     productionAliasHost,
     hostingEnvironment,
   });
+  assertVercelCronSecret(source, hostingEnvironment);
 
   return {
     appEnvironment,
