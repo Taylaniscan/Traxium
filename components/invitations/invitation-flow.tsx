@@ -399,6 +399,14 @@ export function InvitationFlow({
         </div>
       ) : null}
 
+      <p className="text-xs leading-5 text-[var(--muted-foreground)]">
+        Learn how we handle your account information in our{" "}
+        <Link href="/privacy" className="font-medium text-[var(--foreground)] underline underline-offset-2">
+          Privacy Policy
+        </Link>
+        .
+      </p>
+
       <Button type="submit" disabled={setupLoading}>
         {setupLoading ? "Completing account..." : "Complete account"}
       </Button>

@@ -17,6 +17,7 @@ import {
   pilotTimelineOptions,
   pilotTrackingOptions,
 } from "@/lib/pilot-leads/validation";
+import Link from "next/link";
 
 type FieldErrors = Record<string, string>;
 
@@ -365,6 +366,14 @@ export function PilotLeadForm({ countries }: { countries: CountryOption[] }) {
           <p className="text-xs leading-5 text-[var(--muted-foreground)]">
             Submitting this form requests a founder-led fit review. It does not
             create an account, start a free trial, or create a workspace.
+          </p>
+
+          <p className="text-xs leading-5 text-[var(--muted-foreground)]">
+            We use these details only to respond to your request. See our{" "}
+            <Link href="/privacy" className="font-medium text-[var(--foreground)] underline underline-offset-2">
+              Privacy Policy
+            </Link>{" "}
+            for how long we keep them and your rights.
           </p>
         </form>
       </CardContent>

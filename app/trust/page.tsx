@@ -214,6 +214,14 @@ export default function TrustPage() {
               archive, self-service permanent deletion, or formal RPO/RTO
               commitment.
             </p>
+            <p className="mt-3 text-sm leading-6 text-[var(--muted-foreground)]">
+              Retention periods, service providers, and data rights are described
+              in the{" "}
+              <Link href="/privacy" className="font-medium text-[var(--foreground)] underline underline-offset-2">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </div>
 
           <Card>

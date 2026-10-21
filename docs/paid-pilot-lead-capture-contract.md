@@ -119,6 +119,10 @@ New leads trigger an internal sales notification email. Invitations remain manua
 
 The public form must not imply that the requester will receive an email confirmation.
 
+## Privacy Notice
+
+The form shows a notice at the point of collection linking to the Privacy Policy (`/privacy`). Pilot requests that do not lead to a customer relationship must be deleted within 24 months of the last contact (`PILOT_LEAD_RETENTION_MONTHS` in `lib/legal.ts`). This deletion is currently an operator task; there is no automated purge job.
+
 ## Success Message
 
 The public success state is:

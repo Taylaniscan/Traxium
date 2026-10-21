@@ -4,7 +4,8 @@ The first production launch on Vercel. Code-side guards (predeploy check, pendin
 
 ## 1. Blockers (launch cannot proceed without these)
 
-- [ ] **Legal pages.** Publish a Privacy Policy and Terms of Service and link them from the homepage footer, `/pilot`, and login. The pilot form collects personal data from visitors worldwide (including the EU), and Stripe requires these pages before activating live payments. They need the legal entity name, address, governing law, and subprocessors (Vercel, Supabase, Stripe, Sentry, Resend).
+- [x] **Privacy Policy** at `/privacy` (`app/privacy/page.tsx`, company details in `lib/legal.ts`), linked from the homepage footer, trust page, pilot form, login, invitation account setup, and the signed-in sidebar. Have it reviewed by counsel; add the legal form and registered address once confirmed.
+- [ ] **Terms of Service.** Not yet published. Stripe requires terms before activating live payments.
 - [ ] **Vercel Pro plan.** The Hobby plan is non-commercial and only allows daily crons; `vercel.json` runs the job cron every 5 minutes, and the deploy is rejected on Hobby.
 - [ ] **Custom SMTP for Supabase Auth.** Supabase's built-in email sender only delivers to your own project team's addresses and is heavily rate-limited, so customer invitations and password resets will not arrive. Configure custom SMTP in Supabase → Authentication → Emails (Resend provides SMTP credentials) with a sender on your verified domain.
 - [ ] **Separate production Supabase project** (never the development project). Create it in `eu-central-1` to match `vercel.json` `regions: ["fra1"]`, or change `regions` to match.

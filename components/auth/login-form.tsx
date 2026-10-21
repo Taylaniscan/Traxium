@@ -157,6 +157,11 @@ export function LoginForm() {
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+          <p className="mt-4 text-center text-xs text-[var(--muted-foreground)]">
+            <Link href="/privacy" className="underline underline-offset-2">
+              Privacy Policy
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </main>

@@ -399,6 +399,15 @@ export function SidebarWorkspaceAccount({
               {!collapsed ? "Sign out" : null}
             </button>
           </form>
+
+          {!collapsed ? (
+            <Link
+              href="/privacy"
+              className="text-center text-xs text-[var(--muted-foreground)] transition hover:text-[var(--foreground)]"
+            >
+              Privacy Policy
+            </Link>
+          ) : null}
         </div>
       </div>
     </div>
